@@ -18,15 +18,18 @@ describe("LlmClient", () => {
     await expect(
       client.explainWordForZhNative({
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       })
     ).resolves.toMatchObject({
-      actualUsage: expect.any(String),
-      commonScenarios: expect.any(String),
-      nuanceDifferences: expect.any(String),
-      commonMistakes: expect.any(String),
+      explanationSource: "fallback",
+      explanation: {
+        actualUsage: expect.any(String),
+        commonScenarios: expect.any(String),
+        nuanceDifferences: expect.any(String),
+        commonMistakes: expect.any(String),
+      },
     });
   });
 
@@ -49,15 +52,18 @@ describe("LlmClient", () => {
     await expect(
       client.explainWordForZhNative({
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       })
     ).resolves.toEqual({
-      actualUsage: "用于描述吃东西的动作。",
-      commonScenarios: "吃饭、点餐、说明饮食行为。",
-      nuanceDifferences: "和口语里的其他表达相比更基础直接。",
-      commonMistakes: "容易漏掉变形和助词搭配。",
+      explanationSource: "openai",
+      explanation: {
+        actualUsage: "用于描述吃东西的动作。",
+        commonScenarios: "吃饭、点餐、说明饮食行为。",
+        nuanceDifferences: "和口语里的其他表达相比更基础直接。",
+        commonMistakes: "容易漏掉变形和助词搭配。",
+      },
     });
   });
 
@@ -89,15 +95,18 @@ describe("LlmClient", () => {
     await expect(
       client.explainWordForZhNative({
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       })
     ).resolves.toEqual({
-      actualUsage: "描述实际吃东西的动作，也可用于泛指进食。",
-      commonScenarios: "日常对话、点餐、描述习惯。",
-      nuanceDifferences: "语气中性基础，比更口语化说法更标准。",
-      commonMistakes: "容易忽略动词变形，也容易直接套用中文宾语习惯。",
+      explanationSource: "openai",
+      explanation: {
+        actualUsage: "描述实际吃东西的动作，也可用于泛指进食。",
+        commonScenarios: "日常对话、点餐、描述习惯。",
+        nuanceDifferences: "语气中性基础，比更口语化说法更标准。",
+        commonMistakes: "容易忽略动词变形，也容易直接套用中文宾语习惯。",
+      },
     });
   });
 
@@ -115,15 +124,18 @@ describe("LlmClient", () => {
     await expect(
       client.explainWordForZhNative({
         word: "静か",
-        reading: "しずか",
+        pronunciation: "しずか",
         meaningZh: "安静；安稳",
         partOfSpeech: "形容动词",
       })
     ).resolves.toMatchObject({
-      actualUsage: expect.any(String),
-      commonScenarios: expect.any(String),
-      nuanceDifferences: expect.any(String),
-      commonMistakes: expect.any(String),
+      explanationSource: "fallback",
+      explanation: {
+        actualUsage: expect.any(String),
+        commonScenarios: expect.any(String),
+        nuanceDifferences: expect.any(String),
+        commonMistakes: expect.any(String),
+      },
     });
   });
 
@@ -153,10 +165,37 @@ describe("LlmClient", () => {
     const client = new LlmClient();
 
     await expect(client.explainWordOnlyForZhNative("未知词")).resolves.toEqual({
-      actualUsage: "需要结合上下文确认实际用法。",
-      commonScenarios: "建议放回例句中理解。",
-      nuanceDifferences: "没有上下文时难以精确区分。",
-      commonMistakes: "容易按中文字面直译。",
+      explanationSource: "openai",
+      explanation: {
+        actualUsage: "需要结合上下文确认实际用法。",
+        commonScenarios: "建议放回例句中理解。",
+        nuanceDifferences: "没有上下文时难以精确区分。",
+        commonMistakes: "容易按中文字面直译。",
+      },
+    });
+  });
+
+  it("falls back when the OpenAI request fails", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockRejectedValue(new Error("network down")) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.explainWordForZhNative({
+        word: "食べる",
+        pronunciation: "たべる",
+        meaningZh: "吃；进食",
+        partOfSpeech: "动词",
+      })
+    ).resolves.toMatchObject({
+      explanationSource: "fallback",
+      explanation: {
+        actualUsage: expect.any(String),
+        commonScenarios: expect.any(String),
+        nuanceDifferences: expect.any(String),
+        commonMistakes: expect.any(String),
+      },
     });
   });
 
@@ -178,7 +217,7 @@ describe("LlmClient", () => {
 
     await client.explainWordForZhNative({
       word: "食べる",
-      reading: "たべる",
+      pronunciation: "たべる",
       meaningZh: "吃；进食",
       partOfSpeech: "动词",
       model: "gpt-5.4",
@@ -228,7 +267,7 @@ describe("LlmClient", () => {
       client.explainWordForZhNative(
         {
           word: "食べる",
-          reading: "たべる",
+          pronunciation: "たべる",
           meaningZh: "吃；进食",
           partOfSpeech: "动词",
         },
@@ -239,10 +278,13 @@ describe("LlmClient", () => {
         }
       )
     ).resolves.toEqual({
-      actualUsage: "描述吃东西这个动作。",
-      commonScenarios: "日常吃饭",
-      nuanceDifferences: "更基础直接",
-      commonMistakes: "容易忽略变形",
+      explanationSource: "openai",
+      explanation: {
+        actualUsage: "描述吃东西这个动作。",
+        commonScenarios: "日常吃饭",
+        nuanceDifferences: "更基础直接",
+        commonMistakes: "容易忽略变形",
+      },
     });
 
     expect(chunks).toEqual([

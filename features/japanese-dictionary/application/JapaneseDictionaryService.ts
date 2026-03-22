@@ -7,8 +7,4 @@ export class JapaneseDictionaryService {
   async findEntry(word: string): Promise<DictionaryEntry | null> {
     return this.repository.findByWord(word);
   }
-
-  async saveAiOnlyPlaceholder(word: string): Promise<void> {
-    await this.repository.saveAiOnlyPlaceholder(word);
-  }
 }

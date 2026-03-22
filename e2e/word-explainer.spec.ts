@@ -19,10 +19,10 @@ test("user can look up a Japanese word and see AI explanation", async ({
 }) => {
   await page.goto("/");
 
-  await expect(page.getByText("还没有结果。输入一个日语词后点击 Search。")).toBeVisible();
+  await expect(page.getByText("还没有结果")).toBeVisible();
 
-  await page.getByLabel("Japanese word").fill("食べる");
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByLabel("日语词").fill("食べる");
+  await page.getByRole("button", { name: "开始查询" }).click();
 
   await expect(
     page.getByRole("heading", { level: 2, name: "食べる" })

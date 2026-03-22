@@ -29,7 +29,6 @@ export class WordLookupService {
 
     const entry = await this.dictionaryService.findEntry(word);
     if (!entry) {
-      await this.dictionaryService.saveAiOnlyPlaceholder(word);
       return {
         word,
         source: "ai-only",
@@ -50,7 +49,7 @@ export class WordLookupService {
     onTextDelta?: (delta: string) => void | Promise<void>,
     signal?: AbortSignal
   ): Promise<WordLookupResponse> {
-    const explanation = preview.entry
+    const explanationResult = preview.entry
       ? await this.aiExplanationService.explain(
           preview.entry,
           model,
@@ -66,7 +65,7 @@ export class WordLookupService {
 
     return {
       ...preview,
-      explanation,
+      ...explanationResult,
     };
   }
 }

@@ -1,5 +1,5 @@
 import type {
-  AIExplanationOutput,
+  AIExplanationResult,
   DictionaryEntry,
   SupportedAiModel,
 } from "@/shared/types/api";
@@ -13,10 +13,10 @@ export class AIExplanationService {
     model?: SupportedAiModel,
     onTextDelta?: (delta: string) => void | Promise<void>,
     signal?: AbortSignal
-  ): Promise<AIExplanationOutput> {
+  ): Promise<AIExplanationResult> {
     return this.llmClient.explainWordForZhNative({
       word: entry.word,
-      reading: entry.reading,
+      pronunciation: entry.pronunciation,
       meaningZh: entry.meaningZh,
       partOfSpeech: entry.partOfSpeech,
       model,
@@ -28,7 +28,7 @@ export class AIExplanationService {
     model?: SupportedAiModel,
     onTextDelta?: (delta: string) => void | Promise<void>,
     signal?: AbortSignal
-  ): Promise<AIExplanationOutput> {
+  ): Promise<AIExplanationResult> {
     return this.llmClient.explainWordOnlyForZhNative(word, model, {
       onTextDelta,
       signal,

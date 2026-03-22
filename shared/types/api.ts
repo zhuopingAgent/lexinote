@@ -6,12 +6,13 @@ export type WordLookupRequest = {
 };
 
 export type LookupSource = "dictionary" | "ai-only";
+export type ExplanationSource = "openai" | "fallback";
 
 export type DictionaryEntry = {
   word: string;
-  reading: string | null;
+  pronunciation: string;
   meaningZh: string;
-  partOfSpeech: string | null;
+  partOfSpeech: string;
 };
 
 export type AIExplanationOutput = {
@@ -21,12 +22,16 @@ export type AIExplanationOutput = {
   commonMistakes: string;
 };
 
+export type AIExplanationResult = {
+  explanation: AIExplanationOutput;
+  explanationSource: ExplanationSource;
+};
+
 export type WordLookupResponse = {
   word: string;
   source: LookupSource;
   entry: DictionaryEntry | null;
-  explanation: AIExplanationOutput;
-};
+} & AIExplanationResult;
 
 export type WordLookupPreview = {
   word: string;

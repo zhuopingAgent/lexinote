@@ -80,7 +80,7 @@ describe("POST /api/words/explain", () => {
       source: "dictionary",
       entry: {
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       },
@@ -93,10 +93,11 @@ describe("POST /api/words/explain", () => {
         source: "dictionary",
         entry: {
           word: "食べる",
-          reading: "たべる",
+          pronunciation: "たべる",
           meaningZh: "吃；进食",
           partOfSpeech: "动词",
         },
+        explanationSource: "openai",
         explanation: {
           actualUsage: "描述吃东西这个动作。",
           commonScenarios: "日常吃饭、点餐、描述饮食习惯。",
@@ -127,7 +128,7 @@ describe("POST /api/words/explain", () => {
           source: "dictionary",
           entry: {
             word: "食べる",
-            reading: "たべる",
+            pronunciation: "たべる",
             meaningZh: "吃；进食",
             partOfSpeech: "动词",
           },
@@ -152,10 +153,11 @@ describe("POST /api/words/explain", () => {
           source: "dictionary",
           entry: {
             word: "食べる",
-            reading: "たべる",
+            pronunciation: "たべる",
             meaningZh: "吃；进食",
             partOfSpeech: "动词",
           },
+          explanationSource: "openai",
           explanation: {
             actualUsage: "描述吃东西这个动作。",
             commonScenarios: "日常吃饭、点餐、描述饮食习惯。",
@@ -172,7 +174,7 @@ describe("POST /api/words/explain", () => {
         source: "dictionary",
         entry: {
           word: "食べる",
-          reading: "たべる",
+          pronunciation: "たべる",
           meaningZh: "吃；进食",
           partOfSpeech: "动词",
         },
@@ -189,7 +191,7 @@ describe("POST /api/words/explain", () => {
       source: "dictionary",
       entry: {
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       },
@@ -199,10 +201,11 @@ describe("POST /api/words/explain", () => {
       source: "dictionary",
       entry: {
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       },
+      explanationSource: "openai",
       explanation: {
         actualUsage: "描述吃东西这个动作。",
         commonScenarios: "日常吃饭、点餐、描述饮食习惯。",
@@ -238,7 +241,7 @@ describe("POST /api/words/explain", () => {
       source: "dictionary",
       entry: {
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       },
@@ -248,10 +251,11 @@ describe("POST /api/words/explain", () => {
       source: "dictionary",
       entry: {
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       },
+      explanationSource: "openai",
       explanation: {
         actualUsage: "描述吃东西这个动作。",
         commonScenarios: "日常吃饭、点餐、描述饮食习惯。",
@@ -316,6 +320,7 @@ describe("POST /api/words/explain", () => {
       word: "未知词",
       source: "ai-only",
       entry: null,
+      explanationSource: "openai",
       explanation: {
         actualUsage: "需要结合上下文确认这个词的具体用法。",
         commonScenarios: "建议放回句子里理解。",
@@ -351,6 +356,7 @@ describe("POST /api/words/explain", () => {
           word: "未知词",
           source: "ai-only",
           entry: null,
+          explanationSource: "openai",
           explanation: {
             actualUsage: "需要结合上下文确认这个词的具体用法。",
             commonScenarios: "建议放回句子里理解。",
@@ -368,7 +374,7 @@ describe("POST /api/words/explain", () => {
       source: "dictionary",
       entry: {
         word: "食べる",
-        reading: "たべる",
+        pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
       },
@@ -397,7 +403,7 @@ describe("POST /api/words/explain", () => {
           source: "dictionary",
           entry: {
             word: "食べる",
-            reading: "たべる",
+            pronunciation: "たべる",
             meaningZh: "吃；进食",
             partOfSpeech: "动词",
           },

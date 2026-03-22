@@ -2,13 +2,17 @@ import {
   buildJaWordForZhNativePrompt,
   buildJaWordOnlyForZhNativePrompt,
 } from "@/features/ai-explanation/prompts/jaWordForZhNative";
-import type { AIExplanationOutput, SupportedAiModel } from "@/shared/types/api";
+import type {
+  AIExplanationOutput,
+  AIExplanationResult,
+  SupportedAiModel,
+} from "@/shared/types/api";
 
 export type ExplainInput = {
   word: string;
-  reading: string | null;
+  pronunciation: string;
   meaningZh: string;
-  partOfSpeech: string | null;
+  partOfSpeech: string;
   model?: SupportedAiModel;
 };
 
@@ -110,7 +114,7 @@ function resolveModel(model?: SupportedAiModel): SupportedAiModel {
   return (
     model ??
     (process.env.OPENAI_MODEL as SupportedAiModel | undefined) ??
-    "gpt-5-mini"
+    "gpt-5.4"
   );
 }
 
@@ -153,79 +157,102 @@ export class LlmClient {
     body: Record<string, unknown>,
     fallback: AIExplanationOutput,
     options?: ExplainOptions
-  ): Promise<AIExplanationOutput> {
+  ): Promise<AIExplanationResult> {
     const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
-      return fallback;
+      return {
+        explanation: fallback,
+        explanationSource: "fallback",
+      };
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      signal: options?.signal,
-      body: JSON.stringify(body),
-    });
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        signal: options?.signal,
+        body: JSON.stringify(body),
+      });
 
-    if (!response.ok) {
-      throw new Error(`LLM request failed: ${response.status}`);
-    }
-
-    if (options?.onTextDelta && response.body) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullText = "";
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          buffer += decoder.decode();
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const parsed = parseSseBlocks(buffer);
-        buffer = parsed.remainder;
-
-        for (const block of parsed.blocks) {
-          const event = parseSseEvent(block);
-          if (!event) {
-            continue;
-          }
-
-          if (event.type === "response.output_text.delta" && event.delta) {
-            fullText += event.delta;
-            await options.onTextDelta(event.delta);
-          }
-
-          if (event.type === "response.output_text.done" && event.text) {
-            fullText = event.text;
-          }
-        }
+      if (!response.ok) {
+        return {
+          explanation: fallback,
+          explanationSource: "fallback",
+        };
       }
 
-      const finalBlock = parseSseEvent(buffer);
-      if (finalBlock?.type === "response.output_text.done" && finalBlock.text) {
-        fullText = finalBlock.text;
+      if (options?.onTextDelta && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let fullText = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            buffer += decoder.decode();
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const parsed = parseSseBlocks(buffer);
+          buffer = parsed.remainder;
+
+          for (const block of parsed.blocks) {
+            const event = parseSseEvent(block);
+            if (!event) {
+              continue;
+            }
+
+            if (event.type === "response.output_text.delta" && event.delta) {
+              fullText += event.delta;
+              await options.onTextDelta(event.delta);
+            }
+
+            if (event.type === "response.output_text.done" && event.text) {
+              fullText = event.text;
+            }
+          }
+        }
+
+        const finalBlock = parseSseEvent(buffer);
+        if (finalBlock?.type === "response.output_text.done" && finalBlock.text) {
+          fullText = finalBlock.text;
+        }
+
+        const parsed = parseExplanationOutput(fullText.trim());
+        return {
+          explanation: parsed ?? fallback,
+          explanationSource: parsed ? "openai" : "fallback",
+        };
       }
 
-      const parsed = parseExplanationOutput(fullText.trim());
-      return parsed ?? fallback;
-    }
+      const data = (await response.json()) as ResponsesApiResponse;
+      const parsed = parseExplanationOutput(extractResponseText(data));
+      return {
+        explanation: parsed ?? fallback,
+        explanationSource: parsed ? "openai" : "fallback",
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw error;
+      }
 
-    const data = (await response.json()) as ResponsesApiResponse;
-    const parsed = parseExplanationOutput(extractResponseText(data));
-    return parsed ?? fallback;
+      return {
+        explanation: fallback,
+        explanationSource: "fallback",
+      };
+    }
   }
 
   async explainWordForZhNative(
     input: ExplainInput,
     options?: ExplainOptions
-  ): Promise<AIExplanationOutput> {
+  ): Promise<AIExplanationResult> {
     const fallback = buildFallbackExplanation(input);
 
     return this.requestStructuredExplanation(
@@ -253,7 +280,7 @@ export class LlmClient {
     word: string,
     model?: SupportedAiModel,
     options?: ExplainOptions
-  ): Promise<AIExplanationOutput> {
+  ): Promise<AIExplanationResult> {
     const fallback = buildWordOnlyFallbackExplanation(word);
 
     return this.requestStructuredExplanation(

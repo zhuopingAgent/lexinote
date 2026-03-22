@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.env.local
+output/
+playwright-report/
+test-results/
+.DS_Store
+

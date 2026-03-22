@@ -3,7 +3,7 @@ import type { ExplainInput } from "@/features/ai-explanation/infrastructure/LlmC
 export function buildJaWordForZhNativePrompt(input: ExplainInput): string {
   return `请解释这个日语词：
 词：${input.word}
-读音：${input.reading ?? "未知"}
+读音：${input.pronunciation ?? "未知"}
 词性：${input.partOfSpeech ?? "未知"}
 基础释义：${input.meaningZh}
 
