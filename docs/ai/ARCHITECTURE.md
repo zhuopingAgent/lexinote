@@ -13,11 +13,11 @@
 
 - `app/`: UI entry and route handlers
   - `app/page.tsx`: single-page UI for Japanese word lookup
-  - `app/api/words/explain/route.ts`: full lookup flow endpoint
+  - `app/api/words/lookup/route.ts`: lookup endpoint returning a single JSON payload
 - `features/`: business modules
   - `features/word-lookup/`: orchestration service
   - `features/japanese-dictionary/`: Japanese-specific dictionary lookup
-  - `features/ai-explanation/`: AI prompt and explanation generation
+  - `features/ai-lookup/`: AI prompt and fallback word-field inference
 - `shared/`: cross-cutting code
   - `shared/db/`: centralized PostgreSQL access and SQL
   - `shared/types/`: request/response DTOs
@@ -30,17 +30,17 @@
 
 1. `npm run dev` starts Next.js dev server.
 2. `app/page.tsx` renders the single V0 UI.
-3. The page submits `POST /api/words/explain`.
-4. `WordLookupService` coordinates dictionary lookup and AI explanation.
+3. The page submits `POST /api/words/lookup`.
+4. `WordLookupService` coordinates dictionary lookup and AI fallback lookup.
 5. `JapaneseDictionaryService` reads from PostgreSQL through `shared/db/`.
-6. `AIExplanationService` generates a Chinese learning-oriented explanation.
-7. The API returns a combined response for the UI to render.
+6. `AIWordLookupService` infers pronunciation, part of speech, and meaning when the local dictionary misses.
+7. The API returns one combined JSON response for the UI to render.
 
 ## Current Product Scope
 
 - Single-user local V0
 - Japanese word lookup
-- AI explanation for Chinese native speakers
+- AI-assisted fallback when the local dictionary misses
 
 Out of scope:
 

@@ -20,7 +20,7 @@
 
 - `DATABASE_URL` is required for the lookup flow.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
-- `OPENAI_API_KEY` is optional. If missing, the app returns a fallback explanation.
+- `OPENAI_API_KEY` is optional. If missing, the app returns fallback word fields.
 - `OPENAI_MODEL` defaults to `gpt-5.4`.
 
 ## Quality Checks
