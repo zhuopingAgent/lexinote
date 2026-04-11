@@ -19,15 +19,39 @@ export class WordLookupService {
     if (entry) {
       return {
         word,
+        lookupWord: word,
         source: "dictionary",
         entry: await this.aiWordLookupService.completeEntry(word, entry),
       };
     }
 
+    const resolved = await this.aiWordLookupService.resolveLookupWord(word);
+    const resolvedLookupWord = resolved?.lookupWord.trim() || word;
+    const lookupReason =
+      resolved && resolvedLookupWord !== word ? resolved.lookupReason : undefined;
+
+    if (resolvedLookupWord !== word) {
+      const resolvedEntry = await this.dictionaryService.findEntry(resolvedLookupWord);
+      if (resolvedEntry) {
+        return {
+          word,
+          lookupWord: resolvedLookupWord,
+          lookupReason,
+          source: "dictionary",
+          entry: await this.aiWordLookupService.completeEntry(
+            resolvedLookupWord,
+            resolvedEntry
+          ),
+        };
+      }
+    }
+
     return {
       word,
+      lookupWord: resolvedLookupWord,
+      lookupReason,
       source: "ai",
-      entry: await this.aiWordLookupService.completeEntry(word),
+      entry: await this.aiWordLookupService.completeEntry(resolvedLookupWord),
     };
   }
 }

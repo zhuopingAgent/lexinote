@@ -13,6 +13,33 @@ describe("LlmClient", () => {
     vi.restoreAllMocks();
   });
 
+  it("returns null for base-form resolution when OPENAI_API_KEY is missing", async () => {
+    delete process.env.OPENAI_API_KEY;
+    const client = new LlmClient();
+
+    await expect(client.resolveLookupWord("見通せない")).resolves.toBeNull();
+  });
+
+  it("parses a base-form lookup word from the model response", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          lookupWord: "見通せる",
+          lookupReason: "输入是否定形，查词时通常还原为对应的词典形。",
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(client.resolveLookupWord("見通せない")).resolves.toEqual({
+      lookupWord: "見通せる",
+      lookupReason: "输入是否定形，查词时通常还原为对应的词典形。",
+    });
+  });
+
   it("returns a fallback entry when OPENAI_API_KEY is missing", async () => {
     delete process.env.OPENAI_API_KEY;
     const client = new LlmClient();

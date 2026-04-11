@@ -20,6 +20,8 @@ export type DictionaryEntry = {
 
 export type WordLookupResponse = {
   word: string;
+  lookupWord: string;
+  lookupReason?: string;
   source: LookupSource;
   entry: DictionaryEntry;
 };

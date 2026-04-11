@@ -42,11 +42,14 @@ export default function Home() {
   const resultCacheRef = useRef(new Map<string, WordLookupResponse>());
   const canSubmit = word.trim().length > 0 && !isLoading;
   const hasResult = result !== null;
+  const showsLookupWordHint = result !== null && result.lookupWord !== result.word;
   const wordCardData = result ? mapResultToWordData(result) : null;
   const statusMessage = error
     ? `查询失败：${error}`
     : result
-      ? `已完成 ${result.word} 的查询。`
+      ? showsLookupWordHint
+        ? `已完成 ${result.word} 的查询，并按原形 ${result.lookupWord} 检索。`
+        : `已完成 ${result.word} 的查询。`
       : isLoading
         ? "正在查询单词。"
         : "输入一个日语词即可开始查询。";
@@ -101,21 +104,28 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-background text-foreground">
+    <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
       <header className="border-b border-black/50 bg-[#1e1e1ecc]">
-        <div className="mr-auto flex h-14 w-full max-w-[1160px] items-center gap-6 pl-4 pr-4 sm:h-[60px] sm:gap-8 sm:pl-6 md:gap-12 md:pl-8 md:pr-6">
+        <div className="mr-auto flex h-[clamp(56px,6vw,60px)] w-full max-w-[1160px] items-center gap-[clamp(24px,5vw,48px)] pl-[clamp(16px,4vw,32px)] pr-[clamp(16px,3vw,24px)]">
           <div className="flex items-center gap-2.5">
-            <AppBrandIcon className="size-6 text-accent" />
-            <p className="text-[20px] font-medium tracking-[-0.03em] text-white/70">
+            <AppBrandIcon className="size-[clamp(22px,2.5vw,24px)] text-accent" />
+            <p className="text-[clamp(17px,2.3vw,20px)] font-medium tracking-[-0.03em] text-white/70">
               LexiNote
             </p>
           </div>
 
-          <nav className="hidden items-center gap-6 md:flex" aria-label="Primary">
+          <nav
+            className="flex items-center gap-[clamp(12px,2.4vw,24px)] whitespace-nowrap"
+            aria-label="Primary"
+          >
             {TOP_NAV_ITEMS.map((item) => (
               <span
                 key={item.label}
-                className={item.active ? "text-base text-white/60" : "text-base text-white/45"}
+                className={
+                  item.active
+                    ? "text-[clamp(13px,1.8vw,16px)] text-white/60"
+                    : "text-[clamp(13px,1.8vw,16px)] text-white/45"
+                }
               >
                 {item.label}
               </span>
@@ -177,7 +187,7 @@ export default function Home() {
             </div>
           </div>
 
-          <section className="flex-1 px-4 py-8 sm:px-6 sm:py-10 md:px-8 md:py-12 lg:px-10">
+          <section className="flex-1 px-[clamp(16px,4vw,40px)] py-[clamp(32px,4vw,48px)]">
             <p id={statusId} className="sr-only" aria-live="polite" aria-atomic="true">
               {statusMessage}
             </p>
@@ -187,7 +197,7 @@ export default function Home() {
                 <form
                   onSubmit={onSubmit}
                   aria-describedby={statusId}
-                  className="mx-auto max-w-[672px]"
+                  className="mx-auto w-full max-w-[672px]"
                 >
                   <label className="relative block">
                     <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-white/35" />
@@ -197,7 +207,7 @@ export default function Home() {
                       onChange={(event) => setWord(event.target.value)}
                       placeholder="日本語の単語を入力してください..."
                       aria-label="日语词"
-                      className="h-12 w-full rounded-[12px] border border-white/20 bg-[#1e1e1ecc] pl-12 pr-4 text-sm tracking-[-0.01em] text-white/78 outline-none placeholder:text-white/35 focus:border-white/30 focus:ring-2 focus:ring-white/10 sm:h-[50px] sm:rounded-[14px]"
+                      className="h-[clamp(48px,5vw,50px)] w-full rounded-[clamp(12px,2vw,14px)] border border-white/20 bg-[#1e1e1ecc] pl-12 pr-4 text-sm tracking-[-0.01em] text-white/78 outline-none placeholder:text-white/35 focus:border-white/30 focus:ring-2 focus:ring-white/10"
                     />
                   </label>
                   <button type="submit" disabled={!canSubmit} className="sr-only">
@@ -217,7 +227,25 @@ export default function Home() {
               ) : null}
 
               {(isLoading || hasResult) && !error ? (
-                <div className="mt-8 flex flex-col items-center gap-4 sm:mt-10">
+                <div
+                  className={
+                    showsLookupWordHint
+                      ? "mt-[clamp(14px,2vw,18px)] flex flex-col items-center gap-3"
+                      : "mt-[clamp(32px,4vw,40px)] flex flex-col items-center gap-4"
+                  }
+                >
+                  {showsLookupWordHint ? (
+                    <div className="flex flex-col items-center gap-1.5">
+                      <p className="text-center text-sm leading-6 text-white/45">
+                        已按原形「{result.lookupWord}」查询
+                      </p>
+                      {result.lookupReason ? (
+                        <p className="max-w-[32rem] text-center text-xs leading-5 text-white/32">
+                          {result.lookupReason}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {wordCardData ? (
                     <WordCard word={wordCardData} />
                   ) : (
@@ -231,7 +259,7 @@ export default function Home() {
       </div>
 
       <footer className="border-t border-white/10">
-        <div className="mx-auto flex min-h-[72px] w-full max-w-[1160px] items-center justify-center px-4 py-5 text-center text-xs leading-6 text-white/40 sm:text-sm md:h-[84px] md:py-0">
+        <div className="mx-auto flex min-h-[clamp(72px,8vw,84px)] w-full max-w-[1160px] items-center justify-center px-[clamp(16px,3vw,24px)] py-5 text-center text-xs leading-6 text-white/40 sm:text-sm md:py-0">
           日本語学習辞書 - Japanese Learning Dictionary
         </div>
       </footer>

@@ -79,6 +79,7 @@ describe("POST /api/words/lookup", () => {
   it("returns the lookup result as plain JSON", async () => {
     lookupWordMock.mockResolvedValue({
       word: "食べる",
+      lookupWord: "食べる",
       source: "dictionary",
       entry: {
         word: "食べる",
@@ -120,6 +121,7 @@ describe("POST /api/words/lookup", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toEqual({
       word: "食べる",
+      lookupWord: "食べる",
       source: "dictionary",
       entry: {
         word: "食べる",

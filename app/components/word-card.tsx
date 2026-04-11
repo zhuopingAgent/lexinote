@@ -34,18 +34,18 @@ export function WordCard({ word }: WordCardProps) {
   };
 
   return (
-    <div className="w-full max-w-2xl overflow-hidden rounded-[14px] border border-white/10 bg-[#1e1e1e]/90 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:rounded-[16px]">
-      <div className="border-b border-white/10 p-4 sm:p-5 md:p-6">
+    <div className="w-full max-w-2xl overflow-hidden rounded-[clamp(14px,2vw,16px)] border border-white/10 bg-[#1e1e1e]/90 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+      <div className="border-b border-white/10 p-[clamp(16px,2.5vw,24px)]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
             <div className="mb-2 flex flex-wrap items-center gap-2.5 sm:gap-3">
-              <h2 className="break-words text-[30px] leading-9 font-medium tracking-[0.01em] text-white/80 sm:text-[34px] sm:leading-10 md:text-[36px]">
+              <h2 className="break-words text-[clamp(30px,4vw,36px)] leading-[1.1] font-medium tracking-[0.01em] text-white/80">
                 {word.word}
               </h2>
               <button
                 type="button"
                 onClick={handleSpeak}
-                className="inline-flex size-8 items-center justify-center rounded-full transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/15 sm:size-9"
+                className="inline-flex size-[clamp(32px,3vw,36px)] items-center justify-center rounded-full transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/15"
                 aria-label={`朗读 ${word.word}`}
               >
                 <VolumeIcon className="size-5 text-white/55" />
@@ -53,30 +53,30 @@ export function WordCard({ word }: WordCardProps) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5 text-white/55 sm:gap-3">
-              <span className="text-base leading-6 sm:text-[18px] sm:leading-7">{word.reading}</span>
+              <span className="text-[clamp(16px,2vw,18px)] leading-[1.55]">{word.reading}</span>
               {word.romaji ? <span className="text-sm text-white/30">•</span> : null}
               {word.romaji ? <span className="text-sm text-white/45">{word.romaji}</span> : null}
             </div>
           </div>
 
           {word.jlptLevel ? (
-            <div className="self-start rounded-full bg-[#fe9a0033] px-3 py-1 text-xs font-medium text-[#ffb900] backdrop-blur-sm sm:text-sm">
+            <div className="self-start rounded-full bg-[#fe9a0033] px-3 py-1 text-[clamp(12px,1.6vw,14px)] font-medium text-[#ffb900] backdrop-blur-sm">
               {word.jlptLevel}
             </div>
           ) : null}
         </div>
 
         <div className="mt-3">
-          <span className="inline-block rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/55 backdrop-blur-sm sm:text-sm">
+          <span className="inline-block rounded-full bg-white/10 px-3 py-1 text-[clamp(13px,1.6vw,14px)] text-white/55 backdrop-blur-sm">
             {word.partOfSpeech}
           </span>
         </div>
       </div>
 
-      <div className="border-b border-white/10 p-4 sm:p-5 md:p-6">
+      <div className="border-b border-white/10 p-[clamp(16px,2.5vw,24px)]">
         <div className="mb-3 flex items-center gap-2">
           <BookOpenIcon className="size-5 text-white/55" />
-          <h3 className="text-base font-medium text-white/70 sm:text-[18px]">意味</h3>
+          <h3 className="text-[clamp(16px,2vw,18px)] font-medium text-white/70">意味</h3>
         </div>
 
         {word.meanings.length > 0 ? (
@@ -84,7 +84,7 @@ export function WordCard({ word }: WordCardProps) {
             {word.meanings.map((meaning, index) => (
               <li
                 key={`${meaning}-${index}`}
-                className="flex gap-[10px] text-[15px] leading-6 text-white/60 sm:gap-[12px] sm:text-[16px]"
+                className="flex gap-[clamp(10px,1.5vw,12px)] text-[clamp(15px,2vw,16px)] leading-6 text-white/60"
               >
                 <span className="min-w-[24px] font-medium text-white/35">
                   {index + 1}.
@@ -98,26 +98,26 @@ export function WordCard({ word }: WordCardProps) {
         )}
       </div>
 
-      <div className="p-4 sm:p-5 md:p-6">
+      <div className="p-[clamp(16px,2.5vw,24px)]">
         <div className="mb-4 flex items-center gap-2">
           <LightbulbIcon className="size-5 text-white/55" />
-          <h3 className="text-base font-medium text-white/70 sm:text-[18px]">例文</h3>
+          <h3 className="text-[clamp(16px,2vw,18px)] font-medium text-white/70">例文</h3>
         </div>
 
         {word.examples.length > 0 ? (
-          <div className="space-y-3 sm:space-y-4">
+          <div className="space-y-[clamp(12px,2vw,16px)]">
             {word.examples.map((example, index) => (
               <div
                 key={`${example.japanese}-${index}`}
-                className="border-l-[1.5px] border-white/20 pl-3.5 sm:pl-[17px]"
+                className="border-l-[1.5px] border-white/20 pl-[clamp(14px,2vw,17px)]"
               >
-                <p className="mb-1 break-words text-[15px] leading-6 text-white/75 sm:text-[16px]">
+                <p className="mb-1 break-words text-[clamp(15px,2vw,16px)] leading-6 text-white/75">
                   {example.japanese}
                 </p>
                 <p className="mb-1 break-words text-sm leading-5 text-white/35">
                   {example.reading}
                 </p>
-                <p className="break-words text-[15px] leading-6 text-white/50 sm:text-[16px]">
+                <p className="break-words text-[clamp(15px,2vw,16px)] leading-6 text-white/50">
                   {example.translation}
                 </p>
               </div>

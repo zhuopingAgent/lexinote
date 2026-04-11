@@ -1,3 +1,4 @@
+import { buildJaWordBaseFormPrompt } from "@/features/ai-lookup/prompts/jaWordBaseForm";
 import { buildJaWordLookupPrompt } from "@/features/ai-lookup/prompts/jaWordLookup";
 import type { DictionaryEntry, DictionaryExample } from "@/shared/types/api";
 
@@ -20,12 +21,23 @@ type RawLookupOutput = {
   examples?: unknown;
 };
 
+type RawBaseFormOutput = {
+  lookupWord?: unknown;
+  lookupReason?: unknown;
+};
+
+type BaseFormResolution = {
+  lookupWord: string;
+  lookupReason: string;
+};
+
 type KnownEntryFields = Pick<
   DictionaryEntry,
   "pronunciation" | "partOfSpeech" | "meaningZh"
 >;
 
 const FALLBACK_TEXT = "需结合上下文确认";
+const BASE_FORM_MAX_OUTPUT_TOKENS = 120;
 const MAX_OUTPUT_TOKENS = 300;
 
 function buildFallbackEntry(
@@ -74,6 +86,30 @@ function parseExamples(value: unknown): DictionaryExample[] | null {
     .filter((item): item is DictionaryExample => item !== null);
 
   return parsed.length === 3 ? parsed : null;
+}
+
+function parseLookupWord(text: string): BaseFormResolution | null {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]) as RawBaseFormOutput;
+    const lookupWord = sanitizeText(parsed.lookupWord);
+    const lookupReason = sanitizeText(parsed.lookupReason);
+
+    if (!lookupWord || !lookupReason) {
+      return null;
+    }
+
+    return {
+      lookupWord,
+      lookupReason,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function extractResponseText(data: OpenAiResponse): string {
@@ -149,7 +185,64 @@ function buildRequestConfig(model: string) {
   };
 }
 
+function buildBaseFormRequestConfig(model: string) {
+  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
+    return {
+      model,
+      max_output_tokens: BASE_FORM_MAX_OUTPUT_TOKENS,
+      reasoning: {
+        effort: "minimal",
+      } as const,
+    };
+  }
+
+  return {
+    model,
+    max_output_tokens: BASE_FORM_MAX_OUTPUT_TOKENS,
+  };
+}
+
 export class LlmClient {
+  async resolveLookupWord(word: string): Promise<BaseFormResolution | null> {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return null;
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          ...buildBaseFormRequestConfig(resolveModel()),
+          input: [
+            {
+              role: "system",
+              content:
+                "你是日语词形归一助手。请把用户输入转换成最适合查词的日语词典形或基本形，只返回要求的 JSON。",
+            },
+            {
+              role: "user",
+              content: buildJaWordBaseFormPrompt(word),
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = (await response.json()) as OpenAiResponse;
+      return parseLookupWord(extractResponseText(data));
+    } catch {
+      return null;
+    }
+  }
+
   async completeWordEntry(
     word: string,
     baseEntry?: KnownEntryFields
