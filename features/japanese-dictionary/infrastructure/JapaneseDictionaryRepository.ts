@@ -25,6 +25,7 @@ export class JapaneseDictionaryRepository {
       pronunciation: row.pronunciation,
       meaningZh: row.meaning_zh,
       partOfSpeech: row.part_of_speech,
+      examples: [],
     };
   }
 }

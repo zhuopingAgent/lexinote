@@ -17,11 +17,31 @@ describe("LlmClient", () => {
     delete process.env.OPENAI_API_KEY;
     const client = new LlmClient();
 
-    await expect(client.inferWordEntry("未知词")).resolves.toEqual({
+    await expect(client.completeWordEntry("未知词")).resolves.toEqual({
       word: "未知词",
       pronunciation: "需结合上下文确认",
       partOfSpeech: "需结合上下文确认",
       meaningZh: "需结合上下文确认",
+      examples: [],
+    });
+  });
+
+  it("preserves known entry fields when generating examples is unavailable", async () => {
+    delete process.env.OPENAI_API_KEY;
+    const client = new LlmClient();
+
+    await expect(
+      client.completeWordEntry("食べる", {
+        pronunciation: "たべる",
+        partOfSpeech: "动词",
+        meaningZh: "吃；进食",
+      })
+    ).resolves.toEqual({
+      word: "食べる",
+      pronunciation: "たべる",
+      partOfSpeech: "动词",
+      meaningZh: "吃；进食",
+      examples: [],
     });
   });
 
@@ -34,17 +54,51 @@ describe("LlmClient", () => {
           pronunciation: "はしる",
           partOfSpeech: "动词",
           meaningZh: "跑",
+          examples: [
+            {
+              japanese: "毎朝公園を走る。",
+              reading: "まいあさ こうえん を はしる。",
+              translationZh: "每天早上在公园跑步。",
+            },
+            {
+              japanese: "駅まで走って行く。",
+              reading: "えき まで はしって いく。",
+              translationZh: "跑着去车站。",
+            },
+            {
+              japanese: "子どもが庭を走る。",
+              reading: "こども が にわ を はしる。",
+              translationZh: "孩子在院子里跑。",
+            },
+          ],
         }),
       }),
     }) as typeof fetch;
 
     const client = new LlmClient();
 
-    await expect(client.inferWordEntry("走る")).resolves.toEqual({
+    await expect(client.completeWordEntry("走る")).resolves.toEqual({
       word: "走る",
       pronunciation: "はしる",
       partOfSpeech: "动词",
       meaningZh: "跑",
+      examples: [
+        {
+          japanese: "毎朝公園を走る。",
+          reading: "まいあさ こうえん を はしる。",
+          translationZh: "每天早上在公园跑步。",
+        },
+        {
+          japanese: "駅まで走って行く。",
+          reading: "えき まで はしって いく。",
+          translationZh: "跑着去车站。",
+        },
+        {
+          japanese: "子どもが庭を走る。",
+          reading: "こども が にわ を はしる。",
+          translationZh: "孩子在院子里跑。",
+        },
+      ],
     });
   });
 
@@ -62,6 +116,23 @@ describe("LlmClient", () => {
                   pronunciation: "おいしい",
                   partOfSpeech: "形容词",
                   meaningZh: "好吃",
+                  examples: [
+                    {
+                      japanese: "このケーキはおいしい。",
+                      reading: "この ケーキ は おいしい。",
+                      translationZh: "这个蛋糕很好吃。",
+                    },
+                    {
+                      japanese: "ここのパンはおいしいです。",
+                      reading: "ここ の パン は おいしい です。",
+                      translationZh: "这里的面包很好吃。",
+                    },
+                    {
+                      japanese: "温かいうちに食べるとおいしい。",
+                      reading: "あたたかい うち に たべる と おいしい。",
+                      translationZh: "趁热吃会更好吃。",
+                    },
+                  ],
                 }),
               },
             ],
@@ -72,11 +143,28 @@ describe("LlmClient", () => {
 
     const client = new LlmClient();
 
-    await expect(client.inferWordEntry("おいしい")).resolves.toEqual({
+    await expect(client.completeWordEntry("おいしい")).resolves.toEqual({
       word: "おいしい",
       pronunciation: "おいしい",
       partOfSpeech: "形容词",
       meaningZh: "好吃",
+      examples: [
+        {
+          japanese: "このケーキはおいしい。",
+          reading: "この ケーキ は おいしい。",
+          translationZh: "这个蛋糕很好吃。",
+        },
+        {
+          japanese: "ここのパンはおいしいです。",
+          reading: "ここ の パン は おいしい です。",
+          translationZh: "这里的面包很好吃。",
+        },
+        {
+          japanese: "温かいうちに食べるとおいしい。",
+          reading: "あたたかい うち に たべる と おいしい。",
+          translationZh: "趁热吃会更好吃。",
+        },
+      ],
     });
   });
 
@@ -91,11 +179,12 @@ describe("LlmClient", () => {
 
     const client = new LlmClient();
 
-    await expect(client.inferWordEntry("未知词")).resolves.toEqual({
+    await expect(client.completeWordEntry("未知词")).resolves.toEqual({
       word: "未知词",
       pronunciation: "需结合上下文确认",
       partOfSpeech: "需结合上下文确认",
       meaningZh: "需结合上下文确认",
+      examples: [],
     });
   });
 
@@ -105,11 +194,12 @@ describe("LlmClient", () => {
 
     const client = new LlmClient();
 
-    await expect(client.inferWordEntry("未知词")).resolves.toEqual({
+    await expect(client.completeWordEntry("未知词")).resolves.toEqual({
       word: "未知词",
       pronunciation: "需结合上下文确认",
       partOfSpeech: "需结合上下文确认",
       meaningZh: "需结合上下文确认",
+      examples: [],
     });
   });
 
@@ -123,13 +213,30 @@ describe("LlmClient", () => {
           pronunciation: "はしる",
           partOfSpeech: "动词",
           meaningZh: "跑",
+          examples: [
+            {
+              japanese: "毎朝公園を走る。",
+              reading: "まいあさ こうえん を はしる。",
+              translationZh: "每天早上在公园跑步。",
+            },
+            {
+              japanese: "駅まで走って行く。",
+              reading: "えき まで はしって いく。",
+              translationZh: "跑着去车站。",
+            },
+            {
+              japanese: "子どもが庭を走る。",
+              reading: "こども が にわ を はしる。",
+              translationZh: "孩子在院子里跑。",
+            },
+          ],
         }),
       }),
     }) as typeof fetch;
 
     const client = new LlmClient();
 
-    await client.inferWordEntry("走る");
+    await client.completeWordEntry("走る");
 
     expect(global.fetch).toHaveBeenCalledWith(
       "https://api.openai.com/v1/responses",

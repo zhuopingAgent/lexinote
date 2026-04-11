@@ -103,7 +103,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="border-b border-black/50 bg-[#1e1e1ecc]">
-        <div className="mx-auto flex h-[60px] w-full max-w-[1160px] items-center gap-10 px-4 md:px-6">
+        <div className="mr-auto flex h-14 w-full max-w-[1160px] items-center gap-6 pl-4 pr-4 sm:h-[60px] sm:gap-8 sm:pl-6 md:gap-12 md:pl-8 md:pr-6">
           <div className="flex items-center gap-2.5">
             <AppBrandIcon className="size-6 text-accent" />
             <p className="text-[20px] font-medium tracking-[-0.03em] text-white/70">
@@ -153,9 +153,9 @@ export default function Home() {
           </div>
         </aside>
 
-        <div className="flex min-h-[calc(100vh-144px)] flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           <div className="border-b border-white/10 px-4 py-3 md:hidden">
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex gap-2 overflow-x-auto pb-1 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {SIDEBAR_ITEMS.map((item) => {
                 const Icon = item.icon;
 
@@ -177,21 +177,17 @@ export default function Home() {
             </div>
           </div>
 
-          <section className="flex-1 px-4 py-10 md:px-10 md:py-12">
+          <section className="flex-1 px-4 py-8 sm:px-6 sm:py-10 md:px-8 md:py-12 lg:px-10">
             <p id={statusId} className="sr-only" aria-live="polite" aria-atomic="true">
               {statusMessage}
             </p>
 
             <div className="mx-auto w-full max-w-[848px]">
-              <div className="pt-3 md:pt-8">
-                <h1 className="text-center text-2xl font-medium tracking-[0.02em] text-white/60">
-                  辞書
-                </h1>
-
+              <div>
                 <form
                   onSubmit={onSubmit}
                   aria-describedby={statusId}
-                  className="mx-auto mt-7 max-w-[672px]"
+                  className="mx-auto max-w-[672px]"
                 >
                   <label className="relative block">
                     <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-white/35" />
@@ -201,7 +197,7 @@ export default function Home() {
                       onChange={(event) => setWord(event.target.value)}
                       placeholder="日本語の単語を入力してください..."
                       aria-label="日语词"
-                      className="h-[50px] w-full rounded-[14px] border border-white/20 bg-[#1e1e1ecc] pl-12 pr-4 text-sm tracking-[-0.01em] text-white/78 outline-none placeholder:text-white/35 focus:border-white/30 focus:ring-2 focus:ring-white/10"
+                      className="h-12 w-full rounded-[12px] border border-white/20 bg-[#1e1e1ecc] pl-12 pr-4 text-sm tracking-[-0.01em] text-white/78 outline-none placeholder:text-white/35 focus:border-white/30 focus:ring-2 focus:ring-white/10 sm:h-[50px] sm:rounded-[14px]"
                     />
                   </label>
                   <button type="submit" disabled={!canSubmit} className="sr-only">
@@ -221,7 +217,7 @@ export default function Home() {
               ) : null}
 
               {(isLoading || hasResult) && !error ? (
-                <div className="mt-10 flex flex-col items-center gap-4">
+                <div className="mt-8 flex flex-col items-center gap-4 sm:mt-10">
                   {wordCardData ? (
                     <WordCard word={wordCardData} />
                   ) : (
@@ -235,7 +231,7 @@ export default function Home() {
       </div>
 
       <footer className="border-t border-white/10">
-        <div className="mx-auto flex h-[84px] w-full max-w-[1160px] items-center justify-center px-4 text-center text-sm text-white/40">
+        <div className="mx-auto flex min-h-[72px] w-full max-w-[1160px] items-center justify-center px-4 py-5 text-center text-xs leading-6 text-white/40 sm:text-sm md:h-[84px] md:py-0">
           日本語学習辞書 - Japanese Learning Dictionary
         </div>
       </footer>

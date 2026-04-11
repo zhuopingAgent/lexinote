@@ -4,7 +4,10 @@ import type { DictionaryEntry } from "@/shared/types/api";
 export class AIWordLookupService {
   constructor(private readonly llmClient: LlmClient) {}
 
-  async inferEntry(word: string): Promise<DictionaryEntry> {
-    return this.llmClient.inferWordEntry(word);
+  async completeEntry(
+    word: string,
+    baseEntry?: Pick<DictionaryEntry, "pronunciation" | "partOfSpeech" | "meaningZh">
+  ): Promise<DictionaryEntry> {
+    return this.llmClient.completeWordEntry(word, baseEntry);
   }
 }

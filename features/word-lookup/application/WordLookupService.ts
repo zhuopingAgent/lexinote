@@ -20,14 +20,14 @@ export class WordLookupService {
       return {
         word,
         source: "dictionary",
-        entry,
+        entry: await this.aiWordLookupService.completeEntry(word, entry),
       };
     }
 
     return {
       word,
       source: "ai",
-      entry: await this.aiWordLookupService.inferEntry(word),
+      entry: await this.aiWordLookupService.completeEntry(word),
     };
   }
 }

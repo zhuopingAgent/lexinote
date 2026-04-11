@@ -85,6 +85,23 @@ describe("POST /api/words/lookup", () => {
         pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
+        examples: [
+          {
+            japanese: "朝ごはんを食べる。",
+            reading: "あさごはん を たべる。",
+            translationZh: "吃早餐。",
+          },
+          {
+            japanese: "家で食べる。",
+            reading: "いえ で たべる。",
+            translationZh: "在家吃。",
+          },
+          {
+            japanese: "一緒に食べる。",
+            reading: "いっしょ に たべる。",
+            translationZh: "一起吃。",
+          },
+        ],
       },
     });
 
@@ -109,6 +126,23 @@ describe("POST /api/words/lookup", () => {
         pronunciation: "たべる",
         meaningZh: "吃；进食",
         partOfSpeech: "动词",
+        examples: [
+          {
+            japanese: "朝ごはんを食べる。",
+            reading: "あさごはん を たべる。",
+            translationZh: "吃早餐。",
+          },
+          {
+            japanese: "家で食べる。",
+            reading: "いえ で たべる。",
+            translationZh: "在家吃。",
+          },
+          {
+            japanese: "一緒に食べる。",
+            reading: "いっしょ に たべる。",
+            translationZh: "一起吃。",
+          },
+        ],
       },
     });
     expect(lookupWordMock).toHaveBeenCalledWith("食べる");

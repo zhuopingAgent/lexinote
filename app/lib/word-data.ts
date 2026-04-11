@@ -9,18 +9,6 @@ const WORD_DATA_ENRICHMENTS: Record<string, Partial<WordData>> = {
       "食物を口に入れて味わい、噛んで飲み込む",
       "生計を立てる",
     ],
-    examples: [
-      {
-        japanese: "朝ごはんを食べましたか。",
-        reading: "あさごはん を たべました か。",
-        english: "Did you eat breakfast?",
-      },
-      {
-        japanese: "寿司を食べたいです。",
-        reading: "すし を たべたい です。",
-        english: "I want to eat sushi.",
-      },
-    ],
   },
 };
 
@@ -148,7 +136,11 @@ export function mapResultToWordData(result: WordLookupResponse): WordData {
     romaji: enrichment.romaji ?? toRomaji(result.entry.pronunciation),
     partOfSpeech: enrichment.partOfSpeech ?? result.entry.partOfSpeech,
     meanings: enrichment.meanings ?? splitMeanings(result.entry.meaningZh),
-    examples: enrichment.examples ?? [],
+    examples: result.entry.examples.map((example) => ({
+      japanese: example.japanese,
+      reading: example.reading,
+      translation: example.translationZh,
+    })),
     jlptLevel: enrichment.jlptLevel,
   };
 }

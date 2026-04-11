@@ -20,7 +20,7 @@
 
 - `DATABASE_URL` is required for the lookup flow.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
-- `OPENAI_API_KEY` is optional. If missing, the app returns fallback word fields.
+- `OPENAI_API_KEY` is optional. If missing, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
 - `OPENAI_MODEL` defaults to `gpt-5.4`.
 
 ## Quality Checks
@@ -58,7 +58,7 @@
 
 - Check that `DATABASE_URL` is set in `.env.local`.
 - Check that the local database exists and `shared/db/sql/seed.sql` has been applied.
-- If `OPENAI_API_KEY` is missing, explanation falls back to a local template instead of calling the model.
+- If `OPENAI_API_KEY` is missing, dictionary hits still work but example sentences stay empty, and unknown words fall back to placeholder fields.
 
 ### E2E Test Fails Before Browser Starts
 

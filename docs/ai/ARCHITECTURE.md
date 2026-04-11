@@ -12,12 +12,12 @@
 ## Current Structure
 
 - `app/`: UI entry and route handlers
-  - `app/page.tsx`: single-page UI for Japanese word lookup
+  - `app/page.tsx`: single-page UI for Japanese word lookup and example display
   - `app/api/words/lookup/route.ts`: lookup endpoint returning a single JSON payload
 - `features/`: business modules
   - `features/word-lookup/`: orchestration service
   - `features/japanese-dictionary/`: Japanese-specific dictionary lookup
-  - `features/ai-lookup/`: AI prompt and fallback word-field inference
+  - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
 - `shared/`: cross-cutting code
   - `shared/db/`: centralized PostgreSQL access and SQL
   - `shared/types/`: request/response DTOs
@@ -31,15 +31,16 @@
 1. `npm run dev` starts Next.js dev server.
 2. `app/page.tsx` renders the single V0 UI.
 3. The page submits `POST /api/words/lookup`.
-4. `WordLookupService` coordinates dictionary lookup and AI fallback lookup.
-5. `JapaneseDictionaryService` reads from PostgreSQL through `shared/db/`.
-6. `AIWordLookupService` infers pronunciation, part of speech, and meaning when the local dictionary misses.
+4. `WordLookupService` coordinates dictionary lookup and AI entry completion.
+5. `JapaneseDictionaryService` reads the core dictionary fields from PostgreSQL through `shared/db/`.
+6. `AIWordLookupService` generates three example sentences for dictionary hits and completes the full entry when the local dictionary misses.
 7. The API returns one combined JSON response for the UI to render.
 
 ## Current Product Scope
 
 - Single-user local V0
 - Japanese word lookup
+- AI-generated example sentences for each lookup
 - AI-assisted fallback when the local dictionary misses
 
 Out of scope:

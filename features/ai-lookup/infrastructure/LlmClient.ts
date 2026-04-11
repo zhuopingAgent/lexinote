@@ -1,5 +1,5 @@
 import { buildJaWordLookupPrompt } from "@/features/ai-lookup/prompts/jaWordLookup";
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry, DictionaryExample } from "@/shared/types/api";
 
 type OpenAiTextItem = {
   type?: string;
@@ -17,18 +17,63 @@ type RawLookupOutput = {
   pronunciation?: unknown;
   partOfSpeech?: unknown;
   meaningZh?: unknown;
+  examples?: unknown;
 };
+
+type KnownEntryFields = Pick<
+  DictionaryEntry,
+  "pronunciation" | "partOfSpeech" | "meaningZh"
+>;
 
 const FALLBACK_TEXT = "需结合上下文确认";
 const MAX_OUTPUT_TOKENS = 300;
 
-function buildFallbackEntry(word: string): DictionaryEntry {
+function buildFallbackEntry(
+  word: string,
+  baseEntry?: KnownEntryFields
+): DictionaryEntry {
   return {
     word,
-    pronunciation: FALLBACK_TEXT,
-    partOfSpeech: FALLBACK_TEXT,
-    meaningZh: FALLBACK_TEXT,
+    pronunciation: baseEntry?.pronunciation ?? FALLBACK_TEXT,
+    partOfSpeech: baseEntry?.partOfSpeech ?? FALLBACK_TEXT,
+    meaningZh: baseEntry?.meaningZh ?? FALLBACK_TEXT,
+    examples: [],
   };
+}
+
+function sanitizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseExamples(value: unknown): DictionaryExample[] | null {
+  if (!Array.isArray(value) || value.length !== 3) {
+    return null;
+  }
+
+  const parsed = value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const example = item as Record<string, unknown>;
+      const japanese = sanitizeText(example.japanese);
+      const reading = sanitizeText(example.reading);
+      const translationZh = sanitizeText(example.translationZh);
+
+      if (!japanese || !reading || !translationZh) {
+        return null;
+      }
+
+      return {
+        japanese,
+        reading,
+        translationZh,
+      };
+    })
+    .filter((item): item is DictionaryExample => item !== null);
+
+  return parsed.length === 3 ? parsed : null;
 }
 
 function extractResponseText(data: OpenAiResponse): string {
@@ -47,7 +92,11 @@ function extractResponseText(data: OpenAiResponse): string {
   );
 }
 
-function parseLookupOutput(word: string, text: string): DictionaryEntry | null {
+function parseLookupOutput(
+  word: string,
+  text: string,
+  baseEntry?: KnownEntryFields
+): DictionaryEntry | null {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) {
     return null;
@@ -55,20 +104,24 @@ function parseLookupOutput(word: string, text: string): DictionaryEntry | null {
 
   try {
     const parsed = JSON.parse(match[0]) as RawLookupOutput;
+    const examples = parseExamples(parsed.examples);
+    const pronunciation =
+      sanitizeText(parsed.pronunciation) || baseEntry?.pronunciation || FALLBACK_TEXT;
+    const partOfSpeech =
+      sanitizeText(parsed.partOfSpeech) || baseEntry?.partOfSpeech || FALLBACK_TEXT;
+    const meaningZh =
+      sanitizeText(parsed.meaningZh) || baseEntry?.meaningZh || FALLBACK_TEXT;
 
-    if (
-      typeof parsed.pronunciation !== "string" ||
-      typeof parsed.partOfSpeech !== "string" ||
-      typeof parsed.meaningZh !== "string"
-    ) {
+    if (!examples) {
       return null;
     }
 
     return {
       word,
-      pronunciation: parsed.pronunciation.trim() || FALLBACK_TEXT,
-      partOfSpeech: parsed.partOfSpeech.trim() || FALLBACK_TEXT,
-      meaningZh: parsed.meaningZh.trim() || FALLBACK_TEXT,
+      pronunciation,
+      partOfSpeech,
+      meaningZh,
+      examples,
     };
   } catch {
     return null;
@@ -97,9 +150,12 @@ function buildRequestConfig(model: string) {
 }
 
 export class LlmClient {
-  async inferWordEntry(word: string): Promise<DictionaryEntry> {
+  async completeWordEntry(
+    word: string,
+    baseEntry?: KnownEntryFields
+  ): Promise<DictionaryEntry> {
     const apiKey = process.env.OPENAI_API_KEY;
-    const fallback = buildFallbackEntry(word);
+    const fallback = buildFallbackEntry(word, baseEntry);
 
     if (!apiKey) {
       return fallback;
@@ -118,11 +174,11 @@ export class LlmClient {
             {
               role: "system",
               content:
-                "你是日语词条整理助手。请为中文母语者补全一个日语词的基础词条信息。输出中文，准确、克制，只返回所需字段。",
+                "你是日语词条整理助手。请为中文母语者整理一个日语词的基础词条信息和例句。输出中文，准确、自然，只返回所需字段。",
             },
             {
               role: "user",
-              content: buildJaWordLookupPrompt(word),
+              content: buildJaWordLookupPrompt(word, baseEntry),
             },
           ],
         }),
@@ -133,7 +189,7 @@ export class LlmClient {
       }
 
       const data = (await response.json()) as OpenAiResponse;
-      return parseLookupOutput(word, extractResponseText(data)) ?? fallback;
+      return parseLookupOutput(word, extractResponseText(data), baseEntry) ?? fallback;
     } catch {
       return fallback;
     }
