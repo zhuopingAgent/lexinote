@@ -1,4 +1,4 @@
-# Project Memory
+# AI Project Memory
 
 This file is the canonical AI-facing project memory for `lexinote`.
 Keep repo-specific agent instructions here so they stay consistent across machines.
@@ -18,8 +18,8 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 
 ## Scope
 
-- `memory.md` is the canonical repo-specific AI memory at repo root.
-- `AGENTS.md` is kept as a compatibility shim for tools that auto-discover it.
+- `Memory.md` is the single canonical repo-specific AI memory at repo root.
+- `AGENTS.md` may exist only as a compatibility alias to `Memory.md`, not as a second source of truth.
 - Detailed docs live under `docs/ai/`.
 - Keep file names stable so tooling and agents can reliably discover them.
 
@@ -32,5 +32,5 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 
 ## Conflict Handling
 
-- Execution priority: `memory.md` > `docs/ai/RUNBOOK.md` > `docs/ai/CONVENTIONS.md` > `docs/ai/ARCHITECTURE.md`.
+- Execution priority: `Memory.md` > `docs/ai/RUNBOOK.md` > `docs/ai/CONVENTIONS.md` > `docs/ai/ARCHITECTURE.md`.
 - If instructions conflict, follow the higher-priority file and leave a note in the PR or commit message.
