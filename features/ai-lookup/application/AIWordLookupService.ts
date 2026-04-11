@@ -5,15 +5,31 @@ export class AIWordLookupService {
   constructor(private readonly llmClient: LlmClient) {}
 
   async resolveLookupWord(
-    word: string
+    word: string,
+    context?: string
   ): Promise<{ lookupWord: string; lookupReason: string } | null> {
-    return this.llmClient.resolveLookupWord(word);
+    return this.llmClient.resolveLookupWord(word, context);
   }
 
   async completeEntry(
     word: string,
-    baseEntry?: Pick<DictionaryEntry, "pronunciation" | "partOfSpeech" | "meaningZh">
+    baseEntry?: Pick<DictionaryEntry, "pronunciation" | "partOfSpeech" | "meaningZh">,
+    context?: string
   ): Promise<DictionaryEntry> {
-    return this.llmClient.completeWordEntry(word, baseEntry);
+    return this.llmClient.completeWordEntry(word, baseEntry, context);
+  }
+
+  async reconcileEntries(
+    word: string,
+    genericEntry: DictionaryEntry,
+    contextualEntry: DictionaryEntry,
+    context: string
+  ): Promise<DictionaryEntry | null> {
+    return this.llmClient.reconcileWordEntry(
+      word,
+      genericEntry,
+      contextualEntry,
+      context
+    );
   }
 }

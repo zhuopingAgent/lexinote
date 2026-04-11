@@ -23,6 +23,14 @@
 - `OPENAI_API_KEY` is optional. If missing, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
 - `OPENAI_MODEL` defaults to `gpt-5.4`.
 
+## Database Notes
+
+- `japanese_dictionary_entries` uses the composite key `word + pronunciation`.
+- `japanese_dictionary_entries.examples` stores persisted example sentences as JSONB.
+- The app can backfill this column from AI responses during normal lookup traffic.
+- When a lookup includes `context`, the app first computes a context-shaped result; if it clearly diverges from the generic result, the app asks AI to reconcile both and persists the merged default entry.
+- Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
+
 ## Quality Checks
 
 - Lint:

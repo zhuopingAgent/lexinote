@@ -26,8 +26,10 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 ## Repo Notes
 
 - In `lexinote`, word lookup uses AI to complete entries with exactly 3 example sentences.
-- Local dictionary hits read the core fields from PostgreSQL, then pass through AI for example generation.
-- Dictionary misses fall back to a fully AI-completed entry.
+- Persisted dictionary entries use `word + pronunciation` as the storage key so homographs with different readings do not overwrite each other.
+- Local dictionary hits read from PostgreSQL and reuse persisted examples when available; otherwise they pass through AI for example generation and persist the completed entry.
+- Dictionary misses fall back to a fully AI-completed entry and persist that result into PostgreSQL.
+- Optional lookup context can be supplied to disambiguate meaning and regenerate context-aware examples; when the context-shaped result clearly diverges from the generic result, the app asks AI to reconcile both into a better default entry and persists that merged result.
 - If `OPENAI_API_KEY` is missing, dictionary hits still return core fields but examples stay empty, and misses return fallback placeholder fields.
 
 ## Conflict Handling

@@ -40,6 +40,30 @@ describe("LlmClient", () => {
     });
   });
 
+  it("includes context in base-form resolution prompts", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          lookupWord: "抱く",
+          lookupReason: "输入本身已经适合直接查词。",
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await client.resolveLookupWord("抱く", "不安を抱く");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/responses",
+      expect.objectContaining({
+        body: expect.stringContaining("不安を抱く"),
+      })
+    );
+  });
+
   it("returns a fallback entry when OPENAI_API_KEY is missing", async () => {
     delete process.env.OPENAI_API_KEY;
     const client = new LlmClient();
@@ -51,6 +75,64 @@ describe("LlmClient", () => {
       meaningZh: "需结合上下文确认",
       examples: [],
     });
+  });
+
+  it("returns null for reconciliation when OPENAI_API_KEY is missing", async () => {
+    delete process.env.OPENAI_API_KEY;
+    const client = new LlmClient();
+
+    await expect(
+      client.reconcileWordEntry(
+        "抱く",
+        {
+          word: "抱く",
+          pronunciation: "だく",
+          partOfSpeech: "动词",
+          meaningZh: "抱；拥抱；怀有",
+          examples: [
+            {
+              japanese: "子どもを抱いて眠る。",
+              reading: "こども を だいて ねむる。",
+              translationZh: "抱着孩子睡觉。",
+            },
+            {
+              japanese: "花束を胸に抱く。",
+              reading: "はなたば を むね に だく。",
+              translationZh: "把花束抱在胸前。",
+            },
+            {
+              japanese: "夢を抱いて上京した。",
+              reading: "ゆめ を いだいて じょうきょう した。",
+              translationZh: "怀着梦想去了东京。",
+            },
+          ],
+        },
+        {
+          word: "抱く",
+          pronunciation: "いだく",
+          partOfSpeech: "动词",
+          meaningZh: "怀有；心存",
+          examples: [
+            {
+              japanese: "彼は将来に不安を抱いている。",
+              reading: "かれ は しょうらい に ふあん を いだいて いる。",
+              translationZh: "他对未来怀有不安。",
+            },
+            {
+              japanese: "住民は計画に疑念を抱いた。",
+              reading: "じゅうみん は けいかく に ぎねん を いだいた。",
+              translationZh: "居民对计划产生了疑虑。",
+            },
+            {
+              japanese: "彼女は強い期待を抱いていた。",
+              reading: "かのじょ は つよい きたい を いだいて いた。",
+              translationZh: "她怀有很强的期待。",
+            },
+          ],
+        },
+        "不安を抱く"
+      )
+    ).resolves.toBeNull();
   });
 
   it("preserves known entry fields when generating examples is unavailable", async () => {
@@ -127,6 +209,232 @@ describe("LlmClient", () => {
         },
       ],
     });
+  });
+
+  it("includes context in entry completion prompts", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          pronunciation: "だく",
+          partOfSpeech: "动词",
+          meaningZh: "怀有；抱有",
+          examples: [
+            {
+              japanese: "彼は不安を抱いている。",
+              reading: "かれ は ふあん を だいて いる。",
+              translationZh: "他正怀着不安。",
+            },
+            {
+              japanese: "疑問を抱いたまま帰宅した。",
+              reading: "ぎもん を いだいた まま きたく した。",
+              translationZh: "带着疑问回家了。",
+            },
+            {
+              japanese: "期待を抱いて結果を待つ。",
+              reading: "きたい を いだいて けっか を まつ。",
+              translationZh: "怀着期待等待结果。",
+            },
+          ],
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await client.completeWordEntry(
+      "抱く",
+      {
+        pronunciation: "だく",
+        partOfSpeech: "动词",
+        meaningZh: "抱；拥抱；怀有",
+      },
+      "不安を抱く"
+    );
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/responses",
+      expect.objectContaining({
+        body: expect.stringContaining("不安を抱く"),
+      })
+    );
+  });
+
+  it("parses a reconciled entry when the model decides the difference should be persisted", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          shouldPersist: true,
+          pronunciation: "いだく",
+          partOfSpeech: "动词",
+          meaningZh: "抱；拥抱；也表示心中怀有某种感情、想法或不安",
+          examples: [
+            {
+              japanese: "赤ん坊をそっと抱く。",
+              reading: "あかんぼう を そっと だく。",
+              translationZh: "轻轻抱起婴儿。",
+            },
+            {
+              japanese: "将来に不安を抱いている。",
+              reading: "しょうらい に ふあん を いだいて いる。",
+              translationZh: "正对未来怀有不安。",
+            },
+            {
+              japanese: "新しい仕事に期待を抱く。",
+              reading: "あたらしい しごと に きたい を いだく。",
+              translationZh: "对新工作抱有期待。",
+            },
+          ],
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.reconcileWordEntry(
+        "抱く",
+        {
+          word: "抱く",
+          pronunciation: "だく",
+          partOfSpeech: "动词",
+          meaningZh: "抱；拥抱；怀有",
+          examples: [
+            {
+              japanese: "子どもを抱いて眠る。",
+              reading: "こども を だいて ねむる。",
+              translationZh: "抱着孩子睡觉。",
+            },
+            {
+              japanese: "花束を胸に抱く。",
+              reading: "はなたば を むね に だく。",
+              translationZh: "把花束抱在胸前。",
+            },
+            {
+              japanese: "夢を抱いて上京した。",
+              reading: "ゆめ を いだいて じょうきょう した。",
+              translationZh: "怀着梦想去了东京。",
+            },
+          ],
+        },
+        {
+          word: "抱く",
+          pronunciation: "いだく",
+          partOfSpeech: "动词",
+          meaningZh: "怀有；心存",
+          examples: [
+            {
+              japanese: "彼は将来に不安を抱いている。",
+              reading: "かれ は しょうらい に ふあん を いだいて いる。",
+              translationZh: "他对未来怀有不安。",
+            },
+            {
+              japanese: "住民は計画に疑念を抱いた。",
+              reading: "じゅうみん は けいかく に ぎねん を いだいた。",
+              translationZh: "居民对计划产生了疑虑。",
+            },
+            {
+              japanese: "彼女は強い期待を抱いていた。",
+              reading: "かのじょ は つよい きたい を いだいて いた。",
+              translationZh: "她怀有很强的期待。",
+            },
+          ],
+        },
+        "不安を抱く"
+      )
+    ).resolves.toEqual({
+      word: "抱く",
+      pronunciation: "いだく",
+      partOfSpeech: "动词",
+      meaningZh: "抱；拥抱；也表示心中怀有某种感情、想法或不安",
+      examples: [
+        {
+          japanese: "赤ん坊をそっと抱く。",
+          reading: "あかんぼう を そっと だく。",
+          translationZh: "轻轻抱起婴儿。",
+        },
+        {
+          japanese: "将来に不安を抱いている。",
+          reading: "しょうらい に ふあん を いだいて いる。",
+          translationZh: "正对未来怀有不安。",
+        },
+        {
+          japanese: "新しい仕事に期待を抱く。",
+          reading: "あたらしい しごと に きたい を いだく。",
+          translationZh: "对新工作抱有期待。",
+        },
+      ],
+    });
+  });
+
+  it("returns null when reconciliation says no persistence is needed", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          shouldPersist: false,
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.reconcileWordEntry(
+        "抱く",
+        {
+          word: "抱く",
+          pronunciation: "だく",
+          partOfSpeech: "动词",
+          meaningZh: "抱；拥抱；怀有",
+          examples: [
+            {
+              japanese: "子どもを抱いて眠る。",
+              reading: "こども を だいて ねむる。",
+              translationZh: "抱着孩子睡觉。",
+            },
+            {
+              japanese: "花束を胸に抱く。",
+              reading: "はなたば を むね に だく。",
+              translationZh: "把花束抱在胸前。",
+            },
+            {
+              japanese: "夢を抱いて上京した。",
+              reading: "ゆめ を いだいて じょうきょう した。",
+              translationZh: "怀着梦想去了东京。",
+            },
+          ],
+        },
+        {
+          word: "抱く",
+          pronunciation: "いだく",
+          partOfSpeech: "动词",
+          meaningZh: "怀有；心存",
+          examples: [
+            {
+              japanese: "彼は将来に不安を抱いている。",
+              reading: "かれ は しょうらい に ふあん を いだいて いる。",
+              translationZh: "他对未来怀有不安。",
+            },
+            {
+              japanese: "住民は計画に疑念を抱いた。",
+              reading: "じゅうみん は けいかく に ぎねん を いだいた。",
+              translationZh: "居民对计划产生了疑虑。",
+            },
+            {
+              japanese: "彼女は強い期待を抱いていた。",
+              reading: "かのじょ は つよい きたい を いだいて いた。",
+              translationZh: "她怀有很强的期待。",
+            },
+          ],
+        },
+        "不安を抱く"
+      )
+    ).resolves.toBeNull();
   });
 
   it("parses a structured lookup result from output content blocks", async () => {

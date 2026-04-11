@@ -1,6 +1,9 @@
-export function buildJaWordBaseFormPrompt(word: string): string {
+export function buildJaWordBaseFormPrompt(word: string, context?: string): string {
+  const contextBlock = context ? `参考语境：${context}\n` : "";
+
   return `请判断这个日语输入在查词时应使用哪个词典形或基本形。
 输入：${word}
+${contextBlock}
 
 请只输出一个 JSON 对象，不要输出 Markdown，不要输出额外说明。
 JSON 必须包含：
@@ -14,6 +17,7 @@ JSON 必须包含：
 - 例如：見通せない 应返回 見通せる，而不是 見通す
 - 如果输入本身已经是适合查词的基本形，原样返回
 - 如果是名词或固定表达，通常原样返回
+- 如果提供了参考语境，请结合语境判断应该保留哪个基础词形
 - 如果无法可靠判断，就返回原输入，不要编造新词
 - lookupWord 只写词本身，不要附加解释
 - lookupReason 用中文简短说明为什么这样查，控制在 1 句话内

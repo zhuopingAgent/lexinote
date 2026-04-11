@@ -4,7 +4,22 @@ import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/inf
 export class JapaneseDictionaryService {
   constructor(private readonly repository: JapaneseDictionaryRepository) {}
 
-  async findEntry(word: string): Promise<DictionaryEntry | null> {
+  async findEntries(word: string): Promise<DictionaryEntry[]> {
+    return this.repository.findAllByWord(word);
+  }
+
+  async findEntry(
+    word: string,
+    pronunciation?: string
+  ): Promise<DictionaryEntry | null> {
+    if (pronunciation) {
+      return this.repository.findByKey(word, pronunciation);
+    }
+
     return this.repository.findByWord(word);
+  }
+
+  async saveEntry(entry: DictionaryEntry): Promise<void> {
+    await this.repository.upsertEntry(entry);
   }
 }

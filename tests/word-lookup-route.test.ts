@@ -76,6 +76,48 @@ describe("POST /api/words/lookup", () => {
     });
   });
 
+  it("returns 400 when context is not a string", async () => {
+    const { POST } = await import("@/app/api/words/lookup/route");
+    const request = new Request("http://localhost/api/words/lookup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ word: "食べる", context: 123 }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "context must be a string",
+      },
+    });
+  });
+
+  it("returns 400 when pronunciation is not a string", async () => {
+    const { POST } = await import("@/app/api/words/lookup/route");
+    const request = new Request("http://localhost/api/words/lookup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ word: "抱く", pronunciation: 123 }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "pronunciation must be a string",
+      },
+    });
+  });
+
   it("returns the lookup result as plain JSON", async () => {
     lookupWordMock.mockResolvedValue({
       word: "食べる",
@@ -147,7 +189,85 @@ describe("POST /api/words/lookup", () => {
         ],
       },
     });
-    expect(lookupWordMock).toHaveBeenCalledWith("食べる");
+    expect(lookupWordMock).toHaveBeenCalledWith("食べる", undefined, undefined);
+  });
+
+  it("forwards the optional context to the lookup service", async () => {
+    lookupWordMock.mockResolvedValue({
+      word: "抱く",
+      lookupWord: "抱く",
+      source: "dictionary",
+      entry: {
+        word: "抱く",
+        pronunciation: "だく",
+        meaningZh: "怀有；抱有",
+        partOfSpeech: "动词",
+        examples: [
+          {
+            japanese: "将来に不安を抱く。",
+            reading: "しょうらい に ふあん を だく。",
+            translationZh: "对未来怀有不安。",
+          },
+          {
+            japanese: "疑問を抱いたまま会議に出た。",
+            reading: "ぎもん を いだいた まま かいぎ に でた。",
+            translationZh: "带着疑问参加了会议。",
+          },
+          {
+            japanese: "強い期待を抱いている。",
+            reading: "つよい きたい を いだいて いる。",
+            translationZh: "正怀着很强的期待。",
+          },
+        ],
+      },
+    });
+
+    const { POST } = await import("@/app/api/words/lookup/route");
+    const request = new Request("http://localhost/api/words/lookup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ word: "抱く", context: "不安を抱く" }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(lookupWordMock).toHaveBeenCalledWith("抱く", "不安を抱く", undefined);
+  });
+
+  it("forwards the optional pronunciation to the lookup service", async () => {
+    lookupWordMock.mockResolvedValue({
+      word: "抱く",
+      lookupWord: "抱く",
+      source: "dictionary",
+      entry: {
+        word: "抱く",
+        pronunciation: "いだく",
+        meaningZh: "怀有；心存",
+        partOfSpeech: "动词",
+        examples: [],
+      },
+    });
+
+    const { POST } = await import("@/app/api/words/lookup/route");
+    const request = new Request("http://localhost/api/words/lookup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        word: "抱く",
+        context: "不安を抱く",
+        pronunciation: "いだく",
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(lookupWordMock).toHaveBeenCalledWith("抱く", "不安を抱く", "いだく");
   });
 
   it("hides internal app error messages", async () => {

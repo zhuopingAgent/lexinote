@@ -1,4 +1,5 @@
 import { buildJaWordBaseFormPrompt } from "@/features/ai-lookup/prompts/jaWordBaseForm";
+import { buildJaWordReconcilePrompt } from "@/features/ai-lookup/prompts/jaWordReconcile";
 import { buildJaWordLookupPrompt } from "@/features/ai-lookup/prompts/jaWordLookup";
 import type { DictionaryEntry, DictionaryExample } from "@/shared/types/api";
 
@@ -26,6 +27,14 @@ type RawBaseFormOutput = {
   lookupReason?: unknown;
 };
 
+type RawReconcileOutput = {
+  shouldPersist?: unknown;
+  pronunciation?: unknown;
+  partOfSpeech?: unknown;
+  meaningZh?: unknown;
+  examples?: unknown;
+};
+
 type BaseFormResolution = {
   lookupWord: string;
   lookupReason: string;
@@ -39,6 +48,7 @@ type KnownEntryFields = Pick<
 const FALLBACK_TEXT = "需结合上下文确认";
 const BASE_FORM_MAX_OUTPUT_TOKENS = 120;
 const MAX_OUTPUT_TOKENS = 300;
+const RECONCILE_MAX_OUTPUT_TOKENS = 360;
 
 function buildFallbackEntry(
   word: string,
@@ -106,6 +116,53 @@ function parseLookupWord(text: string): BaseFormResolution | null {
     return {
       lookupWord,
       lookupReason,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseReconciledLookupOutput(
+  word: string,
+  text: string,
+  genericEntry: DictionaryEntry,
+  contextualEntry: DictionaryEntry
+): DictionaryEntry | null {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]) as RawReconcileOutput;
+
+    if (parsed.shouldPersist !== true) {
+      return null;
+    }
+
+    const examples = parseExamples(parsed.examples);
+    if (!examples) {
+      return null;
+    }
+
+    return {
+      word,
+      pronunciation:
+        sanitizeText(parsed.pronunciation) ||
+        contextualEntry.pronunciation ||
+        genericEntry.pronunciation ||
+        FALLBACK_TEXT,
+      partOfSpeech:
+        sanitizeText(parsed.partOfSpeech) ||
+        contextualEntry.partOfSpeech ||
+        genericEntry.partOfSpeech ||
+        FALLBACK_TEXT,
+      meaningZh:
+        sanitizeText(parsed.meaningZh) ||
+        contextualEntry.meaningZh ||
+        genericEntry.meaningZh ||
+        FALLBACK_TEXT,
+      examples,
     };
   } catch {
     return null;
@@ -202,8 +259,28 @@ function buildBaseFormRequestConfig(model: string) {
   };
 }
 
+function buildReconcileRequestConfig(model: string) {
+  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
+    return {
+      model,
+      max_output_tokens: RECONCILE_MAX_OUTPUT_TOKENS,
+      reasoning: {
+        effort: "minimal",
+      } as const,
+    };
+  }
+
+  return {
+    model,
+    max_output_tokens: RECONCILE_MAX_OUTPUT_TOKENS,
+  };
+}
+
 export class LlmClient {
-  async resolveLookupWord(word: string): Promise<BaseFormResolution | null> {
+  async resolveLookupWord(
+    word: string,
+    context?: string
+  ): Promise<BaseFormResolution | null> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return null;
@@ -226,7 +303,7 @@ export class LlmClient {
             },
             {
               role: "user",
-              content: buildJaWordBaseFormPrompt(word),
+              content: buildJaWordBaseFormPrompt(word, context),
             },
           ],
         }),
@@ -245,7 +322,8 @@ export class LlmClient {
 
   async completeWordEntry(
     word: string,
-    baseEntry?: KnownEntryFields
+    baseEntry?: KnownEntryFields,
+    context?: string
   ): Promise<DictionaryEntry> {
     const apiKey = process.env.OPENAI_API_KEY;
     const fallback = buildFallbackEntry(word, baseEntry);
@@ -271,7 +349,7 @@ export class LlmClient {
             },
             {
               role: "user",
-              content: buildJaWordLookupPrompt(word, baseEntry),
+              content: buildJaWordLookupPrompt(word, baseEntry, context),
             },
           ],
         }),
@@ -285,6 +363,62 @@ export class LlmClient {
       return parseLookupOutput(word, extractResponseText(data), baseEntry) ?? fallback;
     } catch {
       return fallback;
+    }
+  }
+
+  async reconcileWordEntry(
+    word: string,
+    genericEntry: DictionaryEntry,
+    contextualEntry: DictionaryEntry,
+    context: string
+  ): Promise<DictionaryEntry | null> {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return null;
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          ...buildReconcileRequestConfig(resolveModel()),
+          input: [
+            {
+              role: "system",
+              content:
+                "你是日语词条校准助手。请比较通用词条和语境词条，只在差异已经足以影响默认查词结果时，才输出可持久化的综合词条 JSON。",
+            },
+            {
+              role: "user",
+              content: buildJaWordReconcilePrompt(
+                word,
+                genericEntry,
+                contextualEntry,
+                context
+              ),
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = (await response.json()) as OpenAiResponse;
+      return parseReconciledLookupOutput(
+        word,
+        extractResponseText(data),
+        genericEntry,
+        contextualEntry
+      );
+    } catch {
+      return null;
     }
   }
 }

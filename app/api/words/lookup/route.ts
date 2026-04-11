@@ -28,7 +28,19 @@ export async function POST(request: Request) {
       throw new ValidationError("word must be a string");
     }
 
-    const result = await wordLookupService.lookupWord(body.word);
+    if (body.context !== undefined && typeof body.context !== "string") {
+      throw new ValidationError("context must be a string");
+    }
+
+    if (body.pronunciation !== undefined && typeof body.pronunciation !== "string") {
+      throw new ValidationError("pronunciation must be a string");
+    }
+
+    const result = await wordLookupService.lookupWord(
+      body.word,
+      body.context,
+      body.pronunciation
+    );
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AppError) {

@@ -30,11 +30,15 @@
 
 1. `npm run dev` starts Next.js dev server.
 2. `app/page.tsx` renders the single V0 UI.
-3. The page submits `POST /api/words/lookup`.
+3. The page submits `POST /api/words/lookup` with a required word and an optional context string.
 4. `WordLookupService` coordinates dictionary lookup and AI entry completion.
-5. `JapaneseDictionaryService` reads the core dictionary fields from PostgreSQL through `shared/db/`.
-6. `AIWordLookupService` generates three example sentences for dictionary hits and completes the full entry when the local dictionary misses.
-7. The API returns one combined JSON response for the UI to render.
+5. `JapaneseDictionaryService` reads persisted dictionary entries from PostgreSQL through `shared/db/`.
+6. Persisted dictionary rows are keyed by `word + pronunciation`, so entries with the same spelling but different readings can coexist.
+7. `AIWordLookupService` generates three example sentences for dictionary hits that still lack examples and completes the full entry when the local dictionary misses.
+8. Completed AI results are persisted back into `japanese_dictionary_entries`, including the example list, when the lookup is context-free.
+9. If the user provides context, the AI narrows the meaning and examples for that context.
+10. When the context-shaped result clearly diverges from the generic result, the app asks AI to reconcile both into a better default entry and persists that merged entry.
+11. The API returns one combined JSON response for the UI to render.
 
 ## Current Product Scope
 

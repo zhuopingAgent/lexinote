@@ -1,5 +1,7 @@
 export type WordLookupRequest = {
   word: string;
+  context?: string;
+  pronunciation?: string;
 };
 
 export type LookupSource = "dictionary" | "ai";
@@ -24,4 +26,5 @@ export type WordLookupResponse = {
   lookupReason?: string;
   source: LookupSource;
   entry: DictionaryEntry;
+  entries?: DictionaryEntry[];
 };
