@@ -1,4 +1,4 @@
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry, DictionaryEntryCandidate } from "@/shared/types/api";
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 
 export class JapaneseDictionaryService {
@@ -6,6 +6,14 @@ export class JapaneseDictionaryService {
 
   async findEntries(word: string): Promise<DictionaryEntry[]> {
     return this.repository.findAllByWord(word);
+  }
+
+  async findEntryCandidates(word: string): Promise<DictionaryEntryCandidate[]> {
+    return this.repository.findEntryCandidatesByWord(word);
+  }
+
+  async listEntryCandidates(): Promise<DictionaryEntryCandidate[]> {
+    return this.repository.listEntryCandidates();
   }
 
   async findEntry(

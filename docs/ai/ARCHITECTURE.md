@@ -12,7 +12,7 @@
 ## Current Structure
 
 - `app/`: UI entry and route handlers
-  - `app/page.tsx`: single-page UI for Japanese word lookup and example display
+  - `app/page.tsx`: single-page UI for Japanese word lookup, example display, and local search history
   - `app/api/words/lookup/route.ts`: lookup endpoint returning a single JSON payload
 - `features/`: business modules
   - `features/word-lookup/`: orchestration service
@@ -46,13 +46,13 @@
 - Japanese word lookup
 - AI-generated example sentences for each lookup
 - AI-assisted fallback when the local dictionary misses
+- Local search history persisted in browser storage
 
 Out of scope:
 
 - auth
 - multi-user support
 - favorites
-- history
 - exercises
 - review
 - voice

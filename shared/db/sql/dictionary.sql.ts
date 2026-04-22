@@ -7,6 +7,29 @@ const SELECT_DICTIONARY_ENTRY_COLUMNS_SQL = `
     examples
 `;
 
+export const SELECT_DICTIONARY_ENTRY_CANDIDATES_BY_WORD_SQL = `
+  SELECT
+    word_id,
+    word,
+    pronunciation,
+    meaning_zh,
+    part_of_speech
+  FROM japanese_dictionary_entries
+  WHERE word = $1
+  ORDER BY jsonb_array_length(examples) DESC, word_id ASC
+`;
+
+export const LIST_DICTIONARY_ENTRY_CANDIDATES_SQL = `
+  SELECT
+    word_id,
+    word,
+    pronunciation,
+    meaning_zh,
+    part_of_speech
+  FROM japanese_dictionary_entries
+  ORDER BY word ASC, pronunciation ASC, word_id ASC
+`;
+
 export const SELECT_DICTIONARY_ENTRY_BY_WORD_SQL = `
   ${SELECT_DICTIONARY_ENTRY_COLUMNS_SQL}
   FROM japanese_dictionary_entries

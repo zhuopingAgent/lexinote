@@ -121,4 +121,37 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
     ALTER COLUMN part_of_speech SET NOT NULL,
     ALTER COLUMN examples SET DEFAULT '[]'::jsonb,
     ALTER COLUMN examples SET NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS collections (
+    collection_id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  ALTER TABLE collections
+    ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+  CREATE TABLE IF NOT EXISTS collection_words (
+    collection_id BIGINT NOT NULL
+      REFERENCES collections(collection_id)
+      ON DELETE CASCADE,
+    word_id BIGINT NOT NULL
+      REFERENCES japanese_dictionary_entries(word_id)
+      ON DELETE CASCADE,
+    sort_order INTEGER,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (collection_id, word_id)
+  );
+
+  ALTER TABLE collection_words
+    ADD COLUMN IF NOT EXISTS sort_order INTEGER,
+    ADD COLUMN IF NOT EXISTS added_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+  CREATE INDEX IF NOT EXISTS collection_words_word_id_idx
+    ON collection_words (word_id);
+
+  CREATE INDEX IF NOT EXISTS collection_words_collection_sort_idx
+    ON collection_words (collection_id, sort_order, added_at);
 `;
