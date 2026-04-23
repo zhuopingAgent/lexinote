@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
 import { HistoryList } from "@/app/components/history-list";
+import { OverviewList } from "@/app/components/overview-list";
 import {
   AppBrandIcon,
   BookIcon,
@@ -28,9 +29,12 @@ import {
   mapResultToWordDataList,
 } from "@/app/lib/word-data";
 import type {
+  AddCollectionWordsResponse,
   CollectionListResponse,
   CollectionResponse,
   CollectionSummary,
+  DictionaryOverviewItem,
+  DictionaryOverviewResponse,
   WordLookupResponse,
 } from "@/shared/types/api";
 
@@ -41,11 +45,11 @@ type ApiError = {
   };
 };
 
-type AppView = "dictionary" | "history" | "collections";
+type AppView = "dictionary" | "overview" | "history" | "collections";
 
 const SIDEBAR_ITEMS = [
   { label: "辞書", icon: BookIcon, view: "dictionary" as AppView },
-  { label: "お気に入り", icon: StarIcon },
+  { label: "全览", icon: StarIcon, view: "overview" as AppView },
   { label: "履歴", icon: HistoryIcon, view: "history" as AppView },
   { label: "コレクション", icon: CollectionIcon, view: "collections" as AppView },
 ];
@@ -63,6 +67,10 @@ function buildLookupCacheKey(word: string, context = "", pronunciation = "") {
   });
 }
 
+function isPositiveInteger(value: number) {
+  return Number.isInteger(value) && value > 0;
+}
+
 export default function Home() {
   const [activeView, setActiveView] = useState<AppView>("dictionary");
   const [word, setWord] = useState("");
@@ -71,11 +79,22 @@ export default function Home() {
   const [selectedRetryPronunciation, setSelectedRetryPronunciation] = useState("");
   const [result, setResult] = useState<WordLookupResponse | null>(null);
   const [historyItems, setHistoryItems] = useState<SearchHistoryItem[]>([]);
+  const [overviewQuery, setOverviewQuery] = useState("");
+  const [overviewWords, setOverviewWords] = useState<DictionaryOverviewItem[]>([]);
+  const [overviewNextCursor, setOverviewNextCursor] = useState<string | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
+  const [isOverviewLoadingMore, setIsOverviewLoadingMore] = useState(false);
+  const [hasLoadedOverview, setHasLoadedOverview] = useState(false);
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [collectionName, setCollectionName] = useState("");
   const [collectionError, setCollectionError] = useState<string | null>(null);
   const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
   const [editingCollectionName, setEditingCollectionName] = useState("");
+  const [editingCollectionAutoFilterEnabled, setEditingCollectionAutoFilterEnabled] =
+    useState(false);
+  const [editingCollectionAutoFilterCriteria, setEditingCollectionAutoFilterCriteria] =
+    useState("");
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [busyCollectionId, setBusyCollectionId] = useState<number | null>(null);
@@ -88,6 +107,7 @@ export default function Home() {
   const [isRetryPanelOpen, setIsRetryPanelOpen] = useState(false);
   const statusId = useId();
   const resultCacheRef = useRef(new Map<string, WordLookupResponse>());
+  const overviewRequestIdRef = useRef(0);
   const canSubmit = word.trim().length > 0 && !isLoading;
   const canRetrySubmit =
     retryContext.trim().length > 0 && result !== null && !isLoading;
@@ -105,7 +125,15 @@ export default function Home() {
     : [];
   const resultPanelWidthClass = hasMultipleResults ? "max-w-[960px]" : "max-w-2xl";
   const statusMessage =
-    activeView === "collections"
+    activeView === "overview"
+      ? isOverviewLoading && !hasLoadedOverview
+        ? "正在加载全览。"
+        : overviewError
+          ? `全览加载失败：${overviewError}`
+          : overviewWords.length > 0
+            ? `已打开全览，当前已加载 ${overviewWords.length} 个词条。`
+            : "已打开全览，当前还没有内容。"
+      : activeView === "collections"
       ? isCollectionsLoading && !hasLoadedCollections
         ? "正在加载 collections。"
         : collectionError
@@ -145,6 +173,7 @@ export default function Home() {
     const requestedView = new URLSearchParams(window.location.search).get("view");
     if (
       requestedView === "dictionary" ||
+      requestedView === "overview" ||
       requestedView === "history" ||
       requestedView === "collections"
     ) {
@@ -153,10 +182,49 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (activeView !== "overview") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadOverviewWords({
+        query: overviewQuery.trim(),
+        reset: true,
+      });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [activeView, overviewQuery]);
+
+  useEffect(() => {
     if (activeView === "collections" && !hasLoadedCollections && !isCollectionsLoading) {
       void loadCollections();
     }
   }, [activeView, hasLoadedCollections, isCollectionsLoading]);
+
+  useEffect(() => {
+    const shouldPollCollections =
+      hasLoadedCollections &&
+      collections.some(
+        (collection) =>
+          collection.autoFilterSyncStatus === "pending" ||
+          collection.autoFilterSyncStatus === "running"
+      );
+
+    if (!shouldPollCollections) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadCollections({ silent: true });
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [collections, hasLoadedCollections]);
 
   function rememberSearchResult(
     searchedWord: string,
@@ -202,9 +270,95 @@ export default function Home() {
     setHistoryItems([]);
   }
 
-  async function loadCollections() {
-    setCollectionError(null);
-    setIsCollectionsLoading(true);
+  async function loadOverviewWords(options?: {
+    query?: string;
+    cursor?: string;
+    reset?: boolean;
+  }) {
+    const normalizedQuery = options?.query?.trim() ?? "";
+    const normalizedCursor = options?.cursor?.trim() || undefined;
+    const reset = options?.reset ?? false;
+    const requestId = reset ? overviewRequestIdRef.current + 1 : overviewRequestIdRef.current;
+
+    if (reset) {
+      overviewRequestIdRef.current = requestId;
+      setOverviewError(null);
+      setIsOverviewLoading(true);
+      setOverviewNextCursor(null);
+    } else {
+      setIsOverviewLoadingMore(true);
+    }
+
+    try {
+      const searchParams = new URLSearchParams();
+      searchParams.set("limit", "24");
+      if (normalizedQuery) {
+        searchParams.set("query", normalizedQuery);
+      }
+      if (normalizedCursor) {
+        searchParams.set("cursor", normalizedCursor);
+      }
+
+      const response = await fetch(`/api/words?${searchParams.toString()}`);
+
+      if (!response.ok) {
+        const payload = (await response.json()) as ApiError;
+        throw new Error(payload.error?.message || "请求失败");
+      }
+
+      const payload = (await response.json()) as DictionaryOverviewResponse;
+      const validEntries = payload.words.filter((entry) =>
+        isPositiveInteger(entry.wordId)
+      );
+
+      if (reset && requestId !== overviewRequestIdRef.current) {
+        return;
+      }
+
+      setOverviewWords((currentEntries) => {
+        if (reset) {
+          return validEntries;
+        }
+
+        const mergedEntries = [...currentEntries];
+        for (const entry of validEntries) {
+          if (!mergedEntries.some((currentEntry) => currentEntry.wordId === entry.wordId)) {
+            mergedEntries.push(entry);
+          }
+        }
+        return mergedEntries;
+      });
+      setOverviewNextCursor(payload.nextCursor);
+      setHasLoadedOverview(true);
+    } catch (overviewLoadError) {
+      const message =
+        overviewLoadError instanceof Error
+          ? overviewLoadError.message
+          : "发生了意外错误";
+      setOverviewError(message);
+
+      if (reset) {
+        setOverviewWords([]);
+        setOverviewNextCursor(null);
+      }
+    } finally {
+      if (reset) {
+        if (requestId === overviewRequestIdRef.current) {
+          setIsOverviewLoading(false);
+        }
+      } else {
+        setIsOverviewLoadingMore(false);
+      }
+    }
+  }
+
+  async function loadCollections(options?: { silent?: boolean }) {
+    const silent = options?.silent ?? false;
+
+    if (!silent) {
+      setCollectionError(null);
+      setIsCollectionsLoading(true);
+    }
 
     try {
       const response = await fetch("/api/collections");
@@ -222,10 +376,77 @@ export default function Home() {
         collectionLoadError instanceof Error
           ? collectionLoadError.message
           : "发生了意外错误";
-      setCollectionError(message);
+      if (!silent) {
+        setCollectionError(message);
+      }
     } finally {
-      setIsCollectionsLoading(false);
+      if (!silent) {
+        setIsCollectionsLoading(false);
+      }
     }
+  }
+
+  async function ensureCollectionsLoaded() {
+    if (hasLoadedCollections || isCollectionsLoading) {
+      return;
+    }
+
+    await loadCollections();
+  }
+
+  async function onLoadMoreOverviewWords() {
+    if (!overviewNextCursor || isOverviewLoadingMore) {
+      return;
+    }
+
+    await loadOverviewWords({
+      query: overviewQuery.trim(),
+      cursor: overviewNextCursor,
+      reset: false,
+    });
+  }
+
+  async function onAddOverviewWordToCollection(
+    collectionId: number,
+    wordId: number
+  ): Promise<"added" | "already_exists"> {
+    if (!isPositiveInteger(collectionId) || !isPositiveInteger(wordId)) {
+      throw new Error("当前词条或 collection 信息无效，请刷新页面后重试。");
+    }
+
+    const response = await fetch(`/api/collections/${collectionId}/words/bulk`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        wordIds: [wordId],
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json()) as ApiError;
+      throw new Error(payload.error?.message || "请求失败");
+    }
+
+    const payload = (await response.json()) as AddCollectionWordsResponse;
+
+    if (payload.addedCount > 0) {
+      setCollections((currentCollections) =>
+        currentCollections.map((collection) =>
+          collection.collectionId === collectionId
+            ? {
+                ...collection,
+                wordCount: collection.wordCount + payload.addedCount,
+              }
+            : collection
+        )
+      );
+
+      return "added";
+    }
+
+    return "already_exists";
   }
 
   async function onCreateCollection(event: FormEvent<HTMLFormElement>) {
@@ -274,11 +495,15 @@ export default function Home() {
     setCollectionError(null);
     setEditingCollectionId(collection.collectionId);
     setEditingCollectionName(collection.name);
+    setEditingCollectionAutoFilterEnabled(collection.autoFilterEnabled);
+    setEditingCollectionAutoFilterCriteria(collection.autoFilterCriteria);
   }
 
   function onCancelEditingCollection() {
     setEditingCollectionId(null);
     setEditingCollectionName("");
+    setEditingCollectionAutoFilterEnabled(false);
+    setEditingCollectionAutoFilterCriteria("");
   }
 
   async function onSaveCollectionUpdate(
@@ -289,6 +514,14 @@ export default function Home() {
 
     if (!editingCollectionName.trim()) {
       setCollectionError("请输入 collection 名称。");
+      return;
+    }
+
+    if (
+      editingCollectionAutoFilterEnabled &&
+      !editingCollectionAutoFilterCriteria.trim()
+    ) {
+      setCollectionError("开启 AI 自动筛选时，请填写筛选条件。");
       return;
     }
 
@@ -303,6 +536,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           name: editingCollectionName.trim(),
+          autoFilterEnabled: editingCollectionAutoFilterEnabled,
+          autoFilterCriteria: editingCollectionAutoFilterCriteria.trim(),
         }),
       });
 
@@ -633,12 +868,33 @@ export default function Home() {
                 hasMultipleResults ? "max-w-[1000px]" : "max-w-[848px]"
               }`}
             >
-              {activeView === "collections" ? (
+              {activeView === "overview" ? (
+                <OverviewList
+                  words={overviewWords}
+                  query={overviewQuery}
+                  nextCursor={overviewNextCursor}
+                  isLoading={isOverviewLoading}
+                  isLoadingMore={isOverviewLoadingMore}
+                  error={overviewError}
+                  collections={collections}
+                  isCollectionsLoading={isCollectionsLoading}
+                  onQueryChange={setOverviewQuery}
+                  onLoadMore={onLoadMoreOverviewWords}
+                  onEnsureCollectionsLoaded={ensureCollectionsLoaded}
+                  onAddWordToCollection={onAddOverviewWordToCollection}
+                />
+              ) : activeView === "collections" ? (
                 <CollectionPanel
                   collections={collections}
                   collectionName={collectionName}
                   editingCollectionId={editingCollectionId}
                   editingCollectionName={editingCollectionName}
+                  editingCollectionAutoFilterEnabled={
+                    editingCollectionAutoFilterEnabled
+                  }
+                  editingCollectionAutoFilterCriteria={
+                    editingCollectionAutoFilterCriteria
+                  }
                   error={collectionError}
                   isLoading={isCollectionsLoading}
                   isCreating={isCreatingCollection}
@@ -647,6 +903,12 @@ export default function Home() {
                   onCreateCollection={onCreateCollection}
                   onStartEditing={onStartEditingCollection}
                   onEditingCollectionNameChange={setEditingCollectionName}
+                  onEditingCollectionAutoFilterEnabledChange={
+                    setEditingCollectionAutoFilterEnabled
+                  }
+                  onEditingCollectionAutoFilterCriteriaChange={
+                    setEditingCollectionAutoFilterCriteria
+                  }
                   onCancelEditing={onCancelEditingCollection}
                   onSaveEditing={onSaveCollectionUpdate}
                   onDeleteCollection={onDeleteCollection}

@@ -30,6 +30,18 @@ export const LIST_DICTIONARY_ENTRY_CANDIDATES_SQL = `
   ORDER BY word ASC, pronunciation ASC, word_id ASC
 `;
 
+export const LIST_DICTIONARY_OVERVIEW_SQL = `
+  SELECT
+    word_id,
+    word,
+    pronunciation,
+    meaning_zh,
+    part_of_speech,
+    created_at
+  FROM japanese_dictionary_entries
+  ORDER BY created_at DESC, word_id DESC
+`;
+
 export const SELECT_DICTIONARY_ENTRY_BY_WORD_SQL = `
   ${SELECT_DICTIONARY_ENTRY_COLUMNS_SQL}
   FROM japanese_dictionary_entries
@@ -55,6 +67,29 @@ export const SELECT_DICTIONARY_ENTRY_BY_KEY_SQL = `
   FROM japanese_dictionary_entries
   WHERE word = $1
     AND pronunciation = $2
+  LIMIT 1
+`;
+
+export const SELECT_DICTIONARY_ENTRY_RECORD_BY_KEY_SQL = `
+  SELECT
+    word_id
+  FROM japanese_dictionary_entries
+  WHERE word = $1
+    AND pronunciation = $2
+  LIMIT 1
+`;
+
+export const SELECT_DICTIONARY_ENTRY_BY_ID_SQL = `
+  SELECT
+    word_id,
+    word,
+    pronunciation,
+    meaning_zh,
+    part_of_speech,
+    examples,
+    created_at
+  FROM japanese_dictionary_entries
+  WHERE word_id = $1
   LIMIT 1
 `;
 

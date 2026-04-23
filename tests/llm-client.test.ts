@@ -135,6 +135,31 @@ describe("LlmClient", () => {
     ).resolves.toBeNull();
   });
 
+  it("returns an empty list for collection matching when OPENAI_API_KEY is missing", async () => {
+    delete process.env.OPENAI_API_KEY;
+    const client = new LlmClient();
+
+    await expect(
+      client.matchEntryToCollections(
+        {
+          wordId: 21,
+          word: "共有する",
+          pronunciation: "きょうゆうする",
+          meaningZh: "共享；共享信息",
+          partOfSpeech: "动词",
+          examples: [],
+        },
+        [
+          {
+            collectionId: 4,
+            name: "商务表达",
+            autoFilterCriteria: "偏商务沟通的常见表达",
+          },
+        ]
+      )
+    ).resolves.toEqual([]);
+  });
+
   it("preserves known entry fields when generating examples is unavailable", async () => {
     delete process.env.OPENAI_API_KEY;
     const client = new LlmClient();
@@ -257,6 +282,84 @@ describe("LlmClient", () => {
       "https://api.openai.com/v1/responses",
       expect.objectContaining({
         body: expect.stringContaining("不安を抱く"),
+      })
+    );
+  });
+
+  it("parses matching collection ids for a new entry", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          matchingCollectionIds: [4, "7", 4],
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.matchEntryToCollections(
+        {
+          wordId: 21,
+          word: "共有する",
+          pronunciation: "きょうゆうする",
+          meaningZh: "共享；共享信息",
+          partOfSpeech: "动词",
+          examples: [],
+        },
+        [
+          {
+            collectionId: 4,
+            name: "商务表达",
+            autoFilterCriteria: "偏商务沟通的常见表达",
+          },
+          {
+            collectionId: 7,
+            name: "工作场景",
+            autoFilterCriteria: "偏工作沟通的常见词",
+          },
+        ]
+      )
+    ).resolves.toEqual([4, 7]);
+  });
+
+  it("includes collection criteria in backfill prompts", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          matchingWordIds: [11],
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await client.matchEntriesToCollection(
+      {
+        collectionId: 3,
+        name: "JLPT N3",
+        autoFilterCriteria: "收录 JLPT N3 常见词",
+      },
+      [
+        {
+          wordId: 11,
+          word: "確かめる",
+          pronunciation: "たしかめる",
+          meaningZh: "确认；查明",
+          partOfSpeech: "动词",
+          examples: [],
+        },
+      ]
+    );
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/responses",
+      expect.objectContaining({
+        body: expect.stringContaining("收录 JLPT N3 常见词"),
       })
     );
   });

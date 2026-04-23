@@ -1,7 +1,16 @@
 import { buildJaWordBaseFormPrompt } from "@/features/ai-lookup/prompts/jaWordBaseForm";
+import {
+  buildCollectionBackfillPrompt,
+  buildEntryCollectionAutoFilterPrompt,
+} from "@/features/ai-lookup/prompts/collectionAutoFilter";
 import { buildJaWordReconcilePrompt } from "@/features/ai-lookup/prompts/jaWordReconcile";
 import { buildJaWordLookupPrompt } from "@/features/ai-lookup/prompts/jaWordLookup";
-import type { DictionaryEntry, DictionaryExample } from "@/shared/types/api";
+import type {
+  AutoFilterDictionaryEntry,
+  CollectionAutoFilterRule,
+  DictionaryEntry,
+  DictionaryExample,
+} from "@/shared/types/api";
 
 type OpenAiTextItem = {
   type?: string;
@@ -35,6 +44,14 @@ type RawReconcileOutput = {
   examples?: unknown;
 };
 
+type RawCollectionMatchOutput = {
+  matchingCollectionIds?: unknown;
+};
+
+type RawWordMatchOutput = {
+  matchingWordIds?: unknown;
+};
+
 type BaseFormResolution = {
   lookupWord: string;
   lookupReason: string;
@@ -49,6 +66,8 @@ const FALLBACK_TEXT = "需结合上下文确认";
 const BASE_FORM_MAX_OUTPUT_TOKENS = 120;
 const MAX_OUTPUT_TOKENS = 300;
 const RECONCILE_MAX_OUTPUT_TOKENS = 360;
+const COLLECTION_FILTER_MAX_OUTPUT_TOKENS = 320;
+const COLLECTION_BACKFILL_MAX_OUTPUT_TOKENS = 520;
 
 function buildFallbackEntry(
   word: string,
@@ -119,6 +138,58 @@ function parseLookupWord(text: string): BaseFormResolution | null {
     };
   } catch {
     return null;
+  }
+}
+
+function parseIntegerArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => {
+          if (typeof item === "number") {
+            return item;
+          }
+
+          if (typeof item === "string" && item.trim()) {
+            return Number.parseInt(item, 10);
+          }
+
+          return Number.NaN;
+        })
+        .filter((item) => Number.isInteger(item) && item > 0)
+    )
+  );
+}
+
+function parseCollectionMatchOutput(text: string) {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]) as RawCollectionMatchOutput;
+    return parseIntegerArray(parsed.matchingCollectionIds);
+  } catch {
+    return [];
+  }
+}
+
+function parseWordMatchOutput(text: string) {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]) as RawWordMatchOutput;
+    return parseIntegerArray(parsed.matchingWordIds);
+  } catch {
+    return [];
   }
 }
 
@@ -276,6 +347,23 @@ function buildReconcileRequestConfig(model: string) {
   };
 }
 
+function buildCollectionFilterRequestConfig(model: string, maxOutputTokens: number) {
+  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
+    return {
+      model,
+      max_output_tokens: maxOutputTokens,
+      reasoning: {
+        effort: "minimal",
+      } as const,
+    };
+  }
+
+  return {
+    model,
+    max_output_tokens: maxOutputTokens,
+  };
+}
+
 export class LlmClient {
   async resolveLookupWord(
     word: string,
@@ -419,6 +507,100 @@ export class LlmClient {
       );
     } catch {
       return null;
+    }
+  }
+
+  async matchEntryToCollections(
+    entry: AutoFilterDictionaryEntry,
+    collections: CollectionAutoFilterRule[]
+  ): Promise<number[]> {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey || collections.length === 0) {
+      return [];
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          ...buildCollectionFilterRequestConfig(
+            resolveModel(),
+            COLLECTION_FILTER_MAX_OUTPUT_TOKENS
+          ),
+          input: [
+            {
+              role: "system",
+              content:
+                "你是日语词条自动归类助手。请根据 collection 的筛选条件，谨慎判断这个词条应该加入哪些 collection，只返回所需 JSON。",
+            },
+            {
+              role: "user",
+              content: buildEntryCollectionAutoFilterPrompt(entry, collections),
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data = (await response.json()) as OpenAiResponse;
+      return parseCollectionMatchOutput(extractResponseText(data));
+    } catch {
+      return [];
+    }
+  }
+
+  async matchEntriesToCollection(
+    collection: CollectionAutoFilterRule,
+    entries: AutoFilterDictionaryEntry[]
+  ): Promise<number[]> {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey || entries.length === 0) {
+      return [];
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          ...buildCollectionFilterRequestConfig(
+            resolveModel(),
+            COLLECTION_BACKFILL_MAX_OUTPUT_TOKENS
+          ),
+          input: [
+            {
+              role: "system",
+              content:
+                "你是日语词条自动归类助手。请根据 collection 的筛选条件，从候选词条中保守地挑出真正应该加入的项目，只返回所需 JSON。",
+            },
+            {
+              role: "user",
+              content: buildCollectionBackfillPrompt(collection, entries),
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data = (await response.json()) as OpenAiResponse;
+      return parseWordMatchOutput(extractResponseText(data));
+    } catch {
+      return [];
     }
   }
 }

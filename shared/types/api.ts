@@ -4,12 +4,27 @@ export type WordLookupRequest = {
   pronunciation?: string;
 };
 
+export type AutoFilterSyncStatus =
+  | "idle"
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type CollectionWordSource = "manual" | "auto";
+
 export type CollectionSummary = {
   collectionId: number;
   name: string;
   description: string;
   wordCount: number;
   createdAt: string;
+  autoFilterEnabled: boolean;
+  autoFilterCriteria: string;
+  autoFilterSyncStatus: AutoFilterSyncStatus;
+  autoFilterLastRunAt: string | null;
+  autoFilterLastError: string;
+  autoFilterRuleVersion: number;
 };
 
 export type CollectionWordItem = {
@@ -18,6 +33,8 @@ export type CollectionWordItem = {
   pronunciation: string;
   meaningZh: string;
   partOfSpeech: string;
+  source: CollectionWordSource;
+  matchedRuleVersion: number | null;
 };
 
 export type DictionaryEntryCandidate = {
@@ -26,6 +43,42 @@ export type DictionaryEntryCandidate = {
   pronunciation: string;
   meaningZh: string;
   partOfSpeech: string;
+  createdAt?: string;
+};
+
+export type DictionaryOverviewItem = {
+  wordId: number;
+  word: string;
+  pronunciation: string;
+  meaningZh: string;
+  partOfSpeech: string;
+  createdAt: string;
+};
+
+export type DictionaryEntryDetail = DictionaryEntry & {
+  wordId: number;
+  createdAt: string;
+};
+
+export type SavedDictionaryEntry = {
+  wordId: number;
+  isNewEntry: boolean;
+};
+
+export type CollectionAutoFilterRule = {
+  collectionId: number;
+  name: string;
+  autoFilterCriteria: string;
+  autoFilterRuleVersion: number;
+};
+
+export type AutoFilterDictionaryEntry = {
+  wordId: number;
+  word: string;
+  pronunciation: string;
+  meaningZh: string;
+  partOfSpeech: string;
+  examples?: DictionaryExample[];
 };
 
 export type CollectionDetail = CollectionSummary & {
@@ -68,6 +121,11 @@ export type AddCollectionWordsResponse = {
   skippedCount: number;
 };
 
+export type DictionaryOverviewResponse = {
+  words: DictionaryOverviewItem[];
+  nextCursor: string | null;
+};
+
 export type CreateCollectionRequest = {
   name: string;
   description?: string;
@@ -76,6 +134,8 @@ export type CreateCollectionRequest = {
 export type UpdateCollectionRequest = {
   name?: string;
   description?: string;
+  autoFilterEnabled?: boolean;
+  autoFilterCriteria?: string;
 };
 
 export type LookupSource = "dictionary" | "ai";

@@ -33,14 +33,6 @@ function resolveTestDatabaseUrl() {
   return connectionString;
 }
 
-function stripPsqlInclude(sql) {
-  return sql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("\\i "))
-    .join("\n")
-    .trim();
-}
-
 export default async function globalSetup() {
   loadEnvConfig(process.cwd());
 
@@ -49,14 +41,22 @@ export default async function globalSetup() {
 
   try {
     const schemaPath = path.join(process.cwd(), "shared/db/sql/schema.sql");
-    const seedPath = path.join(process.cwd(), "shared/db/sql/seed.sql");
-    const [schemaSql, rawSeedSql] = await Promise.all([
+    const fixturesPath = path.join(process.cwd(), "e2e/fixtures.sql");
+    const [schemaSql, fixturesSql] = await Promise.all([
       readFile(schemaPath, "utf8"),
-      readFile(seedPath, "utf8"),
+      readFile(fixturesPath, "utf8"),
     ]);
 
     await pool.query(schemaSql);
-    await pool.query(stripPsqlInclude(rawSeedSql));
+    await pool.query(`
+      TRUNCATE TABLE
+        auto_filter_jobs,
+        collection_words,
+        collections,
+        japanese_dictionary_entries
+      RESTART IDENTITY CASCADE
+    `);
+    await pool.query(fixturesSql);
   } finally {
     await pool.end();
   }

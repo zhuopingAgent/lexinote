@@ -1,4 +1,5 @@
 import { AIWordLookupService } from "@/features/ai-lookup/application/AIWordLookupService";
+import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
 import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
 import type { WordLookupResponse } from "@/shared/types/api";
 import { ValidationError } from "@/shared/utils/errors";
@@ -14,7 +15,8 @@ export class WordLookupService {
 
   constructor(
     private readonly dictionaryService: JapaneseDictionaryService,
-    private readonly aiWordLookupService: AIWordLookupService
+    private readonly aiWordLookupService: AIWordLookupService,
+    private readonly collectionAutoFilterJobService?: CollectionAutoFilterJobService
   ) {}
 
   private buildLookupResult(
@@ -223,35 +225,80 @@ export class WordLookupService {
     return uniqueReasons.length > 0 ? uniqueReasons.join(" ") : undefined;
   }
 
+  private toComparableKana(text: string) {
+    return text
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/[ァ-ヶ]/g, (character) =>
+        String.fromCharCode(character.charCodeAt(0) - 0x60)
+      );
+  }
+
+  private getDictionaryFormKanaSuffix(word: string) {
+    const match = word.match(/[ぁ-ゖァ-ヶー]+$/);
+    return match ? this.toComparableKana(match[0]) : "";
+  }
+
+  private hasDictionaryFormPronunciation(word: string, pronunciation: string) {
+    const normalizedPronunciation = this.toComparableKana(pronunciation);
+    const kanaSuffix = this.getDictionaryFormKanaSuffix(word);
+
+    if (!normalizedPronunciation) {
+      return false;
+    }
+
+    if (!kanaSuffix) {
+      return true;
+    }
+
+    return normalizedPronunciation.endsWith(kanaSuffix);
+  }
+
+  private normalizeEntryPronunciation(
+    lookupWord: string,
+    entry: WordLookupResponse["entry"],
+    fallbackPronunciation?: string
+  ) {
+    if (this.hasDictionaryFormPronunciation(lookupWord, entry.pronunciation)) {
+      return entry;
+    }
+
+    if (!fallbackPronunciation) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      pronunciation: fallbackPronunciation,
+    };
+  }
+
   private async persistEntryIfNeeded(
     entry: WordLookupResponse["entry"],
+    lookupWord: string,
     context?: string
   ) {
     if (entry.examples.length === 0 || context) {
       return;
     }
 
-    await this.dictionaryService.saveEntry(entry);
-  }
-
-  private async persistAdditionalPronunciationIfNeeded(
-    genericEntry: WordLookupResponse["entry"],
-    contextualEntry: WordLookupResponse["entry"]
-  ) {
-    if (contextualEntry.examples.length === 0) {
+    if (!this.hasDictionaryFormPronunciation(lookupWord, entry.pronunciation)) {
       return;
     }
 
-    if (genericEntry.pronunciation === contextualEntry.pronunciation) {
+    const savedEntry = await this.dictionaryService.saveEntry(entry);
+
+    if (!savedEntry.isNewEntry) {
       return;
     }
 
-    await this.dictionaryService.saveEntry(contextualEntry);
+    await this.collectionAutoFilterJobService?.enqueueEntryClassification(savedEntry.wordId);
   }
 
   private async getGenericEntry(
     lookupWord: string,
-    existingEntry?: WordLookupResponse["entry"]
+    existingEntry?: WordLookupResponse["entry"],
+    shouldPersist = true
   ) {
     if (existingEntry?.examples.length) {
       return existingEntry;
@@ -261,8 +308,18 @@ export class WordLookupService {
       lookupWord,
       existingEntry
     );
-    await this.persistEntryIfNeeded(genericEntry);
-    return genericEntry;
+
+    const normalizedEntry = this.normalizeEntryPronunciation(
+      lookupWord,
+      genericEntry,
+      existingEntry?.pronunciation
+    );
+
+    if (shouldPersist) {
+      await this.persistEntryIfNeeded(normalizedEntry, lookupWord);
+    }
+
+    return normalizedEntry;
   }
 
   private async getContextualEntry(
@@ -282,19 +339,44 @@ export class WordLookupService {
     lookupReason?: string,
     entries?: WordLookupResponse["entries"]
   ): Promise<WordLookupResponse> {
-    const genericEntry = await this.getGenericEntry(lookupWord, existingEntry);
-    const contextualEntry = await this.getContextualEntry(
+    const shouldPersistGenericEntryImmediately = Boolean(existingEntry);
+    const genericEntry = await this.getGenericEntry(
+      lookupWord,
+      existingEntry,
+      shouldPersistGenericEntryImmediately
+    );
+    const rawContextualEntry = await this.getContextualEntry(
       lookupWord,
       genericEntry,
       context
     );
+    const contextualEntry = this.normalizeEntryPronunciation(
+      lookupWord,
+      rawContextualEntry,
+      genericEntry.pronunciation
+    );
+
+    const reconciledEntry = await this.aiWordLookupService.reconcileEntries(
+      lookupWord,
+      genericEntry,
+      contextualEntry,
+      context
+    );
+    const normalizedReconciledEntry = reconciledEntry
+      ? this.normalizeEntryPronunciation(
+          lookupWord,
+          reconciledEntry,
+          genericEntry.pronunciation
+        )
+      : null;
+
+    if (normalizedReconciledEntry) {
+      await this.persistEntryIfNeeded(normalizedReconciledEntry, lookupWord);
+    } else if (!shouldPersistGenericEntryImmediately) {
+      await this.persistEntryIfNeeded(genericEntry, lookupWord);
+    }
 
     if (contextualEntry.pronunciation !== genericEntry.pronunciation) {
-      await this.persistAdditionalPronunciationIfNeeded(
-        genericEntry,
-        contextualEntry
-      );
-
       return this.buildLookupResult(
         word,
         lookupWord,
@@ -305,22 +387,11 @@ export class WordLookupService {
       );
     }
 
-    const reconciledEntry = await this.aiWordLookupService.reconcileEntries(
-      lookupWord,
-      genericEntry,
-      contextualEntry,
-      context
-    );
-
-    if (reconciledEntry) {
-      await this.dictionaryService.saveEntry(reconciledEntry);
-    }
-
     return this.buildLookupResult(
       word,
       lookupWord,
       source,
-      reconciledEntry ?? contextualEntry,
+      normalizedReconciledEntry ?? contextualEntry,
       lookupReason,
       entries
     );
@@ -389,6 +460,10 @@ export class WordLookupService {
           );
         }
 
+        if (entry.examples.length > 0 && !this.isInstructionalContext(context)) {
+          return this.buildLookupResult(word, word, "dictionary", entry);
+        }
+
         return this.buildContextAwareResult(
           word,
           word,
@@ -418,9 +493,19 @@ export class WordLookupService {
         entry,
         context
       );
-      await this.persistEntryIfNeeded(completedEntry, context);
+      const normalizedCompletedEntry = this.normalizeEntryPronunciation(
+        word,
+        completedEntry,
+        entry.pronunciation
+      );
+      await this.persistEntryIfNeeded(normalizedCompletedEntry, word, context);
 
-      return this.buildLookupResult(word, word, "dictionary", completedEntry);
+      return this.buildLookupResult(
+        word,
+        word,
+        "dictionary",
+        normalizedCompletedEntry
+      );
     }
 
     const resolved = await this.aiWordLookupService.resolveLookupWord(word, context);
@@ -483,6 +568,19 @@ export class WordLookupService {
             );
           }
 
+          if (
+            resolvedEntry.examples.length > 0 &&
+            !this.isInstructionalContext(context)
+          ) {
+            return this.buildLookupResult(
+              word,
+              resolvedLookupWord,
+              "dictionary",
+              resolvedEntry,
+              lookupReason
+            );
+          }
+
           return this.buildContextAwareResult(
             word,
             resolvedLookupWord,
@@ -519,13 +617,22 @@ export class WordLookupService {
           resolvedEntry,
           context
         );
-        await this.persistEntryIfNeeded(completedResolvedEntry, context);
+        const normalizedCompletedResolvedEntry = this.normalizeEntryPronunciation(
+          resolvedLookupWord,
+          completedResolvedEntry,
+          resolvedEntry.pronunciation
+        );
+        await this.persistEntryIfNeeded(
+          normalizedCompletedResolvedEntry,
+          resolvedLookupWord,
+          context
+        );
 
         return this.buildLookupResult(
           word,
           resolvedLookupWord,
           "dictionary",
-          completedResolvedEntry,
+          normalizedCompletedResolvedEntry,
           lookupReason
         );
       }
@@ -548,7 +655,7 @@ export class WordLookupService {
       context
     );
 
-    await this.persistEntryIfNeeded(completedEntry, context);
+    await this.persistEntryIfNeeded(completedEntry, resolvedLookupWord, context);
 
     return this.buildLookupResult(
       word,

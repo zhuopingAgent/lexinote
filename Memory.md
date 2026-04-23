@@ -26,10 +26,15 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 ## Repo Notes
 
 - In `lexinote`, word lookup uses AI to complete entries with exactly 3 example sentences.
+- The main UI is no longer a pure single lookup page. `app/page.tsx` is now a multi-view shell for dictionary lookup, overview, history, and collections.
 - Persisted dictionary entries use `word + pronunciation` as the storage key so homographs with different readings do not overwrite each other.
-- Local dictionary hits read from PostgreSQL and reuse persisted examples when available; otherwise they pass through AI for example generation and persist the completed entry.
+- Local dictionary hits read from PostgreSQL and prefer reusing persisted examples when available; otherwise they may pass through AI for example generation.
 - Dictionary misses fall back to a fully AI-completed entry and persist that result into PostgreSQL.
-- Optional lookup context can be supplied to disambiguate meaning and regenerate context-aware examples; when the context-shaped result clearly diverges from the generic result, the app asks AI to reconcile both into a better default entry and persists that merged result.
+- Optional lookup context can be supplied to disambiguate meaning and regenerate context-aware examples, but the lookup flow is now more local-first: if a persisted entry already has examples and the context is not instructional, the app may return the local result without calling AI.
+- Context-aware results are not persisted as standalone contextual rows by default. The service normalizes context-shaped readings back to dictionary-form pronunciations before deciding whether anything should be saved.
+- Collections are now a first-class product surface. `collections` and `collection_words` model a many-to-many relation between concrete dictionary entries (`word_id`) and collections.
+- A single dictionary entry can belong to multiple collections, but the same `word_id` can appear only once inside a given collection, no matter whether it was added manually or by AI auto-filtering.
+- Collection auto-filtering runs asynchronously through `auto_filter_jobs`. New dictionary entries only enqueue classification when a truly new entry is persisted.
 - If `OPENAI_API_KEY` is missing, dictionary hits still return core fields but examples stay empty, and misses return fallback placeholder fields.
 
 ## Conflict Handling

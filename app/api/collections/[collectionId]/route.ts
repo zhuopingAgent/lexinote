@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
+import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
+import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
+import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionService } from "@/features/collections/application/CollectionService";
+import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
+import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
+import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 import type {
   CollectionDetailResponse,
   CollectionResponse,
@@ -10,7 +16,20 @@ import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const collectionService = new CollectionService(new CollectionRepository());
+const collectionRepository = new CollectionRepository();
+const autoFilterJobService = new CollectionAutoFilterJobService(
+  new CollectionAutoFilterJobRepository(),
+  collectionRepository,
+  new CollectionAutoFilterService(
+    collectionRepository,
+    new JapaneseDictionaryService(new JapaneseDictionaryRepository()),
+    new LlmClient()
+  )
+);
+const collectionService = new CollectionService(
+  collectionRepository,
+  autoFilterJobService
+);
 
 function parseCollectionId(rawCollectionId: string) {
   const collectionId = Number(rawCollectionId);
@@ -27,6 +46,7 @@ export async function GET(
   context: { params: Promise<{ collectionId: string }> }
 ) {
   try {
+    void autoFilterJobService.kickOff();
     const { collectionId: rawCollectionId } = await context.params;
     const collectionId = parseCollectionId(rawCollectionId);
     const collection = await collectionService.getCollectionDetail(collectionId);
@@ -85,7 +105,26 @@ export async function PATCH(
       throw new ValidationError("description must be a string");
     }
 
-    if (body.name === undefined && body.description === undefined) {
+    if (
+      body.autoFilterEnabled !== undefined &&
+      typeof body.autoFilterEnabled !== "boolean"
+    ) {
+      throw new ValidationError("autoFilterEnabled must be a boolean");
+    }
+
+    if (
+      body.autoFilterCriteria !== undefined &&
+      typeof body.autoFilterCriteria !== "string"
+    ) {
+      throw new ValidationError("autoFilterCriteria must be a string");
+    }
+
+    if (
+      body.name === undefined &&
+      body.description === undefined &&
+      body.autoFilterEnabled === undefined &&
+      body.autoFilterCriteria === undefined
+    ) {
       throw new ValidationError("at least one field must be provided");
     }
 

@@ -28,7 +28,11 @@
 - `japanese_dictionary_entries` uses the composite key `word + pronunciation`.
 - `japanese_dictionary_entries.examples` stores persisted example sentences as JSONB.
 - The app can backfill this column from AI responses during normal lookup traffic.
-- When a lookup includes `context`, the app first computes a context-shaped result; if it clearly diverges from the generic result, the app asks AI to reconcile both and persists the merged default entry.
+- `collections` and `collection_words` model a many-to-many relation between collections and concrete dictionary entries (`word_id`).
+- The same `word_id` can appear only once inside a given collection, no matter whether it is added manually or by AI auto-filtering.
+- `collection_words.source` distinguishes `manual` vs `auto` membership.
+- `auto_filter_jobs` stores asynchronous collection auto-filter work; lookup requests enqueue jobs instead of doing all classification inline.
+- When a lookup includes `context`, the app may still build a context-shaped result, but local persisted entries are preferred when they already have examples and the context is not instructional.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 
 ## Quality Checks
@@ -73,7 +77,9 @@
 - Check that `E2E_DATABASE_URL` is set before running `npm run test:e2e`.
 - Check that the test database name ends with `_e2e` or `_test`.
 - Check that local PostgreSQL is running and reachable from that connection string.
-- `e2e/global-setup.mjs` will apply `schema.sql` and `seed.sql` to the test database before the test starts.
+- Run `npx playwright install chromium` once if the Playwright browser binaries are missing.
+- `e2e/global-setup.mjs` applies `schema.sql`, truncates the E2E tables, and then loads `e2e/fixtures.sql` before the test starts.
+- `npm run test:e2e` starts a production-style server on `127.0.0.1:3100` via `npm run build && npm run start`, so it should not share a running `next dev` process or assume port `3000`.
 
 ## MCP Setup
 
@@ -98,3 +104,4 @@
 - Prefer reading `docs/ai/ARCHITECTURE.md` before making structural changes.
 - Treat `shared/db/sql/schema.sql` as the single schema source of truth.
 - Keep route handlers thin and push logic into services under `features/`.
+- If you change collection flows, overview behavior, or lookup persistence side effects, update both `docs/ai/*` and `e2e/*` in the same change.

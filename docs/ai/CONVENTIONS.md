@@ -43,5 +43,7 @@
 
 - Run `npm run lint` before commit.
 - Run `npm run build` before commit when changing app structure, types, or route handlers.
+- Run `npm run test:e2e` when changing core user flows such as lookup, overview, history, collections, or collection auto-filtering.
 - Keep commits focused and descriptive.
 - Update `docs/ai/*` when architecture or workflow changes.
+- Keep `e2e/fixtures.sql` and Playwright expectations aligned with any intentional product-copy or workflow changes.

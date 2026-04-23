@@ -33,12 +33,12 @@ export class CollectionWordService {
     const pronunciation = rawPronunciation?.trim() || undefined;
 
     if (!word) {
-      throw new ValidationError("word is required");
+      throw new ValidationError("请输入要添加的单词。");
     }
 
     const collection = await this.collectionRepository.findById(collectionId);
     if (!collection) {
-      throw new NotFoundError("collection not found");
+      throw new NotFoundError("未找到这个 collection。");
     }
 
     const candidates = await this.dictionaryService.findEntryCandidates(word);
@@ -74,12 +74,12 @@ export class CollectionWordService {
     rawWordIds: number[]
   ): Promise<AddCollectionWordsResponse> {
     if (!Array.isArray(rawWordIds) || rawWordIds.length === 0) {
-      throw new ValidationError("wordIds must contain at least one item");
+      throw new ValidationError("请至少选择一个词条。");
     }
 
     const collection = await this.collectionRepository.findById(collectionId);
     if (!collection) {
-      throw new NotFoundError("collection not found");
+      throw new NotFoundError("未找到这个 collection。");
     }
 
     const uniqueWordIds = Array.from(
@@ -89,7 +89,7 @@ export class CollectionWordService {
     );
 
     if (uniqueWordIds.length === 0) {
-      throw new ValidationError("wordIds must contain positive integers");
+      throw new ValidationError("请选择有效的词条后再添加。");
     }
 
     const addedCount = await this.collectionRepository.addWordsToCollection(
@@ -101,5 +101,25 @@ export class CollectionWordService {
       addedCount,
       skippedCount: uniqueWordIds.length - addedCount,
     };
+  }
+
+  async removeWord(collectionId: number, wordId: number): Promise<void> {
+    if (!Number.isInteger(wordId) || wordId <= 0) {
+      throw new ValidationError("请选择有效的词条后再移除。");
+    }
+
+    const collection = await this.collectionRepository.findById(collectionId);
+    if (!collection) {
+      throw new NotFoundError("未找到这个 collection。");
+    }
+
+    const removed = await this.collectionRepository.removeWordFromCollection(
+      collectionId,
+      wordId
+    );
+
+    if (!removed) {
+      throw new NotFoundError("这个词条不在当前 collection 中。");
+    }
   }
 }

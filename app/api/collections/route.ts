@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
+import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
+import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
+import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionService } from "@/features/collections/application/CollectionService";
+import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
+import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
+import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 import type {
   CollectionListResponse,
   CollectionResponse,
@@ -10,10 +16,21 @@ import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const collectionService = new CollectionService(new CollectionRepository());
+const collectionRepository = new CollectionRepository();
+const autoFilterJobService = new CollectionAutoFilterJobService(
+  new CollectionAutoFilterJobRepository(),
+  collectionRepository,
+  new CollectionAutoFilterService(
+    collectionRepository,
+    new JapaneseDictionaryService(new JapaneseDictionaryRepository()),
+    new LlmClient()
+  )
+);
+const collectionService = new CollectionService(collectionRepository, autoFilterJobService);
 
 export async function GET() {
   try {
+    void autoFilterJobService.kickOff();
     const collections = await collectionService.listCollections();
     const response: CollectionListResponse = { collections };
 

@@ -30,6 +30,12 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
       description: "",
       wordCount: 2,
       createdAt: "2026-04-12T00:00:00.000Z",
+      autoFilterEnabled: false,
+      autoFilterCriteria: "",
+      autoFilterSyncStatus: "idle",
+      autoFilterLastRunAt: null,
+      autoFilterLastError: "",
+      autoFilterRuleVersion: 1,
       words: [
         {
           wordId: 11,
@@ -37,6 +43,8 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
           pronunciation: "いだく",
           meaningZh: "怀有；心存",
           partOfSpeech: "动词",
+          source: "manual",
+          matchedRuleVersion: null,
         },
       ],
     });
@@ -54,6 +62,12 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
         description: "",
         wordCount: 2,
         createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: false,
+        autoFilterCriteria: "",
+        autoFilterSyncStatus: "idle",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 1,
         words: [
           {
             wordId: 11,
@@ -61,6 +75,8 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
             pronunciation: "いだく",
             meaningZh: "怀有；心存",
             partOfSpeech: "动词",
+            source: "manual",
+            matchedRuleVersion: null,
           },
         ],
       },
@@ -98,6 +114,12 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
       description: "",
       wordCount: 4,
       createdAt: "2026-04-12T00:00:00.000Z",
+      autoFilterEnabled: true,
+      autoFilterCriteria: "收录 JLPT N3 常见词",
+      autoFilterSyncStatus: "pending",
+      autoFilterLastRunAt: null,
+      autoFilterLastError: "",
+      autoFilterRuleVersion: 2,
     });
 
     const { PATCH } = await import("@/app/api/collections/[collectionId]/route");
@@ -121,6 +143,12 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
         description: "",
         wordCount: 4,
         createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "收录 JLPT N3 常见词",
+        autoFilterSyncStatus: "pending",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 2,
       },
     });
     expect(updateCollectionMock).toHaveBeenCalledWith(3, { name: "新名字" });

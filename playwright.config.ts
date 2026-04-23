@@ -8,6 +8,7 @@ export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/global-setup.mjs",
   fullyParallel: false,
+  workers: 1,
   use: {
     baseURL: "http://127.0.0.1:3100",
     screenshot: "only-on-failure",
@@ -15,7 +16,7 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+    command: "npm run build && npm run start -- --hostname 127.0.0.1 --port 3100",
     env: {
       ...process.env,
       DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",

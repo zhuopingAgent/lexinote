@@ -9,6 +9,8 @@ type CollectionPanelProps = {
   collectionName: string;
   editingCollectionId: number | null;
   editingCollectionName: string;
+  editingCollectionAutoFilterEnabled: boolean;
+  editingCollectionAutoFilterCriteria: string;
   error: string | null;
   isLoading: boolean;
   isCreating: boolean;
@@ -17,6 +19,8 @@ type CollectionPanelProps = {
   onCreateCollection: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onStartEditing: (collection: CollectionSummary) => void;
   onEditingCollectionNameChange: (value: string) => void;
+  onEditingCollectionAutoFilterEnabledChange: (value: boolean) => void;
+  onEditingCollectionAutoFilterCriteriaChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: (event: FormEvent<HTMLFormElement>, collectionId: number) => Promise<void>;
   onDeleteCollection: (collectionId: number) => Promise<void>;
@@ -26,11 +30,53 @@ function formatWordCount(count: number) {
   return `${count} 个单词`;
 }
 
+function getAutoFilterStatusLabel(collection: CollectionSummary) {
+  if (!collection.autoFilterEnabled || !collection.autoFilterCriteria.trim()) {
+    return null;
+  }
+
+  switch (collection.autoFilterSyncStatus) {
+    case "pending":
+      return { text: "待同步", tone: "text-amber-300 border-amber-400/20 bg-amber-500/10" };
+    case "running":
+      return { text: "同步中", tone: "text-sky-300 border-sky-400/20 bg-sky-500/10" };
+    case "failed":
+      return { text: "同步失败", tone: "text-danger border-danger/30 bg-danger-soft/60" };
+    case "completed":
+      return { text: "已同步", tone: "text-emerald-300 border-emerald-400/20 bg-emerald-500/10" };
+    default:
+      return { text: "已开启", tone: "text-white/52 border-white/10 bg-white/6" };
+  }
+}
+
+function getAutoFilterStatusHint(collection: CollectionSummary) {
+  if (!collection.autoFilterEnabled || !collection.autoFilterCriteria.trim()) {
+    return null;
+  }
+
+  switch (collection.autoFilterSyncStatus) {
+    case "pending":
+      return "已保存筛选条件，正在排队同步词条。";
+    case "running":
+      return "AI 正在根据筛选条件整理这个 collection。";
+    case "failed":
+      return collection.autoFilterLastError || "上一次自动筛选失败，请稍后再试。";
+    case "completed":
+      return collection.autoFilterLastRunAt
+        ? "最近一次自动筛选已经完成。"
+        : "AI 自动筛选已开启。";
+    default:
+      return "AI 自动筛选已开启。";
+  }
+}
+
 export function CollectionPanel({
   collections,
   collectionName,
   editingCollectionId,
   editingCollectionName,
+  editingCollectionAutoFilterEnabled,
+  editingCollectionAutoFilterCriteria,
   error,
   isLoading,
   isCreating,
@@ -39,6 +85,8 @@ export function CollectionPanel({
   onCreateCollection,
   onStartEditing,
   onEditingCollectionNameChange,
+  onEditingCollectionAutoFilterEnabledChange,
+  onEditingCollectionAutoFilterCriteriaChange,
   onCancelEditing,
   onSaveEditing,
   onDeleteCollection,
@@ -147,6 +195,8 @@ export function CollectionPanel({
           {collections.map((collection) => {
             const isEditing = editingCollectionId === collection.collectionId;
             const isBusy = busyCollectionId === collection.collectionId;
+            const autoFilterStatus = getAutoFilterStatusLabel(collection);
+            const autoFilterStatusHint = getAutoFilterStatusHint(collection);
 
             return (
               <div
@@ -191,13 +241,57 @@ export function CollectionPanel({
                           aria-label="编辑 collection 名称"
                           className="h-11 w-full rounded-[14px] border border-white/14 bg-[#151515cc] px-4 text-sm text-white/78 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                         />
+                        <div className="rounded-[16px] border border-white/10 bg-[#171717cc] p-4">
+                          <label className="flex items-center gap-3 text-sm text-white/72">
+                            <input
+                              type="checkbox"
+                              checked={editingCollectionAutoFilterEnabled}
+                              onChange={(event) =>
+                                onEditingCollectionAutoFilterEnabledChange(
+                                  event.target.checked
+                                )
+                              }
+                              disabled={isBusy}
+                              className="size-4 rounded border-white/20 bg-transparent accent-white/80 disabled:cursor-not-allowed"
+                            />
+                            <span>开启 AI 自动筛选</span>
+                          </label>
+                          <p className="mt-2 text-xs leading-5 text-white/34">
+                            保存后会先扫描现有词条，之后每次有新单词入库时，也会按这里的条件自动加入这个 collection。
+                          </p>
+
+                          {editingCollectionAutoFilterEnabled ? (
+                            <textarea
+                              value={editingCollectionAutoFilterCriteria}
+                              onChange={(event) =>
+                                onEditingCollectionAutoFilterCriteriaChange(
+                                  event.target.value
+                                )
+                              }
+                              disabled={isBusy}
+                              rows={4}
+                              placeholder="例如：收录 JLPT N3 常见词；偏日常使用；不要专有名词；优先动词和形容词。"
+                              aria-label="AI 自动筛选条件"
+                              className="mt-3 w-full rounded-[14px] border border-white/12 bg-[#111111cc] px-4 py-3 text-sm leading-6 text-white/74 outline-none placeholder:text-white/28 focus:border-white/24 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                          ) : null}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="submit"
-                            disabled={isBusy || editingCollectionName.trim().length === 0}
+                            disabled={
+                              isBusy ||
+                              editingCollectionName.trim().length === 0 ||
+                              (editingCollectionAutoFilterEnabled &&
+                                editingCollectionAutoFilterCriteria.trim().length === 0)
+                            }
                             className="inline-flex h-10 items-center justify-center rounded-full bg-white/10 px-4 text-sm text-white/72 transition hover:bg-white/14 disabled:cursor-not-allowed disabled:opacity-45"
                           >
-                            {isBusy ? "保存中..." : "保存"}
+                            {isBusy
+                              ? editingCollectionAutoFilterEnabled
+                                ? "保存并筛选中..."
+                                : "保存中..."
+                              : "保存"}
                           </button>
                           <button
                             type="button"
@@ -210,9 +304,25 @@ export function CollectionPanel({
                         </div>
                       </form>
                     ) : (
-                      <p className="mt-4 truncate text-[22px] font-medium tracking-[-0.04em] text-white/76">
-                        {collection.name}
-                      </p>
+                      <>
+                        <p className="mt-4 truncate text-[22px] font-medium tracking-[-0.04em] text-white/76">
+                          {collection.name}
+                        </p>
+                        {autoFilterStatus ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs ${autoFilterStatus.tone}`}
+                            >
+                              {autoFilterStatus.text}
+                            </span>
+                          </div>
+                        ) : null}
+                        {autoFilterStatusHint ? (
+                          <p className="mt-2 text-xs leading-5 text-white/36">
+                            {autoFilterStatusHint}
+                          </p>
+                        ) : null}
+                      </>
                     )}
                   </div>
 

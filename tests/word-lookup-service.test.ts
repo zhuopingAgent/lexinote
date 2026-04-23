@@ -36,7 +36,7 @@ describe("WordLookupService", () => {
   it("returns the dictionary entry when the word exists locally", async () => {
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([entry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -63,6 +63,33 @@ describe("WordLookupService", () => {
       undefined
     );
     expect(dictionaryService.saveEntry).toHaveBeenCalledWith(completedEntry);
+  });
+
+  it("auto-classifies a newly persisted entry into matching collections", async () => {
+    const dictionaryService = {
+      findEntries: vi.fn().mockResolvedValue([entry]),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 21, isNewEntry: true }),
+    };
+    const aiWordLookupService = {
+      resolveLookupWord: vi.fn(),
+      completeEntry: vi.fn().mockResolvedValue(completedEntry),
+      reconcileEntries: vi.fn(),
+    };
+    const collectionAutoFilterJobService = {
+      enqueueEntryClassification: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new WordLookupService(
+      dictionaryService as never,
+      aiWordLookupService as never,
+      collectionAutoFilterJobService as never
+    );
+
+    await service.lookupWord("食べる");
+
+    expect(collectionAutoFilterJobService.enqueueEntryClassification).toHaveBeenCalledWith(
+      21
+    );
   });
 
   it("uses context to regenerate the result without persisting it", async () => {
@@ -100,7 +127,7 @@ describe("WordLookupService", () => {
           examples: completedEntry.examples,
         },
       ]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -113,7 +140,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "不安を抱く")).resolves.toEqual({
+    await expect(service.lookupWord("抱く", "请解释不安を抱く的用法")).resolves.toEqual({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -128,7 +155,7 @@ describe("WordLookupService", () => {
         partOfSpeech: "动词",
         examples: completedEntry.examples,
       },
-      "不安を抱く"
+      "请解释不安を抱く的用法"
     );
     expect(aiWordLookupService.reconcileEntries).toHaveBeenCalledWith(
       "抱く",
@@ -140,67 +167,67 @@ describe("WordLookupService", () => {
         examples: completedEntry.examples,
       },
       contextualEntry,
-      "不安を抱く"
+      "请解释不安を抱く的用法"
     );
     expect(dictionaryService.saveEntry).not.toHaveBeenCalled();
   });
 
-  it("persists a contextual entry as an additional pronunciation when context changes the reading", async () => {
+  it("does not persist a context-form pronunciation as a new dictionary entry", async () => {
     const genericEntry: DictionaryEntry = {
-      word: "抱く",
-      pronunciation: "だく",
-      meaningZh: "抱；拥抱；怀有",
+      word: "巡る",
+      pronunciation: "めぐる",
+      meaningZh: "围绕；巡回",
       partOfSpeech: "动词",
       examples: [
         {
-          japanese: "子どもを抱いて眠る。",
-          reading: "こども を だいて ねむる。",
-          translationZh: "抱着孩子睡觉。",
+          japanese: "季節が巡る。",
+          reading: "きせつ が めぐる。",
+          translationZh: "季节轮转。",
         },
         {
-          japanese: "花束を胸に抱く。",
-          reading: "はなたば を むね に だく。",
-          translationZh: "把花束抱在胸前。",
+          japanese: "村を巡る。",
+          reading: "むら を めぐる。",
+          translationZh: "在村里巡行。",
         },
         {
-          japanese: "夢を抱いて上京した。",
-          reading: "ゆめ を いだいて じょうきょう した。",
-          translationZh: "怀着梦想去了东京。",
+          japanese: "話題が巡る。",
+          reading: "わだい が めぐる。",
+          translationZh: "话题在流转。",
         },
       ],
     };
     const contextualEntry: DictionaryEntry = {
-      word: "抱く",
-      pronunciation: "いだく",
-      meaningZh: "怀有；心存",
+      word: "巡る",
+      pronunciation: "めぐり",
+      meaningZh: "围绕，就……问题",
       partOfSpeech: "动词",
       examples: [
         {
-          japanese: "彼は将来に不安を抱いている。",
-          reading: "かれ は しょうらい に ふあん を いだいて いる。",
-          translationZh: "他对未来怀有不安。",
+          japanese: "その案を巡り議論が続いた。",
+          reading: "その あん を めぐり ぎろん が つづいた。",
+          translationZh: "围绕那个提案的讨论持续了下去。",
         },
         {
-          japanese: "住民は計画に疑念を抱いた。",
-          reading: "じゅうみん は けいかく に ぎねん を いだいた。",
-          translationZh: "居民对计划产生了疑虑。",
+          japanese: "予算を巡り意見が割れた。",
+          reading: "よさん を めぐり いけん が われた。",
+          translationZh: "围绕预算问题意见出现分歧。",
         },
         {
-          japanese: "彼女は強い期待を抱いていた。",
-          reading: "かのじょ は つよい きたい を いだいて いた。",
-          translationZh: "她怀有很强的期待。",
+          japanese: "責任を巡り対立が深まった。",
+          reading: "せきにん を めぐり たいりつ が ふかまった。",
+          translationZh: "围绕责任问题的对立加深了。",
         },
       ],
     };
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([genericEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
       completeEntry: vi.fn().mockResolvedValue(contextualEntry),
-      reconcileEntries: vi.fn(),
+      reconcileEntries: vi.fn().mockResolvedValue(null),
     };
 
     const service = new WordLookupService(
@@ -208,14 +235,27 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "不安を抱く")).resolves.toEqual({
-      word: "抱く",
-      lookupWord: "抱く",
+    await expect(
+      service.lookupWord("巡る", "请解释問題を巡り議論する这个用法")
+    ).resolves.toEqual({
+      word: "巡る",
+      lookupWord: "巡る",
       source: "dictionary",
-      entry: contextualEntry,
+      entry: {
+        ...contextualEntry,
+        pronunciation: "めぐる",
+      },
     });
-    expect(dictionaryService.saveEntry).toHaveBeenCalledWith(contextualEntry);
-    expect(aiWordLookupService.reconcileEntries).not.toHaveBeenCalled();
+    expect(dictionaryService.saveEntry).not.toHaveBeenCalled();
+    expect(aiWordLookupService.reconcileEntries).toHaveBeenCalledWith(
+      "巡る",
+      genericEntry,
+      {
+        ...contextualEntry,
+        pronunciation: "めぐる",
+      },
+      "请解释問題を巡り議論する这个用法"
+    );
   });
 
   it("reconciles generic and contextual entries when the reading stays the same but the meaning diverges clearly", async () => {
@@ -291,7 +331,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([genericEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -304,7 +344,9 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "不安を抱く")).resolves.toEqual({
+    await expect(
+      service.lookupWord("抱く", "请解释不安を抱く和普通抱く的区别")
+    ).resolves.toEqual({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -316,7 +358,7 @@ describe("WordLookupService", () => {
   it("reuses persisted examples without calling AI again", async () => {
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([completedEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -374,7 +416,7 @@ describe("WordLookupService", () => {
         .fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([resolvedEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn().mockResolvedValue({
@@ -414,7 +456,7 @@ describe("WordLookupService", () => {
   it("falls back to AI inference when the dictionary still misses after base-form resolution", async () => {
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn().mockResolvedValue({
@@ -525,7 +567,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn().mockResolvedValue(null),
@@ -545,6 +587,85 @@ describe("WordLookupService", () => {
       entry: fallbackEntry,
     });
     expect(dictionaryService.saveEntry).not.toHaveBeenCalled();
+  });
+
+  it("persists only the dictionary-form entry for a first context lookup", async () => {
+    const genericEntry: DictionaryEntry = {
+      word: "巡る",
+      pronunciation: "めぐる",
+      meaningZh: "围绕；巡回",
+      partOfSpeech: "动词",
+      examples: [
+        {
+          japanese: "季節が巡る。",
+          reading: "きせつ が めぐる。",
+          translationZh: "季节轮转。",
+        },
+        {
+          japanese: "町を巡る。",
+          reading: "まち を めぐる。",
+          translationZh: "在城里巡行。",
+        },
+        {
+          japanese: "話が巡る。",
+          reading: "はなし が めぐる。",
+          translationZh: "话题流转。",
+        },
+      ],
+    };
+    const contextualEntry: DictionaryEntry = {
+      word: "巡る",
+      pronunciation: "めぐり",
+      meaningZh: "围绕，就……问题",
+      partOfSpeech: "动词",
+      examples: [
+        {
+          japanese: "制度を巡り議論が起きた。",
+          reading: "せいど を めぐり ぎろん が おきた。",
+          translationZh: "围绕制度问题发生了讨论。",
+        },
+        {
+          japanese: "予算を巡り意見が対立した。",
+          reading: "よさん を めぐり いけん が たいりつ した。",
+          translationZh: "围绕预算问题意见产生对立。",
+        },
+        {
+          japanese: "責任を巡り争いが続いた。",
+          reading: "せきにん を めぐり あらそい が つづいた。",
+          translationZh: "围绕责任问题的争论持续了下去。",
+        },
+      ],
+    };
+
+    const dictionaryService = {
+      findEntries: vi.fn().mockResolvedValue([]),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
+    };
+    const aiWordLookupService = {
+      resolveLookupWord: vi.fn().mockResolvedValue(null),
+      completeEntry: vi
+        .fn()
+        .mockResolvedValueOnce(genericEntry)
+        .mockResolvedValueOnce(contextualEntry),
+      reconcileEntries: vi.fn().mockResolvedValue(null),
+    };
+
+    const service = new WordLookupService(
+      dictionaryService as never,
+      aiWordLookupService as never
+    );
+
+    await expect(service.lookupWord("巡る", "制度を巡り議論が起きた")).resolves.toEqual({
+      word: "巡る",
+      lookupWord: "巡る",
+      source: "ai",
+      entry: {
+        ...contextualEntry,
+        pronunciation: "めぐる",
+      },
+    });
+    expect(dictionaryService.saveEntry).toHaveBeenCalledTimes(1);
+    expect(dictionaryService.saveEntry).toHaveBeenCalledWith(genericEntry);
   });
 
   it("returns all local entries when the same word has multiple persisted results", async () => {
@@ -597,7 +718,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([physicalEntry, abstractEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -671,7 +792,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([physicalEntry, abstractEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -745,7 +866,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([physicalEntry, abstractEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -822,7 +943,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([physicalEntry, abstractEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -901,7 +1022,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([abstractEntryA, abstractEntryB]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),
@@ -999,7 +1120,7 @@ describe("WordLookupService", () => {
 
     const dictionaryService = {
       findEntries: vi.fn().mockResolvedValue([physicalEntry, abstractEntry]),
-      saveEntry: vi.fn(),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
     };
     const aiWordLookupService = {
       resolveLookupWord: vi.fn(),

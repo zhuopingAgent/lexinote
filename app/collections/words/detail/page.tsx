@@ -1,30 +1,39 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AppBrandIcon, CollectionIcon } from "@/app/components/icons";
-import { CollectionWordPicker } from "@/app/components/collection-word-picker";
+import { WordCard } from "@/app/components/word-card";
+import { AppBrandIcon } from "@/app/components/icons";
+import { mapEntryToWordData } from "@/app/lib/word-data";
 import { CollectionService } from "@/features/collections/application/CollectionService";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
+import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
+import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 import { NotFoundError } from "@/shared/utils/errors";
 
-type CollectionAddPageProps = {
+type CollectionWordDetailPageProps = {
   searchParams: Promise<{
     collectionId?: string;
+    wordId?: string;
   }>;
 };
 
 const collectionService = new CollectionService(new CollectionRepository());
+const dictionaryService = new JapaneseDictionaryService(
+  new JapaneseDictionaryRepository()
+);
 
-function formatWordCount(count: number) {
-  return `${count} 个单词`;
-}
-
-export default async function CollectionAddPage({
+export default async function CollectionWordDetailPage({
   searchParams,
-}: CollectionAddPageProps) {
-  const { collectionId: rawCollectionId } = await searchParams;
+}: CollectionWordDetailPageProps) {
+  const { collectionId: rawCollectionId, wordId: rawWordId } = await searchParams;
   const collectionId = Number(rawCollectionId);
+  const wordId = Number(rawWordId);
 
-  if (!Number.isInteger(collectionId) || collectionId <= 0) {
+  if (
+    !Number.isInteger(collectionId) ||
+    collectionId <= 0 ||
+    !Number.isInteger(wordId) ||
+    wordId <= 0
+  ) {
     notFound();
   }
 
@@ -40,7 +49,17 @@ export default async function CollectionAddPage({
     throw error;
   }
 
-  const existingWordIds = collection.words.map((word) => word.wordId);
+  const collectionWord = collection.words.find((word) => word.wordId === wordId);
+
+  if (!collectionWord) {
+    notFound();
+  }
+
+  const entry = await dictionaryService.getEntryDetail(wordId);
+
+  if (!entry) {
+    notFound();
+  }
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
@@ -71,39 +90,12 @@ export default async function CollectionAddPage({
             href={`/collections/detail?collectionId=${collection.collectionId}`}
             className="inline-flex items-center rounded-full border border-white/10 px-4 py-2 text-sm text-white/48 transition hover:border-white/18 hover:text-white/66"
           >
-            返回 collection 详情
+            返回 {collection.name}
           </Link>
 
-          <div className="mt-5 rounded-[22px] border border-white/10 bg-[#1e1e1ecc] p-[clamp(20px,2.8vw,28px)] shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.18em] text-white/28">
-                  Add To Collection
-                </p>
-                <h1 className="mt-3 break-words text-[clamp(28px,4vw,36px)] font-medium tracking-[-0.04em] text-white/80">
-                  {collection.name}
-                </h1>
-                <p className="mt-3 max-w-[42rem] text-sm leading-6 text-white/42">
-                  通过勾选列表或搜索结果，把本地词典中的词条加入这个 collection。
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 self-start rounded-[16px] border border-white/10 bg-white/5 px-4 py-3">
-                <CollectionIcon className="size-5 text-white/42" />
-                <div>
-                  <p className="text-sm font-medium text-white/66">
-                    {formatWordCount(collection.wordCount)}
-                  </p>
-                  <p className="text-xs text-white/30">当前已收录词条数</p>
-                </div>
-              </div>
-            </div>
+          <div className="mt-5 flex justify-center sm:justify-start">
+            <WordCard word={mapEntryToWordData(entry)} />
           </div>
-
-          <CollectionWordPicker
-            collectionId={collection.collectionId}
-            existingWordIds={existingWordIds}
-          />
         </div>
       </section>
     </main>

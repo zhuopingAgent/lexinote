@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { AIWordLookupService } from "@/features/ai-lookup/application/AIWordLookupService";
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
+import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
+import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
+import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
+import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { WordLookupService } from "@/features/word-lookup/application/WordLookupService";
 import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
@@ -9,9 +13,23 @@ import type { WordLookupRequest } from "@/shared/types/api";
 
 export const runtime = "nodejs";
 
+const llmClient = new LlmClient();
+const collectionRepository = new CollectionRepository();
+const dictionaryService = new JapaneseDictionaryService(
+  new JapaneseDictionaryRepository()
+);
 const wordLookupService = new WordLookupService(
-  new JapaneseDictionaryService(new JapaneseDictionaryRepository()),
-  new AIWordLookupService(new LlmClient())
+  dictionaryService,
+  new AIWordLookupService(llmClient),
+  new CollectionAutoFilterJobService(
+    new CollectionAutoFilterJobRepository(),
+    collectionRepository,
+    new CollectionAutoFilterService(
+      collectionRepository,
+      dictionaryService,
+      llmClient
+    )
+  )
 );
 
 export async function POST(request: Request) {

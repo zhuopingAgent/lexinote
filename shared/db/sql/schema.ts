@@ -5,7 +5,8 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
     pronunciation TEXT NOT NULL,
     meaning_zh TEXT NOT NULL,
     part_of_speech TEXT NOT NULL,
-    examples JSONB NOT NULL DEFAULT '[]'::jsonb
+    examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   DO $$
@@ -28,6 +29,9 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
 
   ALTER TABLE japanese_dictionary_entries
     ADD COLUMN IF NOT EXISTS examples JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+  ALTER TABLE japanese_dictionary_entries
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
   ALTER TABLE japanese_dictionary_entries
     ADD COLUMN IF NOT EXISTS word_id BIGINT;
@@ -120,18 +124,39 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
     ALTER COLUMN meaning_zh SET NOT NULL,
     ALTER COLUMN part_of_speech SET NOT NULL,
     ALTER COLUMN examples SET DEFAULT '[]'::jsonb,
-    ALTER COLUMN examples SET NOT NULL;
+    ALTER COLUMN examples SET NOT NULL,
+    ALTER COLUMN created_at SET DEFAULT NOW(),
+    ALTER COLUMN created_at SET NOT NULL;
 
   CREATE TABLE IF NOT EXISTS collections (
     collection_id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    auto_filter_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    auto_filter_criteria TEXT NOT NULL DEFAULT '',
+    auto_filter_sync_status TEXT NOT NULL DEFAULT 'idle',
+    auto_filter_last_run_at TIMESTAMPTZ,
+    auto_filter_last_error TEXT NOT NULL DEFAULT '',
+    auto_filter_rule_version INTEGER NOT NULL DEFAULT 1
   );
 
   ALTER TABLE collections
     ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS auto_filter_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS auto_filter_criteria TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS auto_filter_sync_status TEXT NOT NULL DEFAULT 'idle',
+    ADD COLUMN IF NOT EXISTS auto_filter_last_run_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS auto_filter_last_error TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS auto_filter_rule_version INTEGER NOT NULL DEFAULT 1;
+
+  UPDATE collections
+  SET name = BTRIM(name)
+  WHERE name <> BTRIM(name);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS collections_name_normalized_key
+    ON collections ((LOWER(BTRIM(name))));
 
   CREATE TABLE IF NOT EXISTS collection_words (
     collection_id BIGINT NOT NULL
@@ -141,12 +166,16 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
       REFERENCES japanese_dictionary_entries(word_id)
       ON DELETE CASCADE,
     sort_order INTEGER,
+    source TEXT NOT NULL DEFAULT 'manual',
+    matched_rule_version INTEGER,
     added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (collection_id, word_id)
   );
 
   ALTER TABLE collection_words
     ADD COLUMN IF NOT EXISTS sort_order INTEGER,
+    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS matched_rule_version INTEGER,
     ADD COLUMN IF NOT EXISTS added_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
   CREATE INDEX IF NOT EXISTS collection_words_word_id_idx
@@ -154,4 +183,49 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS collection_words_collection_sort_idx
     ON collection_words (collection_id, sort_order, added_at);
+
+  CREATE INDEX IF NOT EXISTS collection_words_collection_source_idx
+    ON collection_words (collection_id, source);
+
+  CREATE TABLE IF NOT EXISTS auto_filter_jobs (
+    job_id BIGSERIAL PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    collection_id BIGINT
+      REFERENCES collections(collection_id)
+      ON DELETE CASCADE,
+    word_id BIGINT
+      REFERENCES japanese_dictionary_entries(word_id)
+      ON DELETE CASCADE,
+    rule_version INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  ALTER TABLE auto_filter_jobs
+    ADD COLUMN IF NOT EXISTS collection_id BIGINT
+      REFERENCES collections(collection_id)
+      ON DELETE CASCADE,
+    ADD COLUMN IF NOT EXISTS word_id BIGINT
+      REFERENCES japanese_dictionary_entries(word_id)
+      ON DELETE CASCADE,
+    ADD COLUMN IF NOT EXISTS rule_version INTEGER,
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS error_message TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+  CREATE INDEX IF NOT EXISTS auto_filter_jobs_status_created_idx
+    ON auto_filter_jobs (status, created_at, job_id);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS auto_filter_jobs_active_collection_idx
+    ON auto_filter_jobs (job_type, collection_id)
+    WHERE collection_id IS NOT NULL
+      AND status IN ('pending', 'running');
+
+  CREATE UNIQUE INDEX IF NOT EXISTS auto_filter_jobs_active_word_idx
+    ON auto_filter_jobs (job_type, word_id)
+    WHERE word_id IS NOT NULL
+      AND status IN ('pending', 'running');
 `;

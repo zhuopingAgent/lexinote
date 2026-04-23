@@ -28,6 +28,12 @@ describe("GET/POST /api/collections", () => {
         description: "",
         wordCount: 3,
         createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: false,
+        autoFilterCriteria: "",
+        autoFilterSyncStatus: "idle",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 1,
       },
     ]);
 
@@ -43,6 +49,12 @@ describe("GET/POST /api/collections", () => {
           description: "",
           wordCount: 3,
           createdAt: "2026-04-12T00:00:00.000Z",
+          autoFilterEnabled: false,
+          autoFilterCriteria: "",
+          autoFilterSyncStatus: "idle",
+          autoFilterLastRunAt: null,
+          autoFilterLastError: "",
+          autoFilterRuleVersion: 1,
         },
       ],
     });
@@ -76,6 +88,12 @@ describe("GET/POST /api/collections", () => {
       description: "",
       wordCount: 0,
       createdAt: "2026-04-12T00:00:00.000Z",
+      autoFilterEnabled: false,
+      autoFilterCriteria: "",
+      autoFilterSyncStatus: "idle",
+      autoFilterLastRunAt: null,
+      autoFilterLastError: "",
+      autoFilterRuleVersion: 1,
     });
 
     const { POST } = await import("@/app/api/collections/route");
@@ -97,6 +115,12 @@ describe("GET/POST /api/collections", () => {
         description: "",
         wordCount: 0,
         createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: false,
+        autoFilterCriteria: "",
+        autoFilterSyncStatus: "idle",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 1,
       },
     });
     expect(createCollectionMock).toHaveBeenCalledWith("商务表达", undefined);

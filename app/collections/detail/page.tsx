@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CollectionWordGrid } from "@/app/components/collection-word-grid";
 import { AppBrandIcon, CollectionIcon } from "@/app/components/icons";
 import { CollectionService } from "@/features/collections/application/CollectionService";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
@@ -119,43 +120,10 @@ export default async function CollectionDetailPage({
             </Link>
           </div>
 
-          {collection.words.length > 0 ? (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {collection.words.map((word) => (
-                <div
-                  key={word.wordId}
-                  className="rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[24px] font-medium tracking-[-0.04em] text-white/80">
-                        {word.word}
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-white/45">
-                        {word.pronunciation}
-                      </p>
-                    </div>
-                    <span className="inline-flex shrink-0 rounded-full bg-white/7 px-3 py-1 text-xs text-white/52">
-                      {word.partOfSpeech}
-                    </span>
-                  </div>
-
-                  <p className="mt-5 break-words text-sm leading-6 text-white/50">
-                    {word.meaningZh}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
-              <p className="text-base font-medium text-white/60">
-                这个 collection 里还没有单词
-              </p>
-              <p className="mt-2 text-sm leading-6 text-white/38">
-                下一步我们可以把查询结果加入 collection，这里就会开始展示具体词条。
-              </p>
-            </div>
-          )}
+          <CollectionWordGrid
+            collectionId={collection.collectionId}
+            words={collection.words}
+          />
         </div>
       </section>
     </main>
