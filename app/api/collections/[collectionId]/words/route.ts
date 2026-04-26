@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { CollectionWordService } from "@/features/collections/application/CollectionWordService";
-import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
-import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
+import {
+  ensureAutoFilterJobRunnerStarted,
+  getCollectionWordService,
+} from "@/app/api/services";
 import type {
   AddCollectionWordRequest,
   AddCollectionWordResponse,
@@ -11,10 +11,7 @@ import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const collectionWordService = new CollectionWordService(
-  new CollectionRepository(),
-  new JapaneseDictionaryService(new JapaneseDictionaryRepository())
-);
+const collectionWordService = getCollectionWordService();
 
 function parseCollectionId(rawCollectionId: string) {
   const collectionId = Number(rawCollectionId);
@@ -30,6 +27,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ collectionId: string }> }
 ) {
+  ensureAutoFilterJobRunnerStarted();
+
   try {
     let body: Partial<AddCollectionWordRequest>;
 

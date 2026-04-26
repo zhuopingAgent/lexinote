@@ -237,4 +237,85 @@ describe("CollectionAutoFilterJobService", () => {
       1
     );
   });
+
+  it("requeues transient entry classification failures while attempts remain", async () => {
+    const jobRepository = {
+      claimNextJob: vi
+        .fn()
+        .mockResolvedValueOnce({
+          jobId: 1,
+          jobType: "entry_classification" as const,
+          collectionId: null,
+          wordId: 22,
+          ruleVersion: null,
+          attemptCount: 1,
+          maxAttempts: 3,
+        })
+        .mockResolvedValueOnce(null),
+      markCompleted: vi.fn().mockResolvedValue(undefined),
+      markRetryableFailure: vi.fn().mockResolvedValue(undefined),
+      markFailed: vi.fn().mockResolvedValue(undefined),
+    };
+    const collectionRepository = {
+      findById: vi.fn(),
+      updateAutoFilterStatus: vi.fn(),
+    };
+    const collectionAutoFilterService = {
+      classifyWordById: vi.fn().mockRejectedValue(new Error("temporary LLM failure")),
+      syncCollection: vi.fn(),
+    };
+
+    const service = new CollectionAutoFilterJobService(
+      jobRepository as never,
+      collectionRepository as never,
+      collectionAutoFilterService as never
+    );
+
+    await service.kickOff();
+
+    expect(jobRepository.markRetryableFailure).toHaveBeenCalledWith(
+      1,
+      "temporary LLM failure"
+    );
+    expect(jobRepository.markFailed).not.toHaveBeenCalled();
+  });
+
+  it("marks a job failed when the final attempt fails", async () => {
+    const jobRepository = {
+      claimNextJob: vi
+        .fn()
+        .mockResolvedValueOnce({
+          jobId: 1,
+          jobType: "entry_classification" as const,
+          collectionId: null,
+          wordId: 22,
+          ruleVersion: null,
+          attemptCount: 3,
+          maxAttempts: 3,
+        })
+        .mockResolvedValueOnce(null),
+      markCompleted: vi.fn().mockResolvedValue(undefined),
+      markRetryableFailure: vi.fn().mockResolvedValue(undefined),
+      markFailed: vi.fn().mockResolvedValue(undefined),
+    };
+    const collectionRepository = {
+      findById: vi.fn(),
+      updateAutoFilterStatus: vi.fn(),
+    };
+    const collectionAutoFilterService = {
+      classifyWordById: vi.fn().mockRejectedValue(new Error("permanent failure")),
+      syncCollection: vi.fn(),
+    };
+
+    const service = new CollectionAutoFilterJobService(
+      jobRepository as never,
+      collectionRepository as never,
+      collectionAutoFilterService as never
+    );
+
+    await service.kickOff();
+
+    expect(jobRepository.markRetryableFailure).not.toHaveBeenCalled();
+    expect(jobRepository.markFailed).toHaveBeenCalledWith(1, "permanent failure");
+  });
 });

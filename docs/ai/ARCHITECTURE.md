@@ -86,13 +86,17 @@
 6. `collection_words.source` distinguishes `manual` vs `auto` membership.
 7. AI auto-filtering is asynchronous: saving collection rules updates status fields, but existing words are only rescanned when the user explicitly triggers an AI resync for that collection.
 8. New dictionary entries only enqueue incremental classification when a truly new entry is persisted.
+9. Auto-filter jobs have bounded retries, a stale-running lease, and request-triggered polling from API entry points so crashed jobs can recover.
+10. Explicit collection AI re-syncs guard against accidental large LLM scans through `AUTO_FILTER_MAX_SYNC_CANDIDATES` (default `240`).
 
 ### Important Rules
 
 - Think in terms of concrete dictionary entries (`word_id`), not bare word strings.
 - Manual add and AI auto-filter must never create duplicate rows inside one collection.
 - Collection auto-filtering is job-driven, not inline request work.
+- Auto-filter jobs should remain recoverable: preserve retry, lease, and stale-running semantics when touching `auto_filter_jobs`.
 - Do not assume editing an auto-filter rule should rescan the whole dictionary; explicit resync is now a separate user action.
+- Do not remove the AI re-sync candidate cap unless a replacement cost-control mechanism exists.
 - If you change collection membership semantics, update both docs and E2E fixtures/specs in the same change.
 
 ## E2E

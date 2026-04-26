@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
-import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
-import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
-import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
-import { CollectionService } from "@/features/collections/application/CollectionService";
-import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
-import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
-import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
+import {
+  ensureAutoFilterJobRunnerStarted,
+  getCollectionService,
+} from "@/app/api/services";
 import type {
   CollectionDetailResponse,
   CollectionResponse,
@@ -16,20 +12,7 @@ import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const collectionRepository = new CollectionRepository();
-const autoFilterJobService = new CollectionAutoFilterJobService(
-  new CollectionAutoFilterJobRepository(),
-  collectionRepository,
-  new CollectionAutoFilterService(
-    collectionRepository,
-    new JapaneseDictionaryService(new JapaneseDictionaryRepository()),
-    new LlmClient()
-  )
-);
-const collectionService = new CollectionService(
-  collectionRepository,
-  autoFilterJobService
-);
+const collectionService = getCollectionService();
 
 function parseCollectionId(rawCollectionId: string) {
   const collectionId = Number(rawCollectionId);
@@ -45,6 +28,8 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ collectionId: string }> }
 ) {
+  ensureAutoFilterJobRunnerStarted();
+
   try {
     const { collectionId: rawCollectionId } = await context.params;
     const collectionId = parseCollectionId(rawCollectionId);
@@ -87,6 +72,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ collectionId: string }> }
 ) {
+  ensureAutoFilterJobRunnerStarted();
+
   try {
     let body: Partial<UpdateCollectionRequest>;
 
@@ -176,6 +163,8 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ collectionId: string }> }
 ) {
+  ensureAutoFilterJobRunnerStarted();
+
   try {
     const { collectionId: rawCollectionId } = await context.params;
     const collectionId = parseCollectionId(rawCollectionId);
