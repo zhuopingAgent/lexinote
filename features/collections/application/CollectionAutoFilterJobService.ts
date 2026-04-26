@@ -18,6 +18,10 @@ function normalizeErrorMessage(error: unknown) {
     : message;
 }
 
+function hasRetryAttemptsRemaining(job: { attemptCount?: number; maxAttempts?: number }) {
+  return (job.attemptCount ?? 1) < (job.maxAttempts ?? 1);
+}
+
 export class CollectionAutoFilterJobService {
   constructor(
     private readonly jobRepository: CollectionAutoFilterJobRepository,
@@ -69,18 +73,25 @@ export class CollectionAutoFilterJobService {
 
         await this.jobRepository.markCompleted(job.jobId);
       } catch (error) {
+        const message = normalizeErrorMessage(error);
+        const shouldRetry = hasRetryAttemptsRemaining(job);
+
         if (job.jobType === "collection_sync" && job.collectionId !== null) {
           const collection = await this.collectionRepository.findById(job.collectionId);
           await this.collectionRepository.updateAutoFilterStatus(
             job.collectionId,
-            "failed",
+            shouldRetry ? "pending" : "failed",
             new Date().toISOString(),
-            normalizeErrorMessage(error),
+            message,
             collection?.autoFilterLastSyncedRuleVersion ?? null
           );
         }
 
-        await this.jobRepository.markFailed(job.jobId, normalizeErrorMessage(error));
+        if (shouldRetry) {
+          await this.jobRepository.markRetryableFailure(job.jobId, message);
+        } else {
+          await this.jobRepository.markFailed(job.jobId, message);
+        }
       }
     }
   }

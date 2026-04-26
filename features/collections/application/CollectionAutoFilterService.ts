@@ -3,12 +3,32 @@ import { CollectionRepository } from "@/features/collections/infrastructure/Coll
 import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
 
 const AUTO_FILTER_BATCH_SIZE = 24;
+const DEFAULT_AUTO_FILTER_MAX_SYNC_CANDIDATES = 240;
 
 export class AutoFilterRuleChangedError extends Error {
   constructor() {
     super("AI 自动筛选规则已变更，请按最新条件重新同步。");
     this.name = "AutoFilterRuleChangedError";
   }
+}
+
+export class AutoFilterBudgetExceededError extends Error {
+  constructor(candidateCount: number, maxCandidates: number) {
+    super(
+      `本次 AI 重新同步需要评估 ${candidateCount} 个候选词，超过当前上限 ${maxCandidates}。请先缩小词库范围，或调整 AUTO_FILTER_MAX_SYNC_CANDIDATES 后再同步。`
+    );
+    this.name = "AutoFilterBudgetExceededError";
+  }
+}
+
+function getAutoFilterMaxSyncCandidates() {
+  const configuredLimit = Number(process.env.AUTO_FILTER_MAX_SYNC_CANDIDATES);
+
+  if (Number.isInteger(configuredLimit) && configuredLimit > 0) {
+    return configuredLimit;
+  }
+
+  return DEFAULT_AUTO_FILTER_MAX_SYNC_CANDIDATES;
 }
 
 function chunkEntries<T>(items: T[], size: number) {
@@ -56,6 +76,11 @@ export class CollectionAutoFilterService {
         ...entry,
         examples: [],
       }));
+    const maxSyncCandidates = getAutoFilterMaxSyncCandidates();
+
+    if (candidates.length > maxSyncCandidates) {
+      throw new AutoFilterBudgetExceededError(candidates.length, maxSyncCandidates);
+    }
 
     const matchedWordIds = new Set<number>();
     for (const batch of chunkEntries(candidates, AUTO_FILTER_BATCH_SIZE)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
 import { HistoryList } from "@/app/components/history-list";
 import { OverviewList } from "@/app/components/overview-list";
@@ -14,38 +14,10 @@ import {
 } from "@/app/components/icons";
 import { WordCard } from "@/app/components/word-card";
 import { WordCardSkeleton } from "@/app/components/word-card-skeleton";
-import {
-  clearSearchHistory,
-  createSearchHistoryItem,
-  loadSearchHistory,
-  saveSearchHistory,
-  type SearchHistoryItem,
-  upsertSearchHistoryItems,
-} from "@/app/lib/search-history";
-import {
-  buildResultDifferenceNotes,
-  buildResultDifferenceOverview,
-  getResultEntries,
-  mapResultToWordDataList,
-} from "@/app/lib/word-data";
-import type {
-  AddCollectionWordsResponse,
-  CollectionListResponse,
-  CollectionResponse,
-  CollectionSummary,
-  DictionaryOverviewItem,
-  DictionaryOverviewResponse,
-  WordLookupResponse,
-} from "@/shared/types/api";
-
-type ApiError = {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-};
-
-type AppView = "dictionary" | "overview" | "history" | "collections";
+import { useCollections } from "@/app/hooks/use-collections";
+import { useLookupFlow } from "@/app/hooks/use-lookup-flow";
+import { useOverviewWords } from "@/app/hooks/use-overview-words";
+import type { AppView } from "@/app/lib/app-view";
 
 const SIDEBAR_ITEMS = [
   { label: "辞書", icon: BookIcon, view: "dictionary" as AppView },
@@ -59,72 +31,101 @@ const TOP_NAV_ITEMS = [
   { label: "語彙", active: false },
 ];
 
-function buildLookupCacheKey(word: string, context = "", pronunciation = "") {
-  return JSON.stringify({
-    word: word.trim(),
-    context: context.trim(),
-    pronunciation: pronunciation.trim(),
-  });
-}
-
-function isPositiveInteger(value: number) {
-  return Number.isInteger(value) && value > 0;
+function getRequestedView() {
+  const requestedView = new URLSearchParams(window.location.search).get("view");
+  return requestedView === "dictionary" ||
+    requestedView === "overview" ||
+    requestedView === "history" ||
+    requestedView === "collections"
+    ? requestedView
+    : "dictionary";
 }
 
 export default function Home() {
   const [activeView, setActiveView] = useState<AppView>("dictionary");
-  const [word, setWord] = useState("");
-  const [searchContextDraft, setSearchContextDraft] = useState("");
-  const [retryContext, setRetryContext] = useState("");
-  const [selectedRetryPronunciation, setSelectedRetryPronunciation] = useState("");
-  const [result, setResult] = useState<WordLookupResponse | null>(null);
-  const [historyItems, setHistoryItems] = useState<SearchHistoryItem[]>([]);
-  const [overviewQuery, setOverviewQuery] = useState("");
-  const [overviewWords, setOverviewWords] = useState<DictionaryOverviewItem[]>([]);
-  const [overviewNextCursor, setOverviewNextCursor] = useState<string | null>(null);
-  const [overviewError, setOverviewError] = useState<string | null>(null);
-  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
-  const [isOverviewLoadingMore, setIsOverviewLoadingMore] = useState(false);
-  const [hasLoadedOverview, setHasLoadedOverview] = useState(false);
-  const [collections, setCollections] = useState<CollectionSummary[]>([]);
-  const [collectionName, setCollectionName] = useState("");
-  const [collectionError, setCollectionError] = useState<string | null>(null);
-  const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
-  const [editingCollectionName, setEditingCollectionName] = useState("");
-  const [editingCollectionAutoFilterEnabled, setEditingCollectionAutoFilterEnabled] =
-    useState(false);
-  const [editingCollectionAutoFilterCriteria, setEditingCollectionAutoFilterCriteria] =
-    useState("");
-  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
-  const [isCreatingCollection, setIsCreatingCollection] = useState(false);
-  const [busyCollectionId, setBusyCollectionId] = useState<number | null>(null);
-  const [hasLoadedCollections, setHasLoadedCollections] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeContext, setActiveContext] = useState("");
-  const [loadingContext, setLoadingContext] = useState("");
-  const [loadingMode, setLoadingMode] = useState<"search" | "retry" | null>(null);
-  const [isRetryPanelOpen, setIsRetryPanelOpen] = useState(false);
   const statusId = useId();
-  const resultCacheRef = useRef(new Map<string, WordLookupResponse>());
-  const overviewRequestIdRef = useRef(0);
-  const overviewAbortControllerRef = useRef<AbortController | null>(null);
-  const canSubmit = word.trim().length > 0 && !isLoading;
-  const canRetrySubmit =
-    retryContext.trim().length > 0 && result !== null && !isLoading;
-  const hasResult = result !== null;
-  const showsLookupWordHint = result !== null && result.lookupWord !== result.word;
-  const showsContextHint = result !== null && activeContext.length > 0;
-  const resultEntries = result ? getResultEntries(result) : [];
-  const wordCardsData = result ? mapResultToWordDataList(result) : [];
-  const hasMultipleResults = resultEntries.length > 1;
-  const resultDifferenceOverview = hasMultipleResults
-    ? buildResultDifferenceOverview(resultEntries)
-    : null;
-  const resultDifferenceNotes = hasMultipleResults
-    ? buildResultDifferenceNotes(resultEntries)
-    : [];
-  const resultPanelWidthClass = hasMultipleResults ? "max-w-[960px]" : "max-w-2xl";
+  const {
+    word,
+    setWord,
+    searchContextDraft,
+    setSearchContextDraft,
+    retryContext,
+    setRetryContext,
+    selectedRetryPronunciation,
+    setSelectedRetryPronunciation,
+    result,
+    historyItems,
+    error,
+    isLoading,
+    activeContext,
+    loadingContext,
+    loadingMode,
+    isRetryPanelOpen,
+    canSubmit,
+    canRetrySubmit,
+    hasResult,
+    showsLookupWordHint,
+    showsContextHint,
+    resultEntries,
+    wordCardsData,
+    hasMultipleResults,
+    resultDifferenceOverview,
+    resultDifferenceNotes,
+    resultPanelWidthClass,
+    onOpenHistoryItem,
+    onClearHistory,
+    onSubmit,
+    onRetrySubmit,
+    onToggleRetryPanel,
+    onCancelRetry,
+  } = useLookupFlow(setActiveView);
+  const {
+    overviewQuery,
+    setOverviewQuery,
+    overviewWords,
+    overviewNextCursor,
+    overviewError,
+    isOverviewLoading,
+    isOverviewLoadingMore,
+    hasLoadedOverview,
+    onLoadMoreOverviewWords,
+  } = useOverviewWords(activeView);
+  const {
+    collections,
+    collectionName,
+    setCollectionName,
+    collectionError,
+    editingCollectionId,
+    editingCollectionName,
+    setEditingCollectionName,
+    editingCollectionAutoFilterEnabled,
+    setEditingCollectionAutoFilterEnabled,
+    editingCollectionAutoFilterCriteria,
+    setEditingCollectionAutoFilterCriteria,
+    isCollectionsLoading,
+    isCreatingCollection,
+    busyCollectionId,
+    hasLoadedCollections,
+    ensureCollectionsLoaded,
+    onAddOverviewWordToCollection,
+    onCreateCollection,
+    onStartEditingCollection,
+    onCancelEditingCollection,
+    onSaveCollectionUpdate,
+    onDeleteCollection,
+    onResyncCollection,
+  } = useCollections(activeView);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setActiveView(getRequestedView());
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   const statusMessage =
     activeView === "overview"
       ? isOverviewLoading && !hasLoadedOverview
@@ -165,651 +166,6 @@ export default function Home() {
                 ? `已完成 ${result.word} 的查询，并按原形 ${result.lookupWord} 检索。`
                 : `已完成 ${result.word} 的查询。`
             : "输入一个日语词即可开始查询。";
-
-  useEffect(() => {
-    setHistoryItems(loadSearchHistory());
-  }, []);
-
-  useEffect(() => {
-    const requestedView = new URLSearchParams(window.location.search).get("view");
-    if (
-      requestedView === "dictionary" ||
-      requestedView === "overview" ||
-      requestedView === "history" ||
-      requestedView === "collections"
-    ) {
-      setActiveView(requestedView);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeView !== "overview") {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void loadOverviewWords({
-        query: overviewQuery.trim(),
-        reset: true,
-      });
-    }, 250);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [activeView, overviewQuery]);
-
-  useEffect(() => {
-    if (activeView === "collections" && !hasLoadedCollections && !isCollectionsLoading) {
-      void loadCollections();
-    }
-  }, [activeView, hasLoadedCollections, isCollectionsLoading]);
-
-  useEffect(() => {
-    const shouldPollCollections =
-      hasLoadedCollections &&
-      collections.some(
-        (collection) =>
-          collection.autoFilterSyncStatus === "pending" ||
-          collection.autoFilterSyncStatus === "running"
-      );
-
-    if (!shouldPollCollections) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void loadCollections({ silent: true });
-    }, 2500);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [collections, hasLoadedCollections]);
-
-  function rememberSearchResult(
-    searchedWord: string,
-    context: string,
-    pronunciation: string,
-    payload: WordLookupResponse
-  ) {
-    const nextItem = createSearchHistoryItem({
-      searchedWord,
-      context,
-      pronunciation,
-      result: payload,
-    });
-
-    setHistoryItems((currentItems) => {
-      const nextItems = upsertSearchHistoryItems(currentItems, nextItem);
-      saveSearchHistory(nextItems);
-      return nextItems;
-    });
-  }
-
-  function onOpenHistoryItem(item: SearchHistoryItem) {
-    setActiveView("dictionary");
-    setWord(item.searchedWord);
-    setSearchContextDraft(item.context);
-    setRetryContext("");
-    setActiveContext(item.context);
-    setError(null);
-    setResult(item.result);
-    setIsLoading(false);
-    setLoadingContext("");
-    setLoadingMode(null);
-    setIsRetryPanelOpen(false);
-    setSelectedRetryPronunciation(item.pronunciation || item.result.entry.pronunciation);
-    resultCacheRef.current.set(
-      buildLookupCacheKey(item.searchedWord, item.context, item.pronunciation),
-      item.result
-    );
-  }
-
-  function onClearHistory() {
-    clearSearchHistory();
-    setHistoryItems([]);
-  }
-
-  async function loadOverviewWords(options?: {
-    query?: string;
-    cursor?: string;
-    reset?: boolean;
-  }) {
-    const normalizedQuery = options?.query?.trim() ?? "";
-    const normalizedCursor = options?.cursor?.trim() || undefined;
-    const reset = options?.reset ?? false;
-    const requestId = reset ? overviewRequestIdRef.current + 1 : overviewRequestIdRef.current;
-
-    if (reset) {
-      overviewAbortControllerRef.current?.abort();
-      overviewAbortControllerRef.current = new AbortController();
-      overviewRequestIdRef.current = requestId;
-      setOverviewError(null);
-      setIsOverviewLoading(true);
-      setOverviewNextCursor(null);
-    } else {
-      setIsOverviewLoadingMore(true);
-    }
-
-    try {
-      const searchParams = new URLSearchParams();
-      searchParams.set("limit", "24");
-      if (normalizedQuery) {
-        searchParams.set("query", normalizedQuery);
-      }
-      if (normalizedCursor) {
-        searchParams.set("cursor", normalizedCursor);
-      }
-
-      const response = await fetch(`/api/words?${searchParams.toString()}`, {
-        signal: reset ? overviewAbortControllerRef.current?.signal : undefined,
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as DictionaryOverviewResponse;
-      const validEntries = payload.words.filter((entry) =>
-        isPositiveInteger(entry.wordId)
-      );
-
-      if (reset && requestId !== overviewRequestIdRef.current) {
-        return;
-      }
-
-      setOverviewWords((currentEntries) => {
-        if (reset) {
-          return validEntries;
-        }
-
-        const mergedEntries = [...currentEntries];
-        for (const entry of validEntries) {
-          if (!mergedEntries.some((currentEntry) => currentEntry.wordId === entry.wordId)) {
-            mergedEntries.push(entry);
-          }
-        }
-        return mergedEntries;
-      });
-      setOverviewNextCursor(payload.nextCursor);
-      setHasLoadedOverview(true);
-    } catch (overviewLoadError) {
-      if (
-        overviewLoadError instanceof DOMException &&
-        overviewLoadError.name === "AbortError"
-      ) {
-        return;
-      }
-
-      if (reset && requestId !== overviewRequestIdRef.current) {
-        return;
-      }
-
-      const message =
-        overviewLoadError instanceof Error
-          ? overviewLoadError.message
-          : "发生了意外错误";
-      setOverviewError(message);
-
-      if (reset) {
-        setOverviewWords([]);
-        setOverviewNextCursor(null);
-      }
-    } finally {
-      if (reset) {
-        if (requestId === overviewRequestIdRef.current) {
-          setIsOverviewLoading(false);
-        }
-      } else {
-        setIsOverviewLoadingMore(false);
-      }
-    }
-  }
-
-  async function loadCollections(options?: { silent?: boolean }) {
-    const silent = options?.silent ?? false;
-
-    if (!silent) {
-      setCollectionError(null);
-      setIsCollectionsLoading(true);
-    }
-
-    try {
-      const response = await fetch("/api/collections");
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionListResponse;
-      setCollections(payload.collections);
-      setHasLoadedCollections(true);
-    } catch (collectionLoadError) {
-      const message =
-        collectionLoadError instanceof Error
-          ? collectionLoadError.message
-          : "发生了意外错误";
-      if (!silent) {
-        setCollectionError(message);
-      }
-    } finally {
-      if (!silent) {
-        setIsCollectionsLoading(false);
-      }
-    }
-  }
-
-  async function ensureCollectionsLoaded() {
-    if (hasLoadedCollections || isCollectionsLoading) {
-      return;
-    }
-
-    await loadCollections();
-  }
-
-  async function onLoadMoreOverviewWords() {
-    if (!overviewNextCursor || isOverviewLoadingMore) {
-      return;
-    }
-
-    await loadOverviewWords({
-      query: overviewQuery.trim(),
-      cursor: overviewNextCursor,
-      reset: false,
-    });
-  }
-
-  async function onAddOverviewWordToCollection(
-    collectionId: number,
-    wordId: number
-  ): Promise<"added" | "already_exists"> {
-    if (!isPositiveInteger(collectionId) || !isPositiveInteger(wordId)) {
-      throw new Error("当前词条或 collection 信息无效，请刷新页面后重试。");
-    }
-
-    const response = await fetch(`/api/collections/${collectionId}/words/bulk`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        wordIds: [wordId],
-      }),
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json()) as ApiError;
-      throw new Error(payload.error?.message || "请求失败");
-    }
-
-    const payload = (await response.json()) as AddCollectionWordsResponse;
-
-    if (payload.addedCount > 0) {
-      setCollections((currentCollections) =>
-        currentCollections.map((collection) =>
-          collection.collectionId === collectionId
-            ? {
-                ...collection,
-                wordCount: collection.wordCount + payload.addedCount,
-              }
-            : collection
-        )
-      );
-
-      return "added";
-    }
-
-    return "already_exists";
-  }
-
-  async function onCreateCollection(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!collectionName.trim()) {
-      setCollectionError("请输入 collection 名称。");
-      return;
-    }
-
-    setCollectionError(null);
-    setIsCreatingCollection(true);
-
-    try {
-      const response = await fetch("/api/collections", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: collectionName.trim(),
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionResponse;
-      setCollections((currentCollections) => [payload.collection, ...currentCollections]);
-      setCollectionName("");
-      setHasLoadedCollections(true);
-    } catch (collectionCreateError) {
-      const message =
-        collectionCreateError instanceof Error
-          ? collectionCreateError.message
-          : "发生了意外错误";
-      setCollectionError(message);
-    } finally {
-      setIsCreatingCollection(false);
-    }
-  }
-
-  function onStartEditingCollection(collection: CollectionSummary) {
-    setCollectionError(null);
-    setEditingCollectionId(collection.collectionId);
-    setEditingCollectionName(collection.name);
-    setEditingCollectionAutoFilterEnabled(collection.autoFilterEnabled);
-    setEditingCollectionAutoFilterCriteria(collection.autoFilterCriteria);
-  }
-
-  function onCancelEditingCollection() {
-    setEditingCollectionId(null);
-    setEditingCollectionName("");
-    setEditingCollectionAutoFilterEnabled(false);
-    setEditingCollectionAutoFilterCriteria("");
-  }
-
-  async function onSaveCollectionUpdate(
-    event: FormEvent<HTMLFormElement>,
-    collectionId: number
-  ) {
-    event.preventDefault();
-
-    if (!editingCollectionName.trim()) {
-      setCollectionError("请输入 collection 名称。");
-      return;
-    }
-
-    if (
-      editingCollectionAutoFilterEnabled &&
-      !editingCollectionAutoFilterCriteria.trim()
-    ) {
-      setCollectionError("开启 AI 自动筛选时，请填写筛选条件。");
-      return;
-    }
-
-    setCollectionError(null);
-    setBusyCollectionId(collectionId);
-
-    try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: editingCollectionName.trim(),
-          autoFilterEnabled: editingCollectionAutoFilterEnabled,
-          autoFilterCriteria: editingCollectionAutoFilterCriteria.trim(),
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionResponse;
-      setCollections((currentCollections) =>
-        currentCollections.map((collection) =>
-          collection.collectionId === collectionId ? payload.collection : collection
-        )
-      );
-      onCancelEditingCollection();
-    } catch (collectionUpdateError) {
-      const message =
-        collectionUpdateError instanceof Error
-          ? collectionUpdateError.message
-          : "发生了意外错误";
-      setCollectionError(message);
-    } finally {
-      setBusyCollectionId(null);
-    }
-  }
-
-  async function onDeleteCollection(collectionId: number) {
-    const confirmed = window.confirm("确认删除这个 collection 吗？");
-    if (!confirmed) {
-      return;
-    }
-
-    setCollectionError(null);
-    setBusyCollectionId(collectionId);
-
-    try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      setCollections((currentCollections) =>
-        currentCollections.filter((collection) => collection.collectionId !== collectionId)
-      );
-
-      if (editingCollectionId === collectionId) {
-        onCancelEditingCollection();
-      }
-    } catch (collectionDeleteError) {
-      const message =
-        collectionDeleteError instanceof Error
-          ? collectionDeleteError.message
-          : "发生了意外错误";
-      setCollectionError(message);
-    } finally {
-      setBusyCollectionId(null);
-    }
-  }
-
-  async function onResyncCollection(collectionId: number) {
-    setCollectionError(null);
-    setBusyCollectionId(collectionId);
-
-    try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          resyncAutoFilter: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionResponse;
-      setCollections((currentCollections) =>
-        currentCollections.map((collection) =>
-          collection.collectionId === collectionId ? payload.collection : collection
-        )
-      );
-    } catch (collectionResyncError) {
-      const message =
-        collectionResyncError instanceof Error
-          ? collectionResyncError.message
-          : "发生了意外错误";
-      setCollectionError(message);
-    } finally {
-      setBusyCollectionId(null);
-    }
-  }
-
-  async function lookupWord(
-    rawWord: string,
-    rawContext?: string,
-    options?: {
-      preserveResult?: boolean;
-      source?: "search" | "retry";
-      pronunciation?: string;
-    }
-  ) {
-    const normalizedWord = rawWord.trim();
-    const normalizedContext = rawContext?.trim() || "";
-    const normalizedPronunciation = options?.pronunciation?.trim() || "";
-    const cacheKey = JSON.stringify({
-      word: normalizedWord,
-      context: normalizedContext,
-      pronunciation: normalizedPronunciation,
-    });
-
-    if (!normalizedWord) {
-      setError("请输入一个日语单词。");
-      setResult(null);
-      setActiveContext("");
-      return;
-    }
-
-    const cachedResult = resultCacheRef.current.get(cacheKey);
-    if (cachedResult) {
-      rememberSearchResult(
-        normalizedWord,
-        normalizedContext,
-        normalizedPronunciation,
-        cachedResult
-      );
-      setError(null);
-      setResult(cachedResult);
-      setActiveContext(normalizedContext);
-      setSearchContextDraft(normalizedContext);
-      setIsRetryPanelOpen(false);
-      setRetryContext("");
-      setSelectedRetryPronunciation(
-        cachedResult.entry.pronunciation || normalizedPronunciation
-      );
-      setLoadingContext("");
-      setLoadingMode(null);
-      setIsLoading(false);
-      return;
-    }
-
-    setError(null);
-    if (!options?.preserveResult) {
-      setResult(null);
-    }
-    setLoadingContext(normalizedContext);
-    setLoadingMode(options?.source ?? "search");
-    setIsLoading(true);
-
-    try {
-      const response = await fetch("/api/words/lookup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          word: normalizedWord,
-          context: normalizedContext || undefined,
-          pronunciation: normalizedPronunciation || undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as WordLookupResponse;
-      resultCacheRef.current.set(cacheKey, payload);
-      rememberSearchResult(
-        normalizedWord,
-        normalizedContext,
-        normalizedPronunciation,
-        payload
-      );
-      setResult(payload);
-      setActiveContext(normalizedContext);
-      setSearchContextDraft(normalizedContext);
-      setIsRetryPanelOpen(false);
-      setRetryContext("");
-      setSelectedRetryPronunciation(payload.entry.pronunciation);
-    } catch (lookupError) {
-      const message =
-        lookupError instanceof Error ? lookupError.message : "发生了意外错误";
-      setError(
-        options?.preserveResult
-          ? `重新查询失败，当前仍显示上次成功结果。${message}`
-          : message
-      );
-      if (!options?.preserveResult) {
-        setResult(null);
-        setActiveContext("");
-        setSelectedRetryPronunciation("");
-      }
-    } finally {
-      setLoadingContext("");
-      setLoadingMode(null);
-      setIsLoading(false);
-    }
-  }
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setActiveView("dictionary");
-    setIsRetryPanelOpen(false);
-    setRetryContext("");
-    setSelectedRetryPronunciation("");
-    await lookupWord(word, searchContextDraft, { source: "search" });
-  }
-
-  async function onRetrySubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setActiveView("dictionary");
-
-    if (!result) {
-      return;
-    }
-
-    if (!retryContext.trim()) {
-      setError("请补充你希望返回什么样的结果。");
-      return;
-    }
-
-    const retryPronunciation =
-      hasMultipleResults && selectedRetryPronunciation
-        ? selectedRetryPronunciation
-        : undefined;
-
-    setWord(result.word);
-    await lookupWord(result.word, retryContext, {
-      preserveResult: true,
-      source: "retry",
-      pronunciation: retryPronunciation,
-    });
-  }
-
-  function onToggleRetryPanel() {
-    if (!isRetryPanelOpen && !retryContext.trim() && activeContext) {
-      setRetryContext(activeContext);
-    }
-
-    if (!isRetryPanelOpen && result) {
-      setSelectedRetryPronunciation(
-        result.entry.pronunciation || resultEntries[0]?.pronunciation || ""
-      );
-    }
-
-    setIsRetryPanelOpen((currentValue) => !currentValue);
-  }
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
@@ -1040,12 +396,12 @@ export default function Home() {
                           ) : null}
                           {showsLookupWordHint ? (
                             <p className="text-center text-sm leading-6 text-white/45">
-                              已按原形「{result.lookupWord}」查询
+                              已按原形「{result?.lookupWord}」查询
                             </p>
                           ) : null}
-                          {result.lookupReason ? (
+                          {result?.lookupReason ? (
                             <p className="max-w-[32rem] text-center text-xs leading-5 text-white/32">
-                              {result.lookupReason}
+                              {result?.lookupReason}
                             </p>
                           ) : null}
                         </div>
@@ -1212,13 +568,7 @@ export default function Home() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setIsRetryPanelOpen(false);
-                                        setRetryContext("");
-                                        setSelectedRetryPronunciation(
-                                          result?.entry.pronunciation || ""
-                                        );
-                                      }}
+                                      onClick={onCancelRetry}
                                       disabled={isLoading}
                                       className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/44 transition hover:border-white/18 hover:text-white/62 disabled:cursor-not-allowed disabled:opacity-45"
                                     >

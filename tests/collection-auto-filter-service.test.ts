@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
+import {
+  AutoFilterBudgetExceededError,
+  CollectionAutoFilterService,
+} from "@/features/collections/application/CollectionAutoFilterService";
 
 describe("CollectionAutoFilterService", () => {
   it("backfills matching existing words into a collection", async () => {
@@ -151,5 +154,76 @@ describe("CollectionAutoFilterService", () => {
     await expect(service.classifyWordById(22)).resolves.toBe(1);
 
     expect(collectionRepository.addWordToCollections).toHaveBeenCalledWith(22, [4]);
+  });
+
+  it("refuses full sync before calling the LLM when candidate count exceeds the budget", async () => {
+    const previousLimit = process.env.AUTO_FILTER_MAX_SYNC_CANDIDATES;
+    process.env.AUTO_FILTER_MAX_SYNC_CANDIDATES = "2";
+
+    const collectionRepository = {
+      findDetailById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "JLPT N3",
+        description: "",
+        wordCount: 0,
+        createdAt: "2026-04-22T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "收录 JLPT N3 常见词",
+        autoFilterSyncStatus: "running",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 4,
+        words: [],
+      }),
+      replaceAutoWords: vi.fn(),
+    };
+    const dictionaryService = {
+      listEntryCandidates: vi.fn().mockResolvedValue([
+        {
+          wordId: 11,
+          word: "食べる",
+          pronunciation: "たべる",
+          meaningZh: "吃；进食",
+          partOfSpeech: "动词",
+        },
+        {
+          wordId: 12,
+          word: "静か",
+          pronunciation: "しずか",
+          meaningZh: "安静；安稳",
+          partOfSpeech: "形容动词",
+        },
+        {
+          wordId: 13,
+          word: "大切",
+          pronunciation: "たいせつ",
+          meaningZh: "重要；珍贵",
+          partOfSpeech: "形容动词",
+        },
+      ]),
+    };
+    const llmClient = {
+      matchEntriesToCollection: vi.fn(),
+    };
+
+    try {
+      const service = new CollectionAutoFilterService(
+        collectionRepository as never,
+        dictionaryService as never,
+        llmClient as never
+      );
+
+      await expect(service.syncCollection(3)).rejects.toBeInstanceOf(
+        AutoFilterBudgetExceededError
+      );
+      expect(llmClient.matchEntriesToCollection).not.toHaveBeenCalled();
+      expect(collectionRepository.replaceAutoWords).not.toHaveBeenCalled();
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.AUTO_FILTER_MAX_SYNC_CANDIDATES;
+      } else {
+        process.env.AUTO_FILTER_MAX_SYNC_CANDIDATES = previousLimit;
+      }
+    }
   });
 });
