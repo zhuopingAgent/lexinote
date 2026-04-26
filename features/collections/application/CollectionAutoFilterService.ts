@@ -4,6 +4,13 @@ import { JapaneseDictionaryService } from "@/features/japanese-dictionary/applic
 
 const AUTO_FILTER_BATCH_SIZE = 24;
 
+export class AutoFilterRuleChangedError extends Error {
+  constructor() {
+    super("AI 自动筛选规则已变更，请按最新条件重新同步。");
+    this.name = "AutoFilterRuleChangedError";
+  }
+}
+
 function chunkEntries<T>(items: T[], size: number) {
   const chunks: T[][] = [];
 
@@ -21,7 +28,7 @@ export class CollectionAutoFilterService {
     private readonly llmClient: LlmClient
   ) {}
 
-  async syncCollection(collectionId: number): Promise<number> {
+  async syncCollection(collectionId: number, expectedRuleVersion?: number): Promise<number> {
     const collection = await this.collectionRepository.findDetailById(collectionId);
     if (
       !collection ||
@@ -29,6 +36,13 @@ export class CollectionAutoFilterService {
       !collection.autoFilterCriteria.trim()
     ) {
       return 0;
+    }
+
+    if (
+      expectedRuleVersion !== undefined &&
+      collection.autoFilterRuleVersion !== expectedRuleVersion
+    ) {
+      throw new AutoFilterRuleChangedError();
     }
 
     const manualWordIds = new Set(
@@ -58,6 +72,17 @@ export class CollectionAutoFilterService {
       for (const wordId of matchingWordIds) {
         matchedWordIds.add(wordId);
       }
+    }
+
+    const latestCollection = await this.collectionRepository.findById(collection.collectionId);
+    if (
+      !latestCollection ||
+      !latestCollection.autoFilterEnabled ||
+      !latestCollection.autoFilterCriteria.trim() ||
+      (expectedRuleVersion !== undefined &&
+        latestCollection.autoFilterRuleVersion !== expectedRuleVersion)
+    ) {
+      throw new AutoFilterRuleChangedError();
     }
 
     return this.collectionRepository.replaceAutoWords(

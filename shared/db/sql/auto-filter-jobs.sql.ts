@@ -1,9 +1,10 @@
-export const SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_SQL = `
+export const SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_BY_RULE_SQL = `
   SELECT
     job_id
   FROM auto_filter_jobs
   WHERE job_type = 'collection_sync'
     AND collection_id = $1
+    AND rule_version = $2
     AND status IN ('pending', 'running')
   LIMIT 1
 `;

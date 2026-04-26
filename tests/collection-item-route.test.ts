@@ -107,6 +107,29 @@ describe("PATCH/DELETE /api/collections/[collectionId]", () => {
     });
   });
 
+  it("returns 400 when resyncAutoFilter is not a boolean", async () => {
+    const { PATCH } = await import("@/app/api/collections/[collectionId]/route");
+    const request = new Request("http://localhost/api/collections/3", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ resyncAutoFilter: "yes" }),
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ collectionId: "3" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "resyncAutoFilter must be a boolean",
+      },
+    });
+  });
+
   it("updates a collection", async () => {
     updateCollectionMock.mockResolvedValue({
       collectionId: 3,

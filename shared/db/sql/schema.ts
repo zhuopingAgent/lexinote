@@ -138,7 +138,8 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
     auto_filter_sync_status TEXT NOT NULL DEFAULT 'idle',
     auto_filter_last_run_at TIMESTAMPTZ,
     auto_filter_last_error TEXT NOT NULL DEFAULT '',
-    auto_filter_rule_version INTEGER NOT NULL DEFAULT 1
+    auto_filter_rule_version INTEGER NOT NULL DEFAULT 1,
+    auto_filter_last_synced_rule_version INTEGER
   );
 
   ALTER TABLE collections
@@ -149,7 +150,8 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
     ADD COLUMN IF NOT EXISTS auto_filter_sync_status TEXT NOT NULL DEFAULT 'idle',
     ADD COLUMN IF NOT EXISTS auto_filter_last_run_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS auto_filter_last_error TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS auto_filter_rule_version INTEGER NOT NULL DEFAULT 1;
+    ADD COLUMN IF NOT EXISTS auto_filter_rule_version INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS auto_filter_last_synced_rule_version INTEGER;
 
   UPDATE collections
   SET name = BTRIM(name)
@@ -219,9 +221,15 @@ export const ENSURE_JAPANESE_DICTIONARY_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS auto_filter_jobs_status_created_idx
     ON auto_filter_jobs (status, created_at, job_id);
 
-  CREATE UNIQUE INDEX IF NOT EXISTS auto_filter_jobs_active_collection_idx
-    ON auto_filter_jobs (job_type, collection_id)
+  DROP INDEX IF EXISTS auto_filter_jobs_active_collection_idx;
+
+  CREATE INDEX IF NOT EXISTS auto_filter_jobs_collection_status_created_idx
+    ON auto_filter_jobs (job_type, collection_id, status, created_at, job_id);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS auto_filter_jobs_active_collection_rule_idx
+    ON auto_filter_jobs (job_type, collection_id, rule_version)
     WHERE collection_id IS NOT NULL
+      AND rule_version IS NOT NULL
       AND status IN ('pending', 'running');
 
   CREATE UNIQUE INDEX IF NOT EXISTS auto_filter_jobs_active_word_idx

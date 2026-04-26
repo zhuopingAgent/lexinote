@@ -32,6 +32,7 @@
 - The same `word_id` can appear only once inside a given collection, no matter whether it is added manually or by AI auto-filtering.
 - `collection_words.source` distinguishes `manual` vs `auto` membership.
 - `auto_filter_jobs` stores asynchronous collection auto-filter work; lookup requests enqueue jobs instead of doing all classification inline.
+- Editing auto-filter criteria affects future incremental classification, but rescanning existing words now requires an explicit collection-level AI resync.
 - When a lookup includes `context`, the app may still build a context-shaped result, but local persisted entries are preferred when they already have examples and the context is not instructional.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 

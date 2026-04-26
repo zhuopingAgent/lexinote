@@ -4,7 +4,7 @@ import {
   FAIL_AUTO_FILTER_JOB_SQL,
   INSERT_COLLECTION_AUTO_FILTER_JOB_SQL,
   INSERT_ENTRY_AUTO_FILTER_JOB_SQL,
-  SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_SQL,
+  SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_BY_RULE_SQL,
   SELECT_ACTIVE_ENTRY_AUTO_FILTER_JOB_SQL,
 } from "@/shared/db/sql/auto-filter-jobs.sql";
 import { query } from "@/shared/db/query";
@@ -52,18 +52,39 @@ function mapJobRow(row: AutoFilterJobRow): AutoFilterJob {
   };
 }
 
+function isUniqueViolation(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505"
+  );
+}
+
 export class CollectionAutoFilterJobRepository {
-  async enqueueCollectionSync(collectionId: number, ruleVersion: number): Promise<boolean> {
+  async hasActiveCollectionSync(collectionId: number, ruleVersion: number): Promise<boolean> {
     const existingRows = await query<{ job_id: number | string }>(
-      SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_SQL,
-      [collectionId]
+      SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_BY_RULE_SQL,
+      [collectionId, ruleVersion]
     );
 
-    if (existingRows[0]) {
+    return Boolean(existingRows[0]);
+  }
+
+  async enqueueCollectionSync(collectionId: number, ruleVersion: number): Promise<boolean> {
+    if (await this.hasActiveCollectionSync(collectionId, ruleVersion)) {
       return false;
     }
 
-    await query(INSERT_COLLECTION_AUTO_FILTER_JOB_SQL, [collectionId, ruleVersion]);
+    try {
+      await query(INSERT_COLLECTION_AUTO_FILTER_JOB_SQL, [collectionId, ruleVersion]);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return false;
+      }
+
+      throw error;
+    }
     return true;
   }
 
@@ -77,7 +98,15 @@ export class CollectionAutoFilterJobRepository {
       return false;
     }
 
-    await query(INSERT_ENTRY_AUTO_FILTER_JOB_SQL, [wordId]);
+    try {
+      await query(INSERT_ENTRY_AUTO_FILTER_JOB_SQL, [wordId]);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return false;
+      }
+
+      throw error;
+    }
     return true;
   }
 

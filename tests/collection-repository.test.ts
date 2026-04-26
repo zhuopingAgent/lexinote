@@ -47,6 +47,7 @@ describe("CollectionRepository", () => {
         autoFilterLastRunAt: "2026-04-12T12:30:00.000Z",
         autoFilterLastError: "",
         autoFilterRuleVersion: 4,
+        autoFilterLastSyncedRuleVersion: null,
       },
     ]);
   });

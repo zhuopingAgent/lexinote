@@ -1,8 +1,10 @@
-import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
+import {
+  AutoFilterRuleChangedError,
+  CollectionAutoFilterService,
+} from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 
-const MAX_JOBS_PER_RUN = 8;
 const MAX_ERROR_LENGTH = 280;
 
 let processingPromise: Promise<void> | null = null;
@@ -50,7 +52,7 @@ export class CollectionAutoFilterJobService {
   }
 
   private async processPendingJobs() {
-    for (let index = 0; index < MAX_JOBS_PER_RUN; index += 1) {
+    while (true) {
       const job = await this.jobRepository.claimNextJob();
       if (!job) {
         return;
@@ -68,11 +70,13 @@ export class CollectionAutoFilterJobService {
         await this.jobRepository.markCompleted(job.jobId);
       } catch (error) {
         if (job.jobType === "collection_sync" && job.collectionId !== null) {
+          const collection = await this.collectionRepository.findById(job.collectionId);
           await this.collectionRepository.updateAutoFilterStatus(
             job.collectionId,
             "failed",
             new Date().toISOString(),
-            normalizeErrorMessage(error)
+            normalizeErrorMessage(error),
+            collection?.autoFilterLastSyncedRuleVersion ?? null
           );
         }
 
@@ -92,21 +96,23 @@ export class CollectionAutoFilterJobService {
         collectionId,
         "idle",
         collection.autoFilterLastRunAt,
-        ""
+        "",
+        collection.autoFilterLastSyncedRuleVersion ?? null
       );
       return;
     }
 
     if (ruleVersion !== null && collection.autoFilterRuleVersion !== ruleVersion) {
-      await this.collectionRepository.updateAutoFilterStatus(
-        collectionId,
-        "pending",
-        collection.autoFilterLastRunAt,
-        ""
-      );
-      await this.jobRepository.enqueueCollectionSync(
+      const hasQueuedReplacement = await this.jobRepository.hasActiveCollectionSync(
         collectionId,
         collection.autoFilterRuleVersion
+      );
+      await this.collectionRepository.updateAutoFilterStatus(
+        collectionId,
+        hasQueuedReplacement ? "pending" : "idle",
+        collection.autoFilterLastRunAt,
+        "",
+        collection.autoFilterLastSyncedRuleVersion ?? null
       );
       return;
     }
@@ -115,30 +121,42 @@ export class CollectionAutoFilterJobService {
       collectionId,
       "running",
       collection.autoFilterLastRunAt,
-      ""
+      "",
+      collection.autoFilterLastSyncedRuleVersion ?? null
     );
 
-    await this.collectionAutoFilterService.syncCollection(collectionId);
+    try {
+      await this.collectionAutoFilterService.syncCollection(
+        collectionId,
+        ruleVersion ?? undefined
+      );
+    } catch (error) {
+      if (!(error instanceof AutoFilterRuleChangedError)) {
+        throw error;
+      }
 
-    const refreshedCollection = await this.collectionRepository.findById(collectionId);
-    if (!refreshedCollection) {
+      const refreshedAfterRuleChange = await this.collectionRepository.findById(collectionId);
+      if (!refreshedAfterRuleChange) {
+        return;
+      }
+
+      const hasQueuedReplacement = await this.jobRepository.hasActiveCollectionSync(
+        collectionId,
+        refreshedAfterRuleChange.autoFilterRuleVersion
+      );
+
+      await this.collectionRepository.updateAutoFilterStatus(
+        collectionId,
+        hasQueuedReplacement ? "pending" : "idle",
+        refreshedAfterRuleChange.autoFilterLastRunAt,
+        "",
+        refreshedAfterRuleChange.autoFilterLastSyncedRuleVersion ?? null
+      );
       return;
     }
 
-    if (
-      ruleVersion !== null &&
-      refreshedCollection.autoFilterRuleVersion !== ruleVersion
-    ) {
-      await this.collectionRepository.updateAutoFilterStatus(
-        collectionId,
-        "pending",
-        refreshedCollection.autoFilterLastRunAt,
-        ""
-      );
-      await this.jobRepository.enqueueCollectionSync(
-        collectionId,
-        refreshedCollection.autoFilterRuleVersion
-      );
+    const refreshedCollection = await this.collectionRepository.findById(collectionId);
+    if (!refreshedCollection) {
       return;
     }
 
@@ -146,7 +164,8 @@ export class CollectionAutoFilterJobService {
       collectionId,
       "completed",
       new Date().toISOString(),
-      ""
+      "",
+      refreshedCollection.autoFilterRuleVersion
     );
   }
 }

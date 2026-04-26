@@ -108,6 +108,7 @@ export default function Home() {
   const statusId = useId();
   const resultCacheRef = useRef(new Map<string, WordLookupResponse>());
   const overviewRequestIdRef = useRef(0);
+  const overviewAbortControllerRef = useRef<AbortController | null>(null);
   const canSubmit = word.trim().length > 0 && !isLoading;
   const canRetrySubmit =
     retryContext.trim().length > 0 && result !== null && !isLoading;
@@ -281,6 +282,8 @@ export default function Home() {
     const requestId = reset ? overviewRequestIdRef.current + 1 : overviewRequestIdRef.current;
 
     if (reset) {
+      overviewAbortControllerRef.current?.abort();
+      overviewAbortControllerRef.current = new AbortController();
       overviewRequestIdRef.current = requestId;
       setOverviewError(null);
       setIsOverviewLoading(true);
@@ -299,7 +302,9 @@ export default function Home() {
         searchParams.set("cursor", normalizedCursor);
       }
 
-      const response = await fetch(`/api/words?${searchParams.toString()}`);
+      const response = await fetch(`/api/words?${searchParams.toString()}`, {
+        signal: reset ? overviewAbortControllerRef.current?.signal : undefined,
+      });
 
       if (!response.ok) {
         const payload = (await response.json()) as ApiError;
@@ -331,6 +336,17 @@ export default function Home() {
       setOverviewNextCursor(payload.nextCursor);
       setHasLoadedOverview(true);
     } catch (overviewLoadError) {
+      if (
+        overviewLoadError instanceof DOMException &&
+        overviewLoadError.name === "AbortError"
+      ) {
+        return;
+      }
+
+      if (reset && requestId !== overviewRequestIdRef.current) {
+        return;
+      }
+
       const message =
         overviewLoadError instanceof Error
           ? overviewLoadError.message
@@ -594,6 +610,43 @@ export default function Home() {
       const message =
         collectionDeleteError instanceof Error
           ? collectionDeleteError.message
+          : "发生了意外错误";
+      setCollectionError(message);
+    } finally {
+      setBusyCollectionId(null);
+    }
+  }
+
+  async function onResyncCollection(collectionId: number) {
+    setCollectionError(null);
+    setBusyCollectionId(collectionId);
+
+    try {
+      const response = await fetch(`/api/collections/${collectionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          resyncAutoFilter: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as ApiError;
+        throw new Error(payload.error?.message || "请求失败");
+      }
+
+      const payload = (await response.json()) as CollectionResponse;
+      setCollections((currentCollections) =>
+        currentCollections.map((collection) =>
+          collection.collectionId === collectionId ? payload.collection : collection
+        )
+      );
+    } catch (collectionResyncError) {
+      const message =
+        collectionResyncError instanceof Error
+          ? collectionResyncError.message
           : "发生了意外错误";
       setCollectionError(message);
     } finally {
@@ -911,6 +964,7 @@ export default function Home() {
                   }
                   onCancelEditing={onCancelEditingCollection}
                   onSaveEditing={onSaveCollectionUpdate}
+                  onResyncCollection={onResyncCollection}
                   onDeleteCollection={onDeleteCollection}
                 />
               ) : activeView === "history" ? (

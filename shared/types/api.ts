@@ -25,6 +25,7 @@ export type CollectionSummary = {
   autoFilterLastRunAt: string | null;
   autoFilterLastError: string;
   autoFilterRuleVersion: number;
+  autoFilterLastSyncedRuleVersion?: number | null;
 };
 
 export type CollectionWordItem = {
@@ -136,6 +137,7 @@ export type UpdateCollectionRequest = {
   description?: string;
   autoFilterEnabled?: boolean;
   autoFilterCriteria?: string;
+  resyncAutoFilter?: boolean;
 };
 
 export type LookupSource = "dictionary" | "ai";

@@ -17,6 +17,7 @@ describe("CollectionService", () => {
         autoFilterLastRunAt: null,
         autoFilterLastError: "",
         autoFilterRuleVersion: 1,
+        autoFilterLastSyncedRuleVersion: null,
       }),
     };
 
@@ -34,6 +35,7 @@ describe("CollectionService", () => {
       autoFilterLastRunAt: null,
       autoFilterLastError: "",
       autoFilterRuleVersion: 1,
+      autoFilterLastSyncedRuleVersion: null,
     });
     expect(repository.createCollection).toHaveBeenCalledWith("易混词", "");
   });
@@ -69,6 +71,7 @@ describe("CollectionService", () => {
         autoFilterLastRunAt: null,
         autoFilterLastError: "",
         autoFilterRuleVersion: 1,
+        autoFilterLastSyncedRuleVersion: null,
       }),
       findRecordByName: vi.fn().mockResolvedValue(null),
       updateCollection: vi.fn().mockResolvedValue({
@@ -83,6 +86,7 @@ describe("CollectionService", () => {
         autoFilterLastRunAt: null,
         autoFilterLastError: "",
         autoFilterRuleVersion: 1,
+        autoFilterLastSyncedRuleVersion: null,
       }),
     };
 
@@ -100,6 +104,7 @@ describe("CollectionService", () => {
       autoFilterLastRunAt: null,
       autoFilterLastError: "",
       autoFilterRuleVersion: 1,
+      autoFilterLastSyncedRuleVersion: null,
     });
     expect(repository.updateCollection).toHaveBeenCalledWith(
       3,
@@ -110,40 +115,27 @@ describe("CollectionService", () => {
       "idle",
       null,
       "",
-      1
+      1,
+      null
     );
   });
 
   it("does not treat the current collection name as a duplicate when saving auto-filter settings", async () => {
     const repository = {
-      findById: vi
-        .fn()
-        .mockResolvedValueOnce({
-          collectionId: 3,
-          name: "JLPT N3",
-          description: "",
-          wordCount: 2,
-          createdAt: "2026-04-12T00:00:00.000Z",
-          autoFilterEnabled: false,
-          autoFilterCriteria: "",
-          autoFilterSyncStatus: "idle",
-          autoFilterLastRunAt: null,
-          autoFilterLastError: "",
-          autoFilterRuleVersion: 1,
-        })
-        .mockResolvedValueOnce({
-          collectionId: 3,
-          name: "JLPT N3",
-          description: "",
-          wordCount: 2,
-          createdAt: "2026-04-12T00:00:00.000Z",
-          autoFilterEnabled: true,
-          autoFilterCriteria: "收录 JLPT N3 常见词",
-          autoFilterSyncStatus: "pending",
-          autoFilterLastRunAt: null,
-          autoFilterLastError: "",
-          autoFilterRuleVersion: 2,
-        }),
+      findById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "JLPT N3",
+        description: "",
+        wordCount: 2,
+        createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: false,
+        autoFilterCriteria: "",
+        autoFilterSyncStatus: "idle",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 1,
+        autoFilterLastSyncedRuleVersion: null,
+      }),
       findRecordByName: vi.fn().mockResolvedValue({
         collection_id: "3",
         name: "JLPT N3",
@@ -155,6 +147,7 @@ describe("CollectionService", () => {
         auto_filter_last_run_at: null,
         auto_filter_last_error: "",
         auto_filter_rule_version: "1",
+        auto_filter_last_synced_rule_version: null,
       }),
       updateCollection: vi.fn().mockResolvedValue({
         collectionId: 3,
@@ -164,10 +157,11 @@ describe("CollectionService", () => {
         createdAt: "2026-04-12T00:00:00.000Z",
         autoFilterEnabled: true,
         autoFilterCriteria: "收录 JLPT N3 常见词",
-        autoFilterSyncStatus: "pending",
+        autoFilterSyncStatus: "idle",
         autoFilterLastRunAt: null,
         autoFilterLastError: "",
         autoFilterRuleVersion: 2,
+        autoFilterLastSyncedRuleVersion: null,
       }),
     };
 
@@ -186,10 +180,11 @@ describe("CollectionService", () => {
       createdAt: "2026-04-12T00:00:00.000Z",
       autoFilterEnabled: true,
       autoFilterCriteria: "收录 JLPT N3 常见词",
-      autoFilterSyncStatus: "pending",
+      autoFilterSyncStatus: "idle",
       autoFilterLastRunAt: null,
       autoFilterLastError: "",
       autoFilterRuleVersion: 2,
+      autoFilterLastSyncedRuleVersion: null,
     });
   });
 
@@ -207,6 +202,7 @@ describe("CollectionService", () => {
         autoFilterLastRunAt: null,
         autoFilterLastError: "",
         autoFilterRuleVersion: 1,
+        autoFilterLastSyncedRuleVersion: null,
       }),
     };
 
@@ -219,36 +215,22 @@ describe("CollectionService", () => {
     });
   });
 
-  it("re-syncs existing words after enabling AI auto-filter", async () => {
+  it("enabling AI auto-filter does not auto re-sync existing words", async () => {
     const repository = {
-      findById: vi
-        .fn()
-        .mockResolvedValueOnce({
-          collectionId: 3,
-          name: "JLPT N3",
-          description: "",
-          wordCount: 1,
-          createdAt: "2026-04-12T00:00:00.000Z",
-          autoFilterEnabled: false,
-          autoFilterCriteria: "",
-          autoFilterSyncStatus: "idle",
-          autoFilterLastRunAt: null,
-          autoFilterLastError: "",
-          autoFilterRuleVersion: 1,
-        })
-        .mockResolvedValueOnce({
-          collectionId: 3,
-          name: "JLPT N3",
-          description: "",
-          wordCount: 4,
-          createdAt: "2026-04-12T00:00:00.000Z",
-          autoFilterEnabled: true,
-          autoFilterCriteria: "收录 JLPT N3 常见词",
-          autoFilterSyncStatus: "pending",
-          autoFilterLastRunAt: null,
-          autoFilterLastError: "",
-          autoFilterRuleVersion: 2,
-        }),
+      findById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "JLPT N3",
+        description: "",
+        wordCount: 1,
+        createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: false,
+        autoFilterCriteria: "",
+        autoFilterSyncStatus: "idle",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 1,
+        autoFilterLastSyncedRuleVersion: null,
+      }),
       findRecordByName: vi.fn().mockResolvedValue(null),
       updateCollection: vi.fn().mockResolvedValue({
         collectionId: 3,
@@ -258,11 +240,13 @@ describe("CollectionService", () => {
         createdAt: "2026-04-12T00:00:00.000Z",
         autoFilterEnabled: true,
         autoFilterCriteria: "收录 JLPT N3 常见词",
-        autoFilterSyncStatus: "pending",
+        autoFilterSyncStatus: "idle",
         autoFilterLastRunAt: null,
         autoFilterLastError: "",
         autoFilterRuleVersion: 2,
+        autoFilterLastSyncedRuleVersion: null,
       }),
+      replaceAutoWords: vi.fn(),
     };
     const autoFilterJobService = {
       enqueueCollectionSync: vi.fn().mockResolvedValue(undefined),
@@ -286,10 +270,74 @@ describe("CollectionService", () => {
       createdAt: "2026-04-12T00:00:00.000Z",
       autoFilterEnabled: true,
       autoFilterCriteria: "收录 JLPT N3 常见词",
-      autoFilterSyncStatus: "pending",
+      autoFilterSyncStatus: "idle",
       autoFilterLastRunAt: null,
       autoFilterLastError: "",
       autoFilterRuleVersion: 2,
+      autoFilterLastSyncedRuleVersion: null,
+    });
+
+    expect(autoFilterJobService.enqueueCollectionSync).not.toHaveBeenCalled();
+  });
+
+  it("queues an explicit auto-filter re-sync when requested", async () => {
+    const repository = {
+      findById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "JLPT N3",
+        description: "",
+        wordCount: 1,
+        createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "收录 JLPT N3 常见词",
+        autoFilterSyncStatus: "idle",
+        autoFilterLastRunAt: "2026-04-12T02:00:00.000Z",
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 2,
+        autoFilterLastSyncedRuleVersion: 1,
+      }),
+      findRecordByName: vi.fn().mockResolvedValue(null),
+      updateCollection: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "JLPT N3",
+        description: "",
+        wordCount: 1,
+        createdAt: "2026-04-12T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "收录 JLPT N3 常见词",
+        autoFilterSyncStatus: "pending",
+        autoFilterLastRunAt: "2026-04-12T02:00:00.000Z",
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 2,
+        autoFilterLastSyncedRuleVersion: 1,
+      }),
+    };
+    const autoFilterJobService = {
+      enqueueCollectionSync: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new CollectionService(
+      repository as never,
+      autoFilterJobService as never
+    );
+
+    await expect(
+      service.updateCollection(3, {
+        resyncAutoFilter: true,
+      })
+    ).resolves.toEqual({
+      collectionId: 3,
+      name: "JLPT N3",
+      description: "",
+      wordCount: 1,
+      createdAt: "2026-04-12T00:00:00.000Z",
+      autoFilterEnabled: true,
+      autoFilterCriteria: "收录 JLPT N3 常见词",
+      autoFilterSyncStatus: "pending",
+      autoFilterLastRunAt: "2026-04-12T02:00:00.000Z",
+      autoFilterLastError: "",
+      autoFilterRuleVersion: 2,
+      autoFilterLastSyncedRuleVersion: 1,
     });
 
     expect(autoFilterJobService.enqueueCollectionSync).toHaveBeenCalledWith(3, 2);

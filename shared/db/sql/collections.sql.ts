@@ -10,6 +10,7 @@ const SELECT_COLLECTION_SUMMARY_COLUMNS_SQL = `
     c.auto_filter_last_run_at,
     c.auto_filter_last_error,
     c.auto_filter_rule_version,
+    c.auto_filter_last_synced_rule_version,
     COUNT(cw.word_id)::integer AS word_count
 `;
 
@@ -59,6 +60,7 @@ export const SELECT_COLLECTION_RECORD_BY_NAME_SQL = `
     auto_filter_last_run_at,
     auto_filter_last_error,
     auto_filter_rule_version,
+    auto_filter_last_synced_rule_version,
     created_at
   FROM collections
   WHERE LOWER(BTRIM(name)) = LOWER(BTRIM($1))
@@ -96,7 +98,8 @@ export const UPDATE_COLLECTION_SQL = `
     auto_filter_sync_status = $6,
     auto_filter_last_run_at = $7,
     auto_filter_last_error = $8,
-    auto_filter_rule_version = $9
+    auto_filter_rule_version = $9,
+    auto_filter_last_synced_rule_version = $10
   WHERE collection_id = $1
   RETURNING collection_id
 `;
@@ -106,7 +109,8 @@ export const UPDATE_COLLECTION_AUTO_FILTER_STATUS_SQL = `
   SET
     auto_filter_sync_status = $2,
     auto_filter_last_run_at = $3,
-    auto_filter_last_error = $4
+    auto_filter_last_error = $4,
+    auto_filter_last_synced_rule_version = $5
   WHERE collection_id = $1
   RETURNING collection_id
 `;

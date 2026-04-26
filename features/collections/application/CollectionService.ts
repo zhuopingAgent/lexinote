@@ -65,6 +65,7 @@ export class CollectionService {
       description?: string;
       autoFilterEnabled?: boolean;
       autoFilterCriteria?: string;
+      resyncAutoFilter?: boolean;
     }
   ): Promise<CollectionSummary> {
     const currentCollection = await this.repository.findById(collectionId);
@@ -78,6 +79,9 @@ export class CollectionService {
       input.autoFilterEnabled ?? currentCollection.autoFilterEnabled;
     const nextAutoFilterCriteria =
       input.autoFilterCriteria?.trim() ?? currentCollection.autoFilterCriteria;
+    const shouldResyncAutoFilter = input.resyncAutoFilter ?? false;
+    const currentLastSyncedRuleVersion =
+      currentCollection.autoFilterLastSyncedRuleVersion ?? null;
 
     if (!nextName) {
       throw new ValidationError("请输入 collection 名称。");
@@ -85,6 +89,10 @@ export class CollectionService {
 
     if (nextAutoFilterEnabled && !nextAutoFilterCriteria) {
       throw new ValidationError("开启 AI 自动筛选时，请填写筛选条件。");
+    }
+
+    if (shouldResyncAutoFilter && (!nextAutoFilterEnabled || !nextAutoFilterCriteria)) {
+      throw new ValidationError("请先开启 AI 自动筛选并填写筛选条件，再重新同步。");
     }
 
     const duplicatedCollection = await this.repository.findRecordByName(nextName);
@@ -95,30 +103,42 @@ export class CollectionService {
       throw new ValidationError("这个 collection 名称已经存在，请换一个。");
     }
 
-    const shouldQueueAutoFilterSync =
+    const hasAutoFilterDefinitionChanged =
       nextAutoFilterEnabled &&
       nextAutoFilterCriteria.length > 0 &&
       (nextAutoFilterEnabled !== currentCollection.autoFilterEnabled ||
         nextAutoFilterCriteria !== currentCollection.autoFilterCriteria ||
         nextName !== currentCollection.name);
 
-    const nextAutoFilterRuleVersion = shouldQueueAutoFilterSync
+    const nextAutoFilterRuleVersion = hasAutoFilterDefinitionChanged
       ? currentCollection.autoFilterRuleVersion + 1
       : currentCollection.autoFilterRuleVersion;
 
-    const nextAutoFilterSyncStatus = shouldQueueAutoFilterSync
+    const shouldQueueAutoFilterSync =
+      shouldResyncAutoFilter && nextAutoFilterEnabled && nextAutoFilterCriteria.length > 0;
+
+    const nextAutoFilterSyncStatus = !nextAutoFilterEnabled
+      ? "idle"
+      : shouldQueueAutoFilterSync
       ? "pending"
-      : nextAutoFilterEnabled
+      : hasAutoFilterDefinitionChanged
+        ? "idle"
+        : nextAutoFilterEnabled
         ? currentCollection.autoFilterSyncStatus
         : "idle";
 
-    const nextAutoFilterLastError = shouldQueueAutoFilterSync
+    const nextAutoFilterLastError = !nextAutoFilterEnabled
+      ? ""
+      : shouldQueueAutoFilterSync || hasAutoFilterDefinitionChanged
       ? ""
       : nextAutoFilterEnabled
         ? currentCollection.autoFilterLastError
         : "";
     const nextAutoFilterLastRunAt = nextAutoFilterEnabled
       ? currentCollection.autoFilterLastRunAt
+      : null;
+    const nextAutoFilterLastSyncedRuleVersion = nextAutoFilterEnabled
+      ? currentLastSyncedRuleVersion
       : null;
 
     let updatedCollection;
@@ -133,7 +153,8 @@ export class CollectionService {
         nextAutoFilterSyncStatus,
         nextAutoFilterLastRunAt,
         nextAutoFilterLastError,
-        nextAutoFilterRuleVersion
+        nextAutoFilterRuleVersion,
+        nextAutoFilterLastSyncedRuleVersion
       );
     } catch (error) {
       if (isUniqueViolation(error)) {

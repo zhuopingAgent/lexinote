@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   AddCollectionWordsResponse,
@@ -42,6 +42,8 @@ export function CollectionWordPicker({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const activeResetRequestIdRef = useRef(0);
+  const activeResetAbortControllerRef = useRef<AbortController | null>(null);
 
   const existingWordIdSet = useMemo(() => new Set(existingWordIds), [existingWordIds]);
 
@@ -70,7 +72,14 @@ export function CollectionWordPicker({
     reset: boolean;
     cursor?: string;
   }) {
+    const requestId = options.reset
+      ? activeResetRequestIdRef.current + 1
+      : activeResetRequestIdRef.current;
+
     if (options.reset) {
+      activeResetAbortControllerRef.current?.abort();
+      activeResetAbortControllerRef.current = new AbortController();
+      activeResetRequestIdRef.current = requestId;
       setIsLoading(true);
       setError(null);
     } else {
@@ -87,7 +96,11 @@ export function CollectionWordPicker({
         searchParams.set("cursor", options.cursor);
       }
 
-      const response = await fetch(`/api/words?${searchParams.toString()}`);
+      const response = await fetch(`/api/words?${searchParams.toString()}`, {
+        signal: options.reset
+          ? activeResetAbortControllerRef.current?.signal
+          : undefined,
+      });
 
       if (!response.ok) {
         const payload = (await response.json()) as ApiError;
@@ -95,12 +108,23 @@ export function CollectionWordPicker({
       }
 
       const payload = (await response.json()) as DictionaryOverviewResponse;
+      if (options.reset && requestId !== activeResetRequestIdRef.current) {
+        return;
+      }
       setEntries((currentEntries) =>
         options.reset ? payload.words : [...currentEntries, ...payload.words]
       );
       setNextCursor(payload.nextCursor);
       setHasLoaded(true);
     } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === "AbortError") {
+        return;
+      }
+
+      if (options.reset && requestId !== activeResetRequestIdRef.current) {
+        return;
+      }
+
       setError(loadError instanceof Error ? loadError.message : "发生了意外错误");
       if (options.reset) {
         setEntries([]);

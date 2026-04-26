@@ -46,7 +46,6 @@ export async function GET(
   context: { params: Promise<{ collectionId: string }> }
 ) {
   try {
-    void autoFilterJobService.kickOff();
     const { collectionId: rawCollectionId } = await context.params;
     const collectionId = parseCollectionId(rawCollectionId);
     const collection = await collectionService.getCollectionDetail(collectionId);
@@ -120,10 +119,18 @@ export async function PATCH(
     }
 
     if (
+      body.resyncAutoFilter !== undefined &&
+      typeof body.resyncAutoFilter !== "boolean"
+    ) {
+      throw new ValidationError("resyncAutoFilter must be a boolean");
+    }
+
+    if (
       body.name === undefined &&
       body.description === undefined &&
       body.autoFilterEnabled === undefined &&
-      body.autoFilterCriteria === undefined
+      body.autoFilterCriteria === undefined &&
+      body.resyncAutoFilter === undefined
     ) {
       throw new ValidationError("at least one field must be provided");
     }

@@ -23,6 +23,7 @@ type CollectionPanelProps = {
   onEditingCollectionAutoFilterCriteriaChange: (value: string) => void;
   onCancelEditing: () => void;
   onSaveEditing: (event: FormEvent<HTMLFormElement>, collectionId: number) => Promise<void>;
+  onResyncCollection: (collectionId: number) => Promise<void>;
   onDeleteCollection: (collectionId: number) => Promise<void>;
 };
 
@@ -30,9 +31,49 @@ function formatWordCount(count: number) {
   return `${count} 个单词`;
 }
 
+function formatLastRunAt(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new Intl.DateTimeFormat("zh-CN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function needsAutoFilterResync(collection: CollectionSummary) {
+  if (!collection.autoFilterEnabled || !collection.autoFilterCriteria.trim()) {
+    return false;
+  }
+
+  const lastSyncedRuleVersion = collection.autoFilterLastSyncedRuleVersion ?? null;
+  return (
+    lastSyncedRuleVersion === null ||
+    lastSyncedRuleVersion !== collection.autoFilterRuleVersion
+  );
+}
+
 function getAutoFilterStatusLabel(collection: CollectionSummary) {
   if (!collection.autoFilterEnabled || !collection.autoFilterCriteria.trim()) {
     return null;
+  }
+
+  if (
+    collection.autoFilterSyncStatus !== "pending" &&
+    collection.autoFilterSyncStatus !== "running" &&
+    collection.autoFilterSyncStatus !== "failed" &&
+    needsAutoFilterResync(collection)
+  ) {
+    return {
+      text:
+        collection.autoFilterLastSyncedRuleVersion == null ? "未同步" : "待重新同步",
+      tone: "text-amber-300 border-amber-400/20 bg-amber-500/10",
+    };
   }
 
   switch (collection.autoFilterSyncStatus) {
@@ -54,6 +95,19 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
     return null;
   }
 
+  const lastRunAt = formatLastRunAt(collection.autoFilterLastRunAt);
+
+  if (
+    collection.autoFilterSyncStatus !== "pending" &&
+    collection.autoFilterSyncStatus !== "running" &&
+    collection.autoFilterSyncStatus !== "failed" &&
+    needsAutoFilterResync(collection)
+  ) {
+    return collection.autoFilterLastSyncedRuleVersion == null
+      ? "AI 自动筛选已开启。后续新词会自动分类；如需扫描现有词条，请手动重新同步。"
+      : "筛选规则已更新。后续新词会按新规则自动分类；如需更新现有自动词条，请手动重新同步。";
+  }
+
   switch (collection.autoFilterSyncStatus) {
     case "pending":
       return "已保存筛选条件，正在排队同步词条。";
@@ -62,11 +116,11 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
     case "failed":
       return collection.autoFilterLastError || "上一次自动筛选失败，请稍后再试。";
     case "completed":
-      return collection.autoFilterLastRunAt
-        ? "最近一次自动筛选已经完成。"
-        : "AI 自动筛选已开启。";
+      return lastRunAt
+        ? `最近一次自动筛选完成于 ${lastRunAt}。`
+        : "最近一次自动筛选已经完成。";
     default:
-      return "AI 自动筛选已开启。";
+      return lastRunAt ? `最近一次自动筛选完成于 ${lastRunAt}。` : "AI 自动筛选已开启。";
   }
 }
 
@@ -89,6 +143,7 @@ export function CollectionPanel({
   onEditingCollectionAutoFilterCriteriaChange,
   onCancelEditing,
   onSaveEditing,
+  onResyncCollection,
   onDeleteCollection,
 }: CollectionPanelProps) {
   const router = useRouter();
@@ -197,6 +252,11 @@ export function CollectionPanel({
             const isBusy = busyCollectionId === collection.collectionId;
             const autoFilterStatus = getAutoFilterStatusLabel(collection);
             const autoFilterStatusHint = getAutoFilterStatusHint(collection);
+            const showsResyncButton =
+              collection.autoFilterEnabled && collection.autoFilterCriteria.trim().length > 0;
+            const isAutoFilterBusy =
+              collection.autoFilterSyncStatus === "pending" ||
+              collection.autoFilterSyncStatus === "running";
 
             return (
               <div
@@ -257,7 +317,7 @@ export function CollectionPanel({
                             <span>开启 AI 自动筛选</span>
                           </label>
                           <p className="mt-2 text-xs leading-5 text-white/34">
-                            保存后会先扫描现有词条，之后每次有新单词入库时，也会按这里的条件自动加入这个 collection。
+                            保存后，这些条件会用于后续新入库的单词。现有词条不会自动重扫；如果要按新条件整理现有词条，请在保存后手动重新同步。
                           </p>
 
                           {editingCollectionAutoFilterEnabled ? (
@@ -287,11 +347,7 @@ export function CollectionPanel({
                             }
                             className="inline-flex h-10 items-center justify-center rounded-full bg-white/10 px-4 text-sm text-white/72 transition hover:bg-white/14 disabled:cursor-not-allowed disabled:opacity-45"
                           >
-                            {isBusy
-                              ? editingCollectionAutoFilterEnabled
-                                ? "保存并筛选中..."
-                                : "保存中..."
-                              : "保存"}
+                            {isBusy ? "保存中..." : "保存"}
                           </button>
                           <button
                             type="button"
@@ -344,6 +400,19 @@ export function CollectionPanel({
                     >
                       编辑
                     </button>
+                    {showsResyncButton ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          stopCardNavigation(event);
+                          void onResyncCollection(collection.collectionId);
+                        }}
+                        disabled={isBusy || isAutoFilterBusy}
+                        className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/56 transition hover:border-white/18 hover:text-white/68 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {isBusy && !isEditing ? "同步中..." : "重新同步 AI"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={(event) => {

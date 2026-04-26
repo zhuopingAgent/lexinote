@@ -84,14 +84,15 @@
 4. `collection_words` is the many-to-many table between collections and concrete dictionary entries (`word_id`).
 5. The same `word_id` can belong to multiple collections, but can appear only once inside any single collection.
 6. `collection_words.source` distinguishes `manual` vs `auto` membership.
-7. AI auto-filtering is asynchronous: collection saves update status fields, enqueue jobs, and the job runner later performs sync or entry classification.
-8. New dictionary entries only enqueue classification when a truly new entry is persisted.
+7. AI auto-filtering is asynchronous: saving collection rules updates status fields, but existing words are only rescanned when the user explicitly triggers an AI resync for that collection.
+8. New dictionary entries only enqueue incremental classification when a truly new entry is persisted.
 
 ### Important Rules
 
 - Think in terms of concrete dictionary entries (`word_id`), not bare word strings.
 - Manual add and AI auto-filter must never create duplicate rows inside one collection.
 - Collection auto-filtering is job-driven, not inline request work.
+- Do not assume editing an auto-filter rule should rescan the whole dictionary; explicit resync is now a separate user action.
 - If you change collection membership semantics, update both docs and E2E fixtures/specs in the same change.
 
 ## E2E

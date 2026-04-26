@@ -35,6 +35,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - Collections are now a first-class product surface. `collections` and `collection_words` model a many-to-many relation between concrete dictionary entries (`word_id`) and collections.
 - A single dictionary entry can belong to multiple collections, but the same `word_id` can appear only once inside a given collection, no matter whether it was added manually or by AI auto-filtering.
 - Collection auto-filtering runs asynchronously through `auto_filter_jobs`. New dictionary entries only enqueue classification when a truly new entry is persisted.
+- Saving or editing an auto-filter rule no longer rescans all existing words by default. Existing words are only re-evaluated when the user explicitly requests an AI re-sync for that collection.
 - If `OPENAI_API_KEY` is missing, dictionary hits still return core fields but examples stay empty, and misses return fallback placeholder fields.
 
 ## Conflict Handling

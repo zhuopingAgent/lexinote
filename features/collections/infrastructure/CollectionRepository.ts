@@ -36,6 +36,7 @@ type CollectionSummaryRow = {
   auto_filter_last_run_at: string | Date | null;
   auto_filter_last_error: string;
   auto_filter_rule_version: number | string;
+  auto_filter_last_synced_rule_version: number | string | null;
 };
 
 type CollectionRecordRow = {
@@ -49,6 +50,7 @@ type CollectionRecordRow = {
   auto_filter_last_run_at: string | Date | null;
   auto_filter_last_error: string;
   auto_filter_rule_version: number | string;
+  auto_filter_last_synced_rule_version: number | string | null;
 };
 
 type CollectionIdRow = {
@@ -105,6 +107,13 @@ export class CollectionRepository {
         row.auto_filter_rule_version,
         "auto_filter_rule_version"
       ),
+      autoFilterLastSyncedRuleVersion:
+        row.auto_filter_last_synced_rule_version == null
+          ? null
+          : toInteger(
+              row.auto_filter_last_synced_rule_version,
+              "auto_filter_last_synced_rule_version"
+            ),
     };
   }
 
@@ -208,7 +217,8 @@ export class CollectionRepository {
     autoFilterSyncStatus: AutoFilterSyncStatus,
     autoFilterLastRunAt: string | null,
     autoFilterLastError: string,
-    autoFilterRuleVersion: number
+    autoFilterRuleVersion: number,
+    autoFilterLastSyncedRuleVersion: number | null
   ): Promise<CollectionSummary | null> {
     const rows = await query<CollectionIdRow>(UPDATE_COLLECTION_SQL, [
       collectionId,
@@ -220,6 +230,7 @@ export class CollectionRepository {
       autoFilterLastRunAt,
       autoFilterLastError,
       autoFilterRuleVersion,
+      autoFilterLastSyncedRuleVersion,
     ]);
 
     if (!rows[0]) {
@@ -233,13 +244,15 @@ export class CollectionRepository {
     collectionId: number,
     status: AutoFilterSyncStatus,
     lastRunAt: string | null,
-    lastError: string
+    lastError: string,
+    lastSyncedRuleVersion: number | null
   ): Promise<CollectionSummary | null> {
     const rows = await query<CollectionIdRow>(UPDATE_COLLECTION_AUTO_FILTER_STATUS_SQL, [
       collectionId,
       status,
       lastRunAt,
       lastError,
+      lastSyncedRuleVersion,
     ]);
 
     if (!rows[0]) {

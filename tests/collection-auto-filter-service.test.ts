@@ -28,6 +28,20 @@ describe("CollectionAutoFilterService", () => {
           },
         ],
       }),
+      findById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "JLPT N3",
+        description: "",
+        wordCount: 1,
+        createdAt: "2026-04-22T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "收录 JLPT N3 常见词",
+        autoFilterSyncStatus: "running",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 4,
+        autoFilterLastSyncedRuleVersion: null,
+      }),
       replaceAutoWords: vi.fn().mockResolvedValue(2),
     };
     const dictionaryService = {

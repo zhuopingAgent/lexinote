@@ -160,6 +160,8 @@ test("AI auto-filter can sync matching local words into a collection", async ({
     .getByLabel("AI 自动筛选条件")
     .fill("收录和食物或吃东西相关的词，尤其是食べる，不要收录无关词。");
   await page.getByRole("button", { name: "保存" }).click();
+  await expect(card.getByText("未同步")).toBeVisible();
+  await card.getByRole("button", { name: "重新同步 AI" }).click();
 
   const finalStatus = await waitForAutoFilterCompletion(page, collectionName);
   expect(finalStatus).toBe("completed");

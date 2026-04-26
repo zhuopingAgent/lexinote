@@ -30,7 +30,6 @@ const collectionService = new CollectionService(collectionRepository, autoFilter
 
 export async function GET() {
   try {
-    void autoFilterJobService.kickOff();
     const collections = await collectionService.listCollections();
     const response: CollectionListResponse = { collections };
 
