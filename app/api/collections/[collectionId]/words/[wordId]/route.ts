@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { CollectionWordService } from "@/features/collections/application/CollectionWordService";
-import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
-import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
+import {
+  ensureAutoFilterJobRunnerStarted,
+  getCollectionWordService,
+} from "@/app/api/services";
 import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const collectionWordService = new CollectionWordService(
-  new CollectionRepository(),
-  new JapaneseDictionaryService(new JapaneseDictionaryRepository())
-);
+const collectionWordService = getCollectionWordService();
 
 function parsePositiveInteger(value: string, fieldName: string) {
   const parsed = Number(value);
@@ -26,6 +23,8 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ collectionId: string; wordId: string }> }
 ) {
+  ensureAutoFilterJobRunnerStarted();
+
   try {
     const { collectionId: rawCollectionId, wordId: rawWordId } = await context.params;
     const collectionId = parsePositiveInteger(rawCollectionId, "collectionId");

@@ -4,10 +4,13 @@ import {
   FAIL_AUTO_FILTER_JOB_SQL,
   INSERT_COLLECTION_AUTO_FILTER_JOB_SQL,
   INSERT_ENTRY_AUTO_FILTER_JOB_SQL,
+  RETRY_AUTO_FILTER_JOB_SQL,
   SELECT_ACTIVE_COLLECTION_AUTO_FILTER_JOB_BY_RULE_SQL,
   SELECT_ACTIVE_ENTRY_AUTO_FILTER_JOB_SQL,
 } from "@/shared/db/sql/auto-filter-jobs.sql";
 import { query } from "@/shared/db/query";
+
+const AUTO_FILTER_JOB_LEASE_SECONDS = 300;
 
 export type AutoFilterJob = {
   jobId: number;
@@ -15,6 +18,8 @@ export type AutoFilterJob = {
   collectionId: number | null;
   wordId: number | null;
   ruleVersion: number | null;
+  attemptCount: number;
+  maxAttempts: number;
 };
 
 type AutoFilterJobRow = {
@@ -23,6 +28,8 @@ type AutoFilterJobRow = {
   collection_id: number | string | null;
   word_id: number | string | null;
   rule_version: number | string | null;
+  attempt_count: number | string;
+  max_attempts: number | string;
 };
 
 function toInteger(value: number | string, fieldName: string) {
@@ -49,6 +56,8 @@ function mapJobRow(row: AutoFilterJobRow): AutoFilterJob {
       row.rule_version === null
         ? null
         : toInteger(row.rule_version, "rule_version"),
+    attemptCount: toInteger(row.attempt_count, "attempt_count"),
+    maxAttempts: toInteger(row.max_attempts, "max_attempts"),
   };
 }
 
@@ -111,13 +120,19 @@ export class CollectionAutoFilterJobRepository {
   }
 
   async claimNextJob(): Promise<AutoFilterJob | null> {
-    const rows = await query<AutoFilterJobRow>(CLAIM_NEXT_AUTO_FILTER_JOB_SQL);
+    const rows = await query<AutoFilterJobRow>(CLAIM_NEXT_AUTO_FILTER_JOB_SQL, [
+      AUTO_FILTER_JOB_LEASE_SECONDS,
+    ]);
     const row = rows[0];
     return row ? mapJobRow(row) : null;
   }
 
   async markCompleted(jobId: number): Promise<void> {
     await query(COMPLETE_AUTO_FILTER_JOB_SQL, [jobId]);
+  }
+
+  async markRetryableFailure(jobId: number, message: string): Promise<void> {
+    await query(RETRY_AUTO_FILTER_JOB_SQL, [jobId, message]);
   }
 
   async markFailed(jobId: number, message: string): Promise<void> {

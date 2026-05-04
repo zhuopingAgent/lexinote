@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Klee+One:wght@400;600&family=ZCOOL+XiaoWei&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -15,6 +16,30 @@
   --danger-soft: rgba(56, 35, 33, 0.8);
   --shadow: none;
   --page-background-image: none;
+  --header-background: rgba(30, 30, 30, 0.8);
+  --line-color: rgba(255, 255, 255, 0.1);
+  --app-root-font-size: 17px;
+}
+
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --background: #f7f1e3;
+  --foreground: #171411;
+  --muted: rgba(23, 20, 17, 0.58);
+  --surface: rgba(255, 252, 246, 0.94);
+  --surface-soft: rgba(245, 236, 222, 0.82);
+  --surface-strong: #fffdf8;
+  --border: rgba(23, 20, 17, 0.18);
+  --accent: #9c7936;
+  --accent-strong: #171411;
+  --accent-soft: rgba(156, 121, 54, 0.16);
+  --danger: #9a3020;
+  --danger-soft: rgba(255, 241, 236, 0.9);
+  --shadow: rgba(83, 70, 46, 0.12);
+  --page-background-image: radial-gradient(circle at top, rgba(228, 216, 197, 0.55), transparent 48%);
+  --header-background: rgba(255, 252, 246, 0.94);
+  --line-color: #171411;
+  --font-sans: "Comic Neue", "ZCOOL XiaoWei", "Klee One", "Comic Sans MS", "Hannotate SC", "YuKyokasho", "Noto Sans JP", "Noto Sans", "PingFang SC", "Hiragino Sans", sans-serif;
 }
 
 @theme inline {
@@ -40,6 +65,7 @@
 
 html {
   min-height: 100%;
+  font-size: var(--app-root-font-size);
   color-scheme: dark;
 }
 
@@ -56,4 +82,306 @@ body {
 ::selection {
   background: var(--accent-soft);
   color: var(--foreground);
+}
+
+.app-header {
+  background: var(--header-background);
+  border-color: var(--border);
+}
+
+.app-brand {
+  min-width: max-content;
+  text-decoration: none;
+}
+
+.app-brand__title {
+  margin: 0;
+}
+
+.app-header__inner {
+  max-width: none;
+}
+
+.theme-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.18rem;
+  margin-left: auto;
+  padding: 0.18rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: 0 8px 22px var(--shadow);
+}
+
+.theme-toggle__option {
+  min-width: 4.8rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 0.72rem;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.theme-toggle__option:hover {
+  color: var(--foreground);
+}
+
+.theme-toggle__option:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.theme-toggle__option--active {
+  background: var(--surface-strong);
+  color: var(--foreground);
+  box-shadow: 0 5px 14px var(--shadow);
+}
+
+:root[data-theme="paper"] .theme-toggle {
+  border: 2px solid var(--line-color);
+  background: #f5ecde;
+  box-shadow: 0 5px 18px rgba(23, 20, 17, 0.08);
+}
+
+:root[data-theme="paper"] .theme-toggle__option--active {
+  background: var(--line-color);
+  color: #fffdf8;
+}
+
+:root[data-theme="paper"] .app-header {
+  border-bottom: 2px solid var(--line-color);
+  box-shadow: 0 8px 24px rgba(83, 70, 46, 0.08);
+}
+
+:root[data-theme="paper"] main {
+  background-image: var(--page-background-image);
+}
+
+:root[data-theme="paper"] :is(input, textarea) {
+  color: var(--foreground) !important;
+  background-color: var(--surface-strong) !important;
+  border-color: rgba(23, 20, 17, 0.24) !important;
+}
+
+:root[data-theme="paper"] :is(input, textarea)::placeholder {
+  color: rgba(23, 20, 17, 0.44) !important;
+}
+
+:root[data-theme="paper"] input[type="checkbox"] {
+  accent-color: var(--line-color);
+}
+
+:root[data-theme="paper"] :is(
+  [class~="text-white/18"],
+  [class~="text-white/20"],
+  [class~="text-white/22"]
+) {
+  color: rgba(23, 20, 17, 0.24) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="text-white/28"],
+  [class~="text-white/30"],
+  [class~="text-white/32"],
+  [class~="text-white/34"],
+  [class~="text-white/35"],
+  [class~="text-white/36"],
+  [class~="text-white/38"]
+) {
+  color: rgba(23, 20, 17, 0.42) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="text-white/40"],
+  [class~="text-white/42"],
+  [class~="text-white/44"],
+  [class~="text-white/45"],
+  [class~="text-white/48"],
+  [class~="text-white/50"]
+) {
+  color: rgba(23, 20, 17, 0.58) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="text-white/52"],
+  [class~="text-white/54"],
+  [class~="text-white/55"],
+  [class~="text-white/56"],
+  [class~="text-white/58"],
+  [class~="text-white/60"],
+  [class~="text-white/62"]
+) {
+  color: rgba(23, 20, 17, 0.68) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="text-white/65"],
+  [class~="text-white/66"],
+  [class~="text-white/68"],
+  [class~="text-white/70"],
+  [class~="text-white/72"],
+  [class~="text-white/74"],
+  [class~="text-white/75"],
+  [class~="text-white/76"],
+  [class~="text-white/78"],
+  [class~="text-white/80"],
+  [class~="text-white/88"]
+) {
+  color: rgba(23, 20, 17, 0.84) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="hover:text-white/62"],
+  [class~="hover:text-white/66"],
+  [class~="hover:text-white/68"],
+  [class~="hover:text-white/70"],
+  [class~="hover:text-white/74"],
+  [class~="hover:text-white/78"],
+  [class~="group-hover:text-white/88"]
+):hover {
+  color: rgba(23, 20, 17, 0.92) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="bg-[#1e1e1ecc]"],
+  [class~="bg-[#1e1e1eb3]"],
+  [class~="bg-[#1e1e1e99]"],
+  [class~="bg-[#1e1e1e]/90"]
+) {
+  background-color: var(--surface) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="bg-[#1e1e1e80]"],
+  [class~="bg-[#151515cc]"],
+  [class~="bg-[#15151599]"],
+  [class~="bg-[#15151588]"],
+  [class~="bg-[#15151566]"],
+  [class~="bg-[#171717cc]"],
+  [class~="bg-[#17171799]"],
+  [class~="bg-[#1a1a1a99]"],
+  [class~="bg-[#111111cc]"]
+) {
+  background-color: var(--surface-soft) !important;
+}
+
+:root[data-theme="paper"] [class~="bg-[#1a2218cc]"] {
+  background-color: rgba(237, 247, 233, 0.92) !important;
+}
+
+:root[data-theme="paper"] [class~="bg-[#fe9a0033]"] {
+  background-color: rgba(156, 121, 54, 0.16) !important;
+}
+
+:root[data-theme="paper"] [class~="text-[#ffb900]"] {
+  color: #7d5711 !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="bg-white/5"],
+  [class~="bg-white/6"],
+  [class~="bg-white/7"],
+  [class~="bg-white/8"],
+  [class~="bg-white/10"],
+  [class~="bg-white/12"],
+  [class~="bg-white/14"]
+) {
+  background-color: rgba(23, 20, 17, 0.08) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="hover:bg-white/5"],
+  [class~="hover:bg-white/10"],
+  [class~="hover:bg-white/12"],
+  [class~="hover:bg-white/14"],
+  [class~="hover:bg-[#232323]"],
+  [class~="hover:bg-[#232323f0]"]
+):hover {
+  background-color: rgba(23, 20, 17, 0.1) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="border-black/50"],
+  [class~="border-white/6"],
+  [class~="border-white/8"],
+  [class~="border-white/10"],
+  [class~="border-white/12"],
+  [class~="border-white/14"],
+  [class~="border-white/15"],
+  [class~="border-white/16"],
+  [class~="border-white/18"],
+  [class~="border-white/20"],
+  [class~="border-white/24"],
+  [class~="border-white/26"],
+  [class~="border-white/30"]
+) {
+  border-color: rgba(23, 20, 17, 0.18) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="hover:border-white/16"],
+  [class~="hover:border-white/18"],
+  [class~="hover:border-white/20"],
+  [class~="hover:border-white/24"],
+  [class~="hover:border-white/26"],
+  [class~="hover:border-white/30"]
+):hover {
+  border-color: rgba(23, 20, 17, 0.34) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="focus:border-white/24"],
+  [class~="focus:border-white/26"],
+  [class~="focus:border-white/30"]
+):focus {
+  border-color: rgba(23, 20, 17, 0.48) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="focus:ring-white/10"],
+  [class~="focus:ring-white/14"],
+  [class~="focus:ring-white/15"]
+):focus {
+  --tw-ring-color: rgba(23, 20, 17, 0.18) !important;
+}
+
+:root[data-theme="paper"] :is(
+  [class~="shadow-2xl"],
+  [class*="shadow-[0_"]
+) {
+  box-shadow: 0 18px 44px rgba(83, 70, 46, 0.14) !important;
+}
+
+@media (max-width: 640px) {
+  .app-header__inner {
+    gap: 0.75rem;
+  }
+
+  .app-header__nav {
+    display: none;
+  }
+
+  .theme-toggle {
+    padding: 0.14rem;
+  }
+
+  .theme-toggle__option {
+    min-width: 4rem;
+    height: 2rem;
+    padding: 0 0.58rem;
+    font-size: 0.74rem;
+  }
 }

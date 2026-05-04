@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
-import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
+import {
+  ensureAutoFilterJobRunnerStarted,
+  getDictionaryService,
+} from "@/app/api/services";
 import type { DictionaryOverviewResponse } from "@/shared/types/api";
 import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const dictionaryService = new JapaneseDictionaryService(new JapaneseDictionaryRepository());
+const dictionaryService = getDictionaryService();
 
 function parseLimit(rawLimit: string | null) {
   if (rawLimit === null || rawLimit.trim() === "") {
@@ -22,6 +24,8 @@ function parseLimit(rawLimit: string | null) {
 }
 
 export async function GET(request: Request) {
+  ensureAutoFilterJobRunnerStarted();
+
   try {
     const url = new URL(request.url);
     const query = url.searchParams.get("query") ?? undefined;

@@ -41,10 +41,40 @@ export const INSERT_ENTRY_AUTO_FILTER_JOB_SQL = `
 `;
 
 export const CLAIM_NEXT_AUTO_FILTER_JOB_SQL = `
-  WITH next_job AS (
+  WITH expired_exhausted_jobs AS (
+    UPDATE auto_filter_jobs
+    SET
+      status = 'failed',
+      error_message = 'AI 自动筛选任务已超过最大重试次数，请重新触发同步。',
+      locked_at = NULL,
+      updated_at = NOW()
+    WHERE (
+        status = 'pending'
+        OR (
+          status = 'running'
+          AND (
+            locked_at IS NULL
+            OR locked_at < NOW() - ($1::integer * INTERVAL '1 second')
+          )
+        )
+      )
+      AND attempt_count >= max_attempts
+    RETURNING job_id
+  ),
+  next_job AS (
     SELECT job_id
     FROM auto_filter_jobs
-    WHERE status = 'pending'
+    WHERE (
+        status = 'pending'
+        OR (
+          status = 'running'
+          AND (
+            locked_at IS NULL
+            OR locked_at < NOW() - ($1::integer * INTERVAL '1 second')
+          )
+        )
+      )
+      AND attempt_count < max_attempts
     ORDER BY created_at ASC, job_id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
@@ -52,6 +82,8 @@ export const CLAIM_NEXT_AUTO_FILTER_JOB_SQL = `
   UPDATE auto_filter_jobs
   SET
     status = 'running',
+    attempt_count = attempt_count + 1,
+    locked_at = NOW(),
     updated_at = NOW(),
     error_message = ''
   WHERE job_id IN (SELECT job_id FROM next_job)
@@ -61,6 +93,8 @@ export const CLAIM_NEXT_AUTO_FILTER_JOB_SQL = `
     collection_id,
     word_id,
     rule_version,
+    attempt_count,
+    max_attempts,
     status,
     error_message,
     created_at,
@@ -72,6 +106,17 @@ export const COMPLETE_AUTO_FILTER_JOB_SQL = `
   SET
     status = 'completed',
     error_message = '',
+    locked_at = NULL,
+    updated_at = NOW()
+  WHERE job_id = $1
+`;
+
+export const RETRY_AUTO_FILTER_JOB_SQL = `
+  UPDATE auto_filter_jobs
+  SET
+    status = 'pending',
+    error_message = $2,
+    locked_at = NULL,
     updated_at = NOW()
   WHERE job_id = $1
 `;
@@ -81,6 +126,7 @@ export const FAIL_AUTO_FILTER_JOB_SQL = `
   SET
     status = 'failed',
     error_message = $2,
+    locked_at = NULL,
     updated_at = NOW()
   WHERE job_id = $1
 `;

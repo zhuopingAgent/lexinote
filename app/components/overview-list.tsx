@@ -134,7 +134,7 @@ export function OverviewList({
       <div className="rounded-[clamp(18px,2vw,22px)] border border-white/10 bg-[#1e1e1eb3] p-[clamp(18px,2.5vw,24px)]">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-lg font-medium tracking-[-0.03em] text-white/72">全览</p>
+            <p className="text-lg font-medium tracking-[-0.03em] text-white/72">全覧</p>
             <p className="mt-1 text-sm leading-6 text-white/40">
               展示数据库中的全部单词，按入库时间倒序排列。
             </p>
@@ -148,7 +148,7 @@ export function OverviewList({
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="搜索单词、读音、词性或释义"
-            aria-label="搜索全览词条"
+            aria-label="搜索全覧词条"
             className="h-12 flex-1 rounded-[14px] border border-white/12 bg-[#151515cc] px-4 text-sm text-white/76 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10"
           />
           <button
@@ -166,7 +166,7 @@ export function OverviewList({
           role="alert"
           className="mt-5 rounded-2xl border border-danger/30 bg-danger-soft/80 px-5 py-4 text-danger"
         >
-          <p className="text-sm font-semibold">全览加载失败</p>
+          <p className="text-sm font-semibold">全覧加载失败</p>
           <p className="mt-1 text-sm leading-6">{error}</p>
         </div>
       ) : null}

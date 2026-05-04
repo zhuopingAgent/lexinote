@@ -12,14 +12,29 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const themeInitScript = `
+(() => {
+  try {
+    const storedTheme = window.localStorage.getItem("lexinote-theme");
+    document.documentElement.dataset.theme =
+      storedTheme === "paper" || storedTheme === "dark" ? storedTheme : "dark";
+  } catch {
+    document.documentElement.dataset.theme = "dark";
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body className="antialiased">
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {children}
+      </body>
     </html>
   );
 }
