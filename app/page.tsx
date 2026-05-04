@@ -4,8 +4,8 @@ import { useEffect, useId, useState } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
 import { HistoryList } from "@/app/components/history-list";
 import { OverviewList } from "@/app/components/overview-list";
+import { AppHeader } from "@/app/components/app-header";
 import {
-  AppBrandIcon,
   BookIcon,
   CollectionIcon,
   HistoryIcon,
@@ -21,9 +21,9 @@ import type { AppView } from "@/app/lib/app-view";
 
 const SIDEBAR_ITEMS = [
   { label: "辞書", icon: BookIcon, view: "dictionary" as AppView },
-  { label: "全览", icon: StarIcon, view: "overview" as AppView },
+  { label: "全覧", icon: StarIcon, view: "overview" as AppView },
   { label: "履歴", icon: HistoryIcon, view: "history" as AppView },
-  { label: "コレクション", icon: CollectionIcon, view: "collections" as AppView },
+  { label: "Collection", icon: CollectionIcon, view: "collections" as AppView },
 ];
 
 const TOP_NAV_ITEMS = [
@@ -129,12 +129,12 @@ export default function Home() {
   const statusMessage =
     activeView === "overview"
       ? isOverviewLoading && !hasLoadedOverview
-        ? "正在加载全览。"
+        ? "正在加载全覧。"
         : overviewError
-          ? `全览加载失败：${overviewError}`
+          ? `全覧加载失败：${overviewError}`
           : overviewWords.length > 0
-            ? `已打开全览，当前已加载 ${overviewWords.length} 个词条。`
-            : "已打开全览，当前还没有内容。"
+            ? `已打开全覧，当前已加载 ${overviewWords.length} 个词条。`
+            : "已打开全覧，当前还没有内容。"
       : activeView === "collections"
       ? isCollectionsLoading && !hasLoadedCollections
         ? "正在加载 collections。"
@@ -169,34 +169,7 @@ export default function Home() {
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
-      <header className="border-b border-black/50 bg-[#1e1e1ecc]">
-        <div className="mr-auto flex h-[clamp(56px,6vw,60px)] w-full max-w-[1160px] items-center gap-[clamp(24px,5vw,48px)] pl-[clamp(16px,4vw,32px)] pr-[clamp(16px,3vw,24px)]">
-          <div className="flex items-center gap-2.5">
-            <AppBrandIcon className="size-[clamp(22px,2.5vw,24px)] text-accent" />
-            <p className="text-[clamp(17px,2.3vw,20px)] font-medium tracking-[-0.03em] text-white/70">
-              LexiNote
-            </p>
-          </div>
-
-          <nav
-            className="flex items-center gap-[clamp(12px,2.4vw,24px)] whitespace-nowrap"
-            aria-label="Primary"
-          >
-            {TOP_NAV_ITEMS.map((item) => (
-              <span
-                key={item.label}
-                className={
-                  item.active
-                    ? "text-[clamp(13px,1.8vw,16px)] text-white/60"
-                    : "text-[clamp(13px,1.8vw,16px)] text-white/45"
-                }
-              >
-                {item.label}
-              </span>
-            ))}
-          </nav>
-        </div>
-      </header>
+      <AppHeader navItems={TOP_NAV_ITEMS} />
 
       <div className="flex flex-1 flex-col md:grid md:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="hidden border-r border-white/10 bg-[#1e1e1e80] md:block">
@@ -253,10 +226,10 @@ export default function Home() {
                     disabled={!item.view}
                     className={
                       item.view === activeView
-                        ? "inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-white/70"
+                        ? "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-white/10 px-4 py-2 text-sm text-white/70"
                         : item.view
-                          ? "inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm text-white/45"
-                          : "inline-flex items-center gap-2 rounded-full border border-white/6 px-4 py-2 text-sm text-white/22"
+                          ? "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-white/10 px-4 py-2 text-sm text-white/45"
+                          : "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-white/6 px-4 py-2 text-sm text-white/22"
                     }
                   >
                     <Icon className="size-4 shrink-0" />

@@ -60,7 +60,7 @@ function needsAutoFilterResync(collection: CollectionSummary) {
 
 function getAutoFilterStatusLabel(collection: CollectionSummary) {
   if (!collection.autoFilterEnabled || !collection.autoFilterCriteria.trim()) {
-    return null;
+    return { text: "未开启", tone: "text-white/42 border-white/10 bg-white/6" };
   }
 
   if (
@@ -104,15 +104,15 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
     needsAutoFilterResync(collection)
   ) {
     return collection.autoFilterLastSyncedRuleVersion == null
-      ? "AI 自动筛选已开启。后续新词会自动分类；如需扫描现有词条，请手动重新同步。"
-      : "筛选规则已更新。后续新词会按新规则自动分类；如需更新现有自动词条，请手动重新同步。";
+      ? "新词会自动分类；现有词需手动同步。"
+      : "规则已更新；现有词需重新同步。";
   }
 
   switch (collection.autoFilterSyncStatus) {
     case "pending":
-      return "已保存筛选条件，正在排队同步词条。";
+      return "正在排队同步。";
     case "running":
-      return "AI 正在根据筛选条件整理这个 collection。";
+      return "AI 正在整理这个 Collection。";
     case "failed":
       return collection.autoFilterLastError || "上一次自动筛选失败，请稍后再试。";
     case "completed":
@@ -122,6 +122,15 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
     default:
       return lastRunAt ? `最近一次自动筛选完成于 ${lastRunAt}。` : "AI 自动筛选已开启。";
   }
+}
+
+function isImportantAutoFilterHint(collection: CollectionSummary) {
+  return (
+    collection.autoFilterSyncStatus === "pending" ||
+    collection.autoFilterSyncStatus === "running" ||
+    collection.autoFilterSyncStatus === "failed" ||
+    needsAutoFilterResync(collection)
+  );
 }
 
 export function CollectionPanel({
@@ -170,29 +179,31 @@ export function CollectionPanel({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[848px]">
+    <div className="mx-auto w-full max-w-[920px]">
       <div className="rounded-[clamp(18px,2vw,22px)] border border-white/10 bg-[#1e1e1eb3] p-[clamp(18px,2.5vw,24px)]">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-lg font-medium tracking-[-0.03em] text-white/72">
-              コレクション
+              Collection
             </p>
-            <p className="mt-1 text-sm leading-6 text-white/40">
-              新建、重命名或删除你的单词集合。每个集合会显示当前收录的单词数量。
+            <p className="mt-1 max-w-[34rem] text-sm leading-6 text-white/40">
+              按主题整理单词；需要时可以开启 AI 自动筛选。
             </p>
           </div>
-          <p className="text-sm text-white/35">共 {collections.length} 个集合</p>
+          <div className="inline-flex w-fit items-center rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-sm text-white/52">
+            {collections.length} 个 Collection
+          </div>
         </div>
 
         <form
           onSubmit={onCreateCollection}
-          className="mt-5 flex flex-col gap-3 sm:flex-row"
+          className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
         >
           <input
             type="text"
             value={collectionName}
             onChange={(event) => onCollectionNameChange(event.target.value)}
-            placeholder="输入新 collection 名称，例如：易混词 / 商务表达 / JLPT N2"
+            placeholder="新 Collection 名称，例如：易混词 / 商务表达 / JLPT N2"
             aria-label="新建 collection"
             disabled={isCreating}
             className="h-12 flex-1 rounded-[14px] border border-white/12 bg-[#151515cc] px-4 text-sm text-white/76 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
@@ -202,7 +213,7 @@ export function CollectionPanel({
             disabled={isCreating || collectionName.trim().length === 0}
             className="inline-flex h-12 shrink-0 items-center justify-center rounded-[14px] bg-white/10 px-5 text-sm font-medium text-white/74 transition hover:bg-white/14 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {isCreating ? "创建中..." : "新增コレクション"}
+            {isCreating ? "创建中..." : "新增"}
           </button>
         </form>
       </div>
@@ -238,7 +249,7 @@ export function CollectionPanel({
 
       {showsEmptyState ? (
         <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
-          <p className="text-base font-medium text-white/60">还没有 collection</p>
+          <p className="text-base font-medium text-white/60">还没有 Collection</p>
           <p className="mt-2 text-sm leading-6 text-white/38">
             先创建一个集合，后面我们再把查询到的词条加进去。
           </p>
@@ -252,6 +263,7 @@ export function CollectionPanel({
             const isBusy = busyCollectionId === collection.collectionId;
             const autoFilterStatus = getAutoFilterStatusLabel(collection);
             const autoFilterStatusHint = getAutoFilterStatusHint(collection);
+            const shouldShowAutoFilterHint = isImportantAutoFilterHint(collection);
             const showsResyncButton =
               collection.autoFilterEnabled && collection.autoFilterCriteria.trim().length > 0;
             const isAutoFilterBusy =
@@ -273,15 +285,12 @@ export function CollectionPanel({
                 }
                 className={
                   isEditing
-                    ? "flex min-h-[176px] flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)]"
-                    : "flex min-h-[176px] cursor-pointer flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition hover:border-white/16 hover:bg-[#232323f0] focus:outline-none focus:ring-2 focus:ring-white/14"
+                    ? "flex min-h-[170px] flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)]"
+                    : "flex min-h-[170px] cursor-pointer flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition hover:border-white/16 hover:bg-[#232323f0] focus:outline-none focus:ring-2 focus:ring-white/14"
                 }
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-white/28">
-                      Collection
-                    </p>
                     {isEditing ? (
                       <form
                         onSubmit={(event) =>
@@ -361,11 +370,14 @@ export function CollectionPanel({
                       </form>
                     ) : (
                       <>
-                        <p className="mt-4 truncate text-[22px] font-medium tracking-[-0.04em] text-white/76">
+                        <p className="truncate text-[22px] font-medium tracking-[-0.04em] text-white/76">
                           {collection.name}
                         </p>
+                        <p className="mt-1 text-sm leading-6 text-white/40">
+                          {formatWordCount(collection.wordCount)}
+                        </p>
                         {autoFilterStatus ? (
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <div className="mt-4 flex flex-wrap items-center gap-2">
                             <span
                               className={`inline-flex rounded-full border px-3 py-1 text-xs ${autoFilterStatus.tone}`}
                             >
@@ -373,22 +385,18 @@ export function CollectionPanel({
                             </span>
                           </div>
                         ) : null}
-                        {autoFilterStatusHint ? (
-                          <p className="mt-2 text-xs leading-5 text-white/36">
+                        {autoFilterStatusHint && shouldShowAutoFilterHint ? (
+                          <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/36">
                             {autoFilterStatusHint}
                           </p>
                         ) : null}
                       </>
                     )}
                   </div>
-
-                  <div className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-white/6 px-3 text-sm font-medium text-white/58">
-                    {formatWordCount(collection.wordCount)}
-                  </div>
                 </div>
 
                 {!isEditing ? (
-                  <div className="mt-auto flex flex-wrap gap-2 border-t border-white/8 pt-4">
+                  <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/8 pt-4">
                     <button
                       type="button"
                       onClick={(event) => {

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AppHeader } from "@/app/components/app-header";
 import { CollectionWordGrid } from "@/app/components/collection-word-grid";
-import { AppBrandIcon, CollectionIcon } from "@/app/components/icons";
+import { CollectionIcon } from "@/app/components/icons";
 import { CollectionService } from "@/features/collections/application/CollectionService";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { NotFoundError } from "@/shared/utils/errors";
@@ -14,6 +15,10 @@ type CollectionDetailPageProps = {
 };
 
 const collectionService = new CollectionService(new CollectionRepository());
+const COLLECTION_NAV_ITEMS = [
+  { label: "辞書", active: false },
+  { label: "Collection", active: true },
+];
 
 function formatWordCount(count: number) {
   return `${count} 个单词`;
@@ -47,26 +52,7 @@ export default async function CollectionDetailPage({
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <header className="border-b border-black/50 bg-[#1e1e1ecc]">
-        <div className="mr-auto flex h-[clamp(56px,6vw,60px)] w-full max-w-[1160px] items-center gap-[clamp(24px,5vw,48px)] pl-[clamp(16px,4vw,32px)] pr-[clamp(16px,3vw,24px)]">
-          <Link href="/" className="flex items-center gap-2.5">
-            <AppBrandIcon className="size-[clamp(22px,2.5vw,24px)] text-accent" />
-            <p className="text-[clamp(17px,2.3vw,20px)] font-medium tracking-[-0.03em] text-white/70">
-              LexiNote
-            </p>
-          </Link>
-
-          <nav
-            className="flex items-center gap-[clamp(12px,2.4vw,24px)] whitespace-nowrap"
-            aria-label="Primary"
-          >
-            <span className="text-[clamp(13px,1.8vw,16px)] text-white/45">辞書</span>
-            <span className="text-[clamp(13px,1.8vw,16px)] text-white/60">
-              コレクション
-            </span>
-          </nav>
-        </div>
-      </header>
+      <AppHeader navItems={COLLECTION_NAV_ITEMS} />
 
       <section className="px-[clamp(16px,4vw,40px)] py-[clamp(28px,4vw,48px)]">
         <div className="mx-auto w-full max-w-[960px]">
