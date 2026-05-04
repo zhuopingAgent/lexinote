@@ -59,7 +59,27 @@ export const CLAIM_NEXT_AUTO_FILTER_JOB_SQL = `
         )
       )
       AND attempt_count >= max_attempts
-    RETURNING job_id
+    RETURNING
+      job_id,
+      job_type,
+      collection_id,
+      rule_version
+  ),
+  expired_collection_statuses AS (
+    UPDATE collections
+    SET
+      auto_filter_sync_status = 'failed',
+      auto_filter_last_run_at = NOW(),
+      auto_filter_last_error = 'AI 自动筛选任务已超过最大重试次数，请重新触发同步。'
+    FROM expired_exhausted_jobs
+    WHERE expired_exhausted_jobs.job_type = 'collection_sync'
+      AND expired_exhausted_jobs.collection_id = collections.collection_id
+      AND collections.auto_filter_sync_status IN ('pending', 'running')
+      AND (
+        expired_exhausted_jobs.rule_version IS NULL
+        OR expired_exhausted_jobs.rule_version = collections.auto_filter_rule_version
+      )
+    RETURNING collections.collection_id
   ),
   next_job AS (
     SELECT job_id

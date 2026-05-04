@@ -27,6 +27,8 @@ export function useOverviewWords(activeView: AppView) {
   const [hasLoadedOverview, setHasLoadedOverview] = useState(false);
   const overviewRequestIdRef = useRef(0);
   const overviewAbortControllerRef = useRef<AbortController | null>(null);
+  const overviewLoadMoreRequestIdRef = useRef(0);
+  const overviewLoadMoreAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (activeView !== "overview") {
@@ -54,15 +56,28 @@ export function useOverviewWords(activeView: AppView) {
     const normalizedCursor = options?.cursor?.trim() || undefined;
     const reset = options?.reset ?? false;
     const requestId = reset ? overviewRequestIdRef.current + 1 : overviewRequestIdRef.current;
+    let loadMoreRequestId = overviewLoadMoreRequestIdRef.current;
+
+    const isStaleRequest = () =>
+      requestId !== overviewRequestIdRef.current ||
+      (!reset && loadMoreRequestId !== overviewLoadMoreRequestIdRef.current);
 
     if (reset) {
       overviewAbortControllerRef.current?.abort();
+      overviewLoadMoreAbortControllerRef.current?.abort();
       overviewAbortControllerRef.current = new AbortController();
+      overviewLoadMoreAbortControllerRef.current = null;
       overviewRequestIdRef.current = requestId;
+      overviewLoadMoreRequestIdRef.current += 1;
       setOverviewError(null);
       setIsOverviewLoading(true);
+      setIsOverviewLoadingMore(false);
       setOverviewNextCursor(null);
     } else {
+      overviewLoadMoreAbortControllerRef.current?.abort();
+      overviewLoadMoreAbortControllerRef.current = new AbortController();
+      overviewLoadMoreRequestIdRef.current += 1;
+      loadMoreRequestId = overviewLoadMoreRequestIdRef.current;
       setIsOverviewLoadingMore(true);
     }
 
@@ -77,7 +92,9 @@ export function useOverviewWords(activeView: AppView) {
       }
 
       const response = await fetch(`/api/words?${searchParams.toString()}`, {
-        signal: reset ? overviewAbortControllerRef.current?.signal : undefined,
+        signal: reset
+          ? overviewAbortControllerRef.current?.signal
+          : overviewLoadMoreAbortControllerRef.current?.signal,
       });
 
       if (!response.ok) {
@@ -90,7 +107,7 @@ export function useOverviewWords(activeView: AppView) {
         isPositiveInteger(entry.wordId)
       );
 
-      if (reset && requestId !== overviewRequestIdRef.current) {
+      if (isStaleRequest()) {
         return;
       }
 
@@ -117,7 +134,7 @@ export function useOverviewWords(activeView: AppView) {
         return;
       }
 
-      if (reset && requestId !== overviewRequestIdRef.current) {
+      if (isStaleRequest()) {
         return;
       }
 
@@ -134,7 +151,7 @@ export function useOverviewWords(activeView: AppView) {
         if (requestId === overviewRequestIdRef.current) {
           setIsOverviewLoading(false);
         }
-      } else {
+      } else if (!isStaleRequest()) {
         setIsOverviewLoadingMore(false);
       }
     }

@@ -37,7 +37,7 @@ export async function gotoDictionary(page: Page) {
 
 export async function gotoOverview(page: Page) {
   await page.goto("/?view=overview");
-  await expect(page.getByText("已打开全览")).toBeVisible();
+  await expect(page.getByLabel("搜索全覧词条")).toBeVisible();
 }
 
 export async function gotoHistory(page: Page) {
@@ -62,7 +62,7 @@ export async function searchWord(page: Page, word: string, context?: string) {
 
 export async function createCollection(page: Page, name: string) {
   await page.getByLabel("新建 collection").fill(name);
-  await page.getByRole("button", { name: "新增コレクション" }).click();
+  await page.getByRole("button", { name: "新增" }).click();
   await expect(findCollectionCard(page, name)).toBeVisible();
 }
 

@@ -26,6 +26,23 @@ function summarizeMeaning(meaning: string) {
   return meaning.split(/[；;。]/)[0]?.trim() || meaning.trim();
 }
 
+function mergeUniqueEntries(
+  currentEntries: DictionaryOverviewItem[],
+  nextEntries: DictionaryOverviewItem[]
+) {
+  const mergedEntries = [...currentEntries];
+  const existingWordIds = new Set(currentEntries.map((entry) => entry.wordId));
+
+  for (const entry of nextEntries) {
+    if (!existingWordIds.has(entry.wordId)) {
+      existingWordIds.add(entry.wordId);
+      mergedEntries.push(entry);
+    }
+  }
+
+  return mergedEntries;
+}
+
 export function CollectionWordPicker({
   collectionId,
   existingWordIds,
@@ -44,6 +61,8 @@ export function CollectionWordPicker({
   const [hasLoaded, setHasLoaded] = useState(false);
   const activeResetRequestIdRef = useRef(0);
   const activeResetAbortControllerRef = useRef<AbortController | null>(null);
+  const activeLoadMoreRequestIdRef = useRef(0);
+  const activeLoadMoreAbortControllerRef = useRef<AbortController | null>(null);
 
   const existingWordIdSet = useMemo(() => new Set(existingWordIds), [existingWordIds]);
 
@@ -75,14 +94,28 @@ export function CollectionWordPicker({
     const requestId = options.reset
       ? activeResetRequestIdRef.current + 1
       : activeResetRequestIdRef.current;
+    let loadMoreRequestId = activeLoadMoreRequestIdRef.current;
+
+    const isStaleRequest = () =>
+      requestId !== activeResetRequestIdRef.current ||
+      (!options.reset && loadMoreRequestId !== activeLoadMoreRequestIdRef.current);
 
     if (options.reset) {
       activeResetAbortControllerRef.current?.abort();
+      activeLoadMoreAbortControllerRef.current?.abort();
       activeResetAbortControllerRef.current = new AbortController();
+      activeLoadMoreAbortControllerRef.current = null;
       activeResetRequestIdRef.current = requestId;
+      activeLoadMoreRequestIdRef.current += 1;
       setIsLoading(true);
+      setIsLoadingMore(false);
+      setNextCursor(null);
       setError(null);
     } else {
+      activeLoadMoreAbortControllerRef.current?.abort();
+      activeLoadMoreAbortControllerRef.current = new AbortController();
+      activeLoadMoreRequestIdRef.current += 1;
+      loadMoreRequestId = activeLoadMoreRequestIdRef.current;
       setIsLoadingMore(true);
     }
 
@@ -99,7 +132,7 @@ export function CollectionWordPicker({
       const response = await fetch(`/api/words?${searchParams.toString()}`, {
         signal: options.reset
           ? activeResetAbortControllerRef.current?.signal
-          : undefined,
+          : activeLoadMoreAbortControllerRef.current?.signal,
       });
 
       if (!response.ok) {
@@ -108,11 +141,13 @@ export function CollectionWordPicker({
       }
 
       const payload = (await response.json()) as DictionaryOverviewResponse;
-      if (options.reset && requestId !== activeResetRequestIdRef.current) {
+      if (isStaleRequest()) {
         return;
       }
       setEntries((currentEntries) =>
-        options.reset ? payload.words : [...currentEntries, ...payload.words]
+        options.reset
+          ? payload.words
+          : mergeUniqueEntries(currentEntries, payload.words)
       );
       setNextCursor(payload.nextCursor);
       setHasLoaded(true);
@@ -121,7 +156,7 @@ export function CollectionWordPicker({
         return;
       }
 
-      if (options.reset && requestId !== activeResetRequestIdRef.current) {
+      if (isStaleRequest()) {
         return;
       }
 
@@ -131,8 +166,13 @@ export function CollectionWordPicker({
         setNextCursor(null);
       }
     } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
+      if (options.reset) {
+        if (requestId === activeResetRequestIdRef.current) {
+          setIsLoading(false);
+        }
+      } else if (!isStaleRequest()) {
+        setIsLoadingMore(false);
+      }
     }
   }
 
@@ -330,7 +370,7 @@ export function CollectionWordPicker({
                 reset: false,
               })
             }
-            disabled={isLoadingMore}
+            disabled={isLoading || isLoadingMore}
             className="inline-flex h-11 items-center justify-center rounded-full border border-white/10 px-5 text-sm text-white/56 transition hover:border-white/18 hover:text-white/68 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isLoadingMore ? "加载中..." : "加载更多"}

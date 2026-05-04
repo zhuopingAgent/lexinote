@@ -34,10 +34,12 @@
 - `collection_words.source` distinguishes `manual` vs `auto` membership.
 - `auto_filter_jobs` stores asynchronous collection auto-filter work; lookup requests enqueue jobs instead of doing all classification inline.
 - `auto_filter_jobs` uses bounded retries plus a stale-running lease. API entry points start a lightweight in-process poller so pending or crashed jobs can resume after the app receives traffic.
+- When a stale `collection_sync` job exhausts retries, the recovery SQL also marks the owning collection as `failed` if that job still matches the current auto-filter rule version.
 - Editing auto-filter criteria affects future incremental classification, but rescanning existing words now requires an explicit collection-level AI resync.
 - If a collection AI re-sync fails with a candidate-count message, either narrow the local dataset/rule first or intentionally raise `AUTO_FILTER_MAX_SYNC_CANDIDATES`.
 - When a lookup includes `context`, the app may still build a context-shaped result, but local persisted entries are preferred when they already have examples and the context is not instructional.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
+- Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
 
 ## Quality Checks
 

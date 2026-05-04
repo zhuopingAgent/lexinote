@@ -20,9 +20,9 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
 
   await gotoDictionary(page);
   await expect(page.getByRole("button", { name: "辞書" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "全览" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "全覧" })).toBeVisible();
   await expect(page.getByRole("button", { name: "履歴" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "コレクション" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Collection" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.getByLabel("日语词").fill("食べる");
@@ -31,8 +31,8 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
   await expect(page.getByText("たべる", { exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole("button", { name: "全览" }).click();
-  await expect(page.getByText("已打开全览")).toBeVisible();
+  await page.getByRole("button", { name: "全覧" }).click();
+  await expect(page.getByLabel("搜索全覧词条")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.getByRole("button", { name: "履歴" }).click();
@@ -40,7 +40,7 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
   await expect(page.getByRole("button").filter({ hasText: "食べる" }).first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole("button", { name: "コレクション" }).click();
+  await page.getByRole("button", { name: "Collection" }).click();
   await expect(page.getByLabel("新建 collection")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 

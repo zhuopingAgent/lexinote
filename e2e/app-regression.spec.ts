@@ -118,7 +118,7 @@ test("overview search can add a word into a collection and prevent duplicates", 
   await createCollection(page, collectionName);
 
   await gotoOverview(page);
-  await page.getByLabel("搜索全览词条").fill("大切");
+  await page.getByLabel("搜索全覧词条").fill("大切");
   await expect(page.locator("article").filter({ hasText: "大切" }).first()).toBeVisible();
   await expect(page.getByText("静か")).toHaveCount(0);
 
