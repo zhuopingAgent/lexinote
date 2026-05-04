@@ -8,6 +8,7 @@ import { CollectionAutoFilterJobRepository } from "@/features/collections/infras
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
+import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import { WordLookupService } from "@/features/word-lookup/application/WordLookupService";
 
 const AUTO_FILTER_JOB_POLL_INTERVAL_MS = 60_000;
@@ -17,10 +18,15 @@ const collectionRepository = new CollectionRepository();
 const dictionaryService = new JapaneseDictionaryService(
   new JapaneseDictionaryRepository()
 );
+const vocabularyCoreService = new VocabularyCoreService(dictionaryService);
 const autoFilterJobService = new CollectionAutoFilterJobService(
   new CollectionAutoFilterJobRepository(),
   collectionRepository,
-  new CollectionAutoFilterService(collectionRepository, dictionaryService, llmClient)
+  new CollectionAutoFilterService(
+    collectionRepository,
+    vocabularyCoreService,
+    llmClient
+  )
 );
 const collectionService = new CollectionService(
   collectionRepository,
@@ -28,10 +34,10 @@ const collectionService = new CollectionService(
 );
 const collectionWordService = new CollectionWordService(
   collectionRepository,
-  dictionaryService
+  vocabularyCoreService
 );
 const wordLookupService = new WordLookupService(
-  dictionaryService,
+  vocabularyCoreService,
   new AIWordLookupService(llmClient),
   autoFilterJobService
 );
@@ -44,6 +50,10 @@ export function getCollectionService() {
 
 export function getCollectionWordService() {
   return collectionWordService;
+}
+
+export function getVocabularyCoreService() {
+  return vocabularyCoreService;
 }
 
 export function getDictionaryService() {

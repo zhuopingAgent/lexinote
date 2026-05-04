@@ -27,6 +27,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 
 - In `lexinote`, word lookup uses AI to complete entries with exactly 3 example sentences.
 - The main UI is no longer a pure single lookup page. `app/page.tsx` is now a multi-view shell for dictionary lookup, overview, history, and collections.
+- `features/vocabulary-core/` is the shared service boundary for reusable word-entry operations. New learning features should depend on it for entry reads, detail lookup, pagination, and persistence instead of coupling to lookup orchestration.
 - Persisted dictionary entries use `word + pronunciation` as the storage key so homographs with different readings do not overwrite each other.
 - Local dictionary hits read from PostgreSQL and prefer reusing persisted examples when available; otherwise they may pass through AI for example generation.
 - Dictionary misses fall back to a fully AI-completed entry and persist that result into PostgreSQL.

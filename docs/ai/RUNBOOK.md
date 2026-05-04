@@ -29,6 +29,7 @@
 - `japanese_dictionary_entries` uses the composite key `word + pronunciation`.
 - `japanese_dictionary_entries.examples` stores persisted example sentences as JSONB.
 - The app can backfill this column from AI responses during normal lookup traffic.
+- Reusable vocabulary entry reads/writes now enter through `VocabularyCoreService`, which currently delegates to the Japanese dictionary backend without changing schema or persistence behavior.
 - `collections` and `collection_words` model a many-to-many relation between collections and concrete dictionary entries (`word_id`).
 - The same `word_id` can appear only once inside a given collection, no matter whether it is added manually or by AI auto-filtering.
 - `collection_words.source` distinguishes `manual` vs `auto` membership.
@@ -110,4 +111,5 @@
 - Prefer reading `docs/ai/ARCHITECTURE.md` before making structural changes.
 - Treat `shared/db/sql/schema.sql` as the single schema source of truth.
 - Keep route handlers thin and push logic into services under `features/`.
+- For future study features, use `features/vocabulary-core/` for shared word-entry access instead of reaching directly into lookup orchestration.
 - If you change collection flows, overview behavior, or lookup persistence side effects, update both `docs/ai/*` and `e2e/*` in the same change.

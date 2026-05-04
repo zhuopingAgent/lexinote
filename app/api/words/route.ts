@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import {
   ensureAutoFilterJobRunnerStarted,
-  getDictionaryService,
+  getVocabularyCoreService,
 } from "@/app/api/services";
 import type { DictionaryOverviewResponse } from "@/shared/types/api";
 import { AppError, ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
-const dictionaryService = getDictionaryService();
+const vocabularyCoreService = getVocabularyCoreService();
 
 function parseLimit(rawLimit: string | null) {
   if (rawLimit === null || rawLimit.trim() === "") {
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     const query = url.searchParams.get("query") ?? undefined;
     const cursor = url.searchParams.get("cursor") ?? undefined;
     const limit = parseLimit(url.searchParams.get("limit"));
-    const { words, nextCursor } = await dictionaryService.listWordsPage({
+    const { words, nextCursor } = await vocabularyCoreService.listWordsPage({
       query,
       cursor,
       limit,

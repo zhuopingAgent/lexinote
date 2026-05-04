@@ -1,5 +1,5 @@
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
+import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import type {
   AddCollectionWordResponse,
   AddCollectionWordsResponse,
@@ -10,7 +10,7 @@ import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 export class CollectionWordService {
   constructor(
     private readonly collectionRepository: CollectionRepository,
-    private readonly dictionaryService: JapaneseDictionaryService
+    private readonly vocabularyCoreService: VocabularyCoreService
   ) {}
 
   private selectCandidate(
@@ -41,7 +41,7 @@ export class CollectionWordService {
       throw new NotFoundError("未找到这个 collection。");
     }
 
-    const candidates = await this.dictionaryService.findEntryCandidates(word);
+    const candidates = await this.vocabularyCoreService.findEntryCandidates(word);
     if (candidates.length === 0) {
       throw new ValidationError("本地词典里还没有这个单词，请先查询一次再添加。");
     }

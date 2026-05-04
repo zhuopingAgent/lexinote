@@ -1,6 +1,6 @@
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
+import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 
 const AUTO_FILTER_BATCH_SIZE = 24;
 const DEFAULT_AUTO_FILTER_MAX_SYNC_CANDIDATES = 240;
@@ -44,7 +44,7 @@ function chunkEntries<T>(items: T[], size: number) {
 export class CollectionAutoFilterService {
   constructor(
     private readonly collectionRepository: CollectionRepository,
-    private readonly dictionaryService: JapaneseDictionaryService,
+    private readonly vocabularyCoreService: VocabularyCoreService,
     private readonly llmClient: LlmClient
   ) {}
 
@@ -70,7 +70,7 @@ export class CollectionAutoFilterService {
         .filter((word) => word.source === "manual")
         .map((word) => word.wordId)
     );
-    const candidates = (await this.dictionaryService.listEntryCandidates())
+    const candidates = (await this.vocabularyCoreService.listEntryCandidates())
       .filter((entry) => !manualWordIds.has(entry.wordId))
       .map((entry) => ({
         ...entry,
@@ -118,7 +118,7 @@ export class CollectionAutoFilterService {
   }
 
   async classifyWordById(wordId: number): Promise<number> {
-    const entry = await this.dictionaryService.getEntryDetail(wordId);
+    const entry = await this.vocabularyCoreService.getEntryDetail(wordId);
     if (!entry) {
       return 0;
     }

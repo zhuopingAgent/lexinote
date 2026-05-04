@@ -1,6 +1,6 @@
 import { AIWordLookupService } from "@/features/ai-lookup/application/AIWordLookupService";
 import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
+import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import type { WordLookupResponse } from "@/shared/types/api";
 import { ValidationError } from "@/shared/utils/errors";
 
@@ -14,7 +14,7 @@ export class WordLookupService {
   ] as const;
 
   constructor(
-    private readonly dictionaryService: JapaneseDictionaryService,
+    private readonly vocabularyCoreService: VocabularyCoreService,
     private readonly aiWordLookupService: AIWordLookupService,
     private readonly collectionAutoFilterJobService?: CollectionAutoFilterJobService
   ) {}
@@ -286,7 +286,7 @@ export class WordLookupService {
       return;
     }
 
-    const savedEntry = await this.dictionaryService.saveEntry(entry);
+    const savedEntry = await this.vocabularyCoreService.saveEntry(entry);
 
     if (!savedEntry.isNewEntry) {
       return;
@@ -409,7 +409,7 @@ export class WordLookupService {
       throw new ValidationError("word is required");
     }
 
-    const entries = await this.dictionaryService.findEntries(word);
+    const entries = await this.vocabularyCoreService.findEntries(word);
     const entry = this.selectEntry(entries, pronunciation);
 
     if (entry) {
@@ -514,7 +514,8 @@ export class WordLookupService {
       resolved && resolvedLookupWord !== word ? resolved.lookupReason : undefined;
 
     if (resolvedLookupWord !== word) {
-      const resolvedEntries = await this.dictionaryService.findEntries(resolvedLookupWord);
+      const resolvedEntries =
+        await this.vocabularyCoreService.findEntries(resolvedLookupWord);
       const resolvedEntry = this.selectEntry(resolvedEntries, pronunciation);
 
       if (resolvedEntry) {

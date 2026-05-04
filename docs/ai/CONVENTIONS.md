@@ -16,6 +16,7 @@
 
 ## Backend Structure
 
+- Put reusable word-entry reads/writes in `features/vocabulary-core/`.
 - Put orchestration logic in `features/word-lookup/`.
 - Keep Japanese-specific logic in `features/japanese-dictionary/` and Japanese prompt files.
 - Keep AI generation logic separate from dictionary lookup logic.

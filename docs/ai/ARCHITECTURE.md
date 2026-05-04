@@ -20,6 +20,7 @@
   - `app/api/words/route.ts`: overview listing endpoint with search and pagination
   - `app/api/collections/*`: collection CRUD and collection-word APIs
 - `features/`: business modules
+  - `features/vocabulary-core/`: stable vocabulary-entry boundary shared by lookup, collections, and future study features
   - `features/word-lookup/`: orchestration service
   - `features/japanese-dictionary/`: Japanese-specific dictionary lookup
   - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
@@ -39,6 +40,7 @@
 
 - `app/page.tsx` dictionary view
 - `app/api/words/lookup/route.ts`
+- `features/vocabulary-core/`
 - `features/word-lookup/`
 - `features/japanese-dictionary/`
 - `features/ai-lookup/`
@@ -48,18 +50,20 @@
 
 1. `app/page.tsx` renders the dictionary view inside the main multi-view shell.
 2. The page submits `POST /api/words/lookup` with a required word and an optional context string.
-3. `WordLookupService` coordinates dictionary lookup, local-first selection, AI completion, and persistence rules.
-4. `JapaneseDictionaryService` reads persisted entries from PostgreSQL.
-5. Persisted dictionary rows are keyed by `word + pronunciation`, so homographs with different readings can coexist.
-6. If a local entry already has examples and the provided context is not instructional, lookup may return the local result without calling AI.
-7. `AIWordLookupService` generates exactly 3 example sentences for entries that still need examples and completes full entries when the local dictionary misses.
-8. Context-aware lookup may produce a contextual entry and an optional reconciled entry, but pronunciations are normalized back toward dictionary-form readings before any persistence decision.
-9. Only non-context dictionary-form entries are persisted by default through `persistEntryIfNeeded`.
-10. Newly persisted entries can enqueue asynchronous collection auto-filter classification jobs.
+3. `WordLookupService` coordinates lookup-specific selection, AI completion, context reconciliation, and persistence rules.
+4. Reusable vocabulary entry reads/writes go through `VocabularyCoreService`.
+5. `VocabularyCoreService` currently delegates to `JapaneseDictionaryService`, which reads persisted entries from PostgreSQL.
+6. Persisted dictionary rows are keyed by `word + pronunciation`, so homographs with different readings can coexist.
+7. If a local entry already has examples and the provided context is not instructional, lookup may return the local result without calling AI.
+8. `AIWordLookupService` generates exactly 3 example sentences for entries that still need examples and completes full entries when the local dictionary misses.
+9. Context-aware lookup may produce a contextual entry and an optional reconciled entry, but pronunciations are normalized back toward dictionary-form readings before any persistence decision.
+10. Only non-context dictionary-form entries are persisted by default through `persistEntryIfNeeded`.
+11. Newly persisted entries can enqueue asynchronous collection auto-filter classification jobs.
 
 ### Important Rules
 
 - Treat `word + pronunciation` as the effective storage key.
+- Use `VocabularyCoreService` for reusable vocabulary entry reads, detail lookup, pagination, and persistence. Keep lookup-only AI/context orchestration in `WordLookupService`.
 - Do not assume every query with context should call AI; the service is now local-first in many cases.
 - Do not assume context-shaped readings should be persisted as standalone entries.
 - If you change lookup behavior, also review `Memory.md`, `RUNBOOK.md`, and `e2e/app-regression.spec.ts`.
@@ -80,18 +84,20 @@
 
 1. The main shell can switch into the collections view from the sidebar or query param.
 2. Collection CRUD goes through `app/api/collections/*` and `CollectionService`.
-3. Collection detail pages read a collection plus its current words from PostgreSQL.
-4. `collection_words` is the many-to-many table between collections and concrete dictionary entries (`word_id`).
-5. The same `word_id` can belong to multiple collections, but can appear only once inside any single collection.
-6. `collection_words.source` distinguishes `manual` vs `auto` membership.
-7. AI auto-filtering is asynchronous: saving collection rules updates status fields, but existing words are only rescanned when the user explicitly triggers an AI resync for that collection.
-8. New dictionary entries only enqueue incremental classification when a truly new entry is persisted.
-9. Auto-filter jobs have bounded retries, a stale-running lease, and request-triggered polling from API entry points so crashed jobs can recover. Exhausted stale `collection_sync` jobs also update the collection status to `failed` when the job's rule version still matches the collection.
-10. Explicit collection AI re-syncs guard against accidental large LLM scans through `AUTO_FILTER_MAX_SYNC_CANDIDATES` (default `240`).
+3. Collection word add/detail and auto-filter classification reuse vocabulary entries through `VocabularyCoreService`.
+4. Collection detail pages read a collection plus its current words from PostgreSQL.
+5. `collection_words` is the many-to-many table between collections and concrete dictionary entries (`word_id`).
+6. The same `word_id` can belong to multiple collections, but can appear only once inside any single collection.
+7. `collection_words.source` distinguishes `manual` vs `auto` membership.
+8. AI auto-filtering is asynchronous: saving collection rules updates status fields, but existing words are only rescanned when the user explicitly triggers an AI resync for that collection.
+9. New dictionary entries only enqueue incremental classification when a truly new entry is persisted.
+10. Auto-filter jobs have bounded retries, a stale-running lease, and request-triggered polling from API entry points so crashed jobs can recover. Exhausted stale `collection_sync` jobs also update the collection status to `failed` when the job's rule version still matches the collection.
+11. Explicit collection AI re-syncs guard against accidental large LLM scans through `AUTO_FILTER_MAX_SYNC_CANDIDATES` (default `240`).
 
 ### Important Rules
 
 - Think in terms of concrete dictionary entries (`word_id`), not bare word strings.
+- Reuse `VocabularyCoreService` when collection code needs dictionary candidates or entry details.
 - Manual add and AI auto-filter must never create duplicate rows inside one collection.
 - Collection auto-filtering is job-driven, not inline request work.
 - Auto-filter jobs should remain recoverable: preserve retry, lease, and stale-running semantics when touching `auto_filter_jobs`.
@@ -153,6 +159,7 @@ Out of scope:
 
 - Keep the current monolith shape.
 - Add new backend logic under `features/` before adding new top-level directories.
+- Use `features/vocabulary-core/` as the shared backend boundary for reusable word-entry operations needed by new learning features.
 - Keep Japanese-specific logic inside `features/japanese-dictionary/` and Japanese prompt files.
 - Keep SQL centralized under `shared/db/sql/`.
 - Prefer changing service boundaries before changing route structure.

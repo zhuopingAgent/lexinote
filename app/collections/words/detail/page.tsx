@@ -7,6 +7,7 @@ import { CollectionService } from "@/features/collections/application/Collection
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
+import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import { NotFoundError } from "@/shared/utils/errors";
 
 type CollectionWordDetailPageProps = {
@@ -17,8 +18,8 @@ type CollectionWordDetailPageProps = {
 };
 
 const collectionService = new CollectionService(new CollectionRepository());
-const dictionaryService = new JapaneseDictionaryService(
-  new JapaneseDictionaryRepository()
+const vocabularyCoreService = new VocabularyCoreService(
+  new JapaneseDictionaryService(new JapaneseDictionaryRepository())
 );
 const COLLECTION_NAV_ITEMS = [
   { label: "辞書", active: false },
@@ -59,7 +60,7 @@ export default async function CollectionWordDetailPage({
     notFound();
   }
 
-  const entry = await dictionaryService.getEntryDetail(wordId);
+  const entry = await vocabularyCoreService.getEntryDetail(wordId);
 
   if (!entry) {
     notFound();

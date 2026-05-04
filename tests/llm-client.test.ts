@@ -154,6 +154,7 @@ describe("LlmClient", () => {
             collectionId: 4,
             name: "商务表达",
             autoFilterCriteria: "偏商务沟通的常见表达",
+            autoFilterRuleVersion: 1,
           },
         ]
       )
@@ -314,11 +315,13 @@ describe("LlmClient", () => {
             collectionId: 4,
             name: "商务表达",
             autoFilterCriteria: "偏商务沟通的常见表达",
+            autoFilterRuleVersion: 1,
           },
           {
             collectionId: 7,
             name: "工作场景",
             autoFilterCriteria: "偏工作沟通的常见词",
+            autoFilterRuleVersion: 1,
           },
         ]
       )
@@ -343,6 +346,7 @@ describe("LlmClient", () => {
         collectionId: 3,
         name: "JLPT N3",
         autoFilterCriteria: "收录 JLPT N3 常见词",
+        autoFilterRuleVersion: 1,
       },
       [
         {
