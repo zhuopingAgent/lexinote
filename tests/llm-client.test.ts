@@ -328,6 +328,37 @@ describe("LlmClient", () => {
     ).resolves.toEqual([4, 7]);
   });
 
+  it("keeps explicit rule text matches when entry classification returns a non-2xx response", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.matchEntryToCollections(
+        {
+          wordId: 21,
+          word: "共有する",
+          pronunciation: "きょうゆうする",
+          meaningZh: "共有；共享信息",
+          partOfSpeech: "动词",
+          examples: [],
+        },
+        [
+          {
+            collectionId: 4,
+            name: "商务表达",
+            autoFilterCriteria: "包含 共有 的工作沟通词。",
+            autoFilterRuleVersion: 1,
+          },
+        ]
+      )
+    ).resolves.toEqual([4]);
+  });
+
   it("includes collection criteria in backfill prompts", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
@@ -366,6 +397,72 @@ describe("LlmClient", () => {
         body: expect.stringContaining("收录 JLPT N3 常见词"),
       })
     );
+  });
+
+  it("keeps explicit rule text matches when live backfill misses them", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          matchingWordIds: [999],
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.matchEntriesToCollection(
+        {
+          collectionId: 3,
+          name: "食べ物",
+          autoFilterCriteria: "食べる を必ず含める。",
+          autoFilterRuleVersion: 1,
+        },
+        [
+          {
+            wordId: 11,
+            word: "食べる",
+            pronunciation: "たべる",
+            meaningZh: "吃；进食",
+            partOfSpeech: "动词",
+            examples: [],
+          },
+        ]
+      )
+    ).resolves.toEqual([999, 11]);
+  });
+
+  it("keeps explicit rule text matches when live backfill returns a non-2xx response", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(
+      client.matchEntriesToCollection(
+        {
+          collectionId: 3,
+          name: "食べ物",
+          autoFilterCriteria: "食べる を必ず含める。",
+          autoFilterRuleVersion: 1,
+        },
+        [
+          {
+            wordId: 11,
+            word: "食べる",
+            pronunciation: "たべる",
+            meaningZh: "吃；进食",
+            partOfSpeech: "动词",
+            examples: [],
+          },
+        ]
+      )
+    ).resolves.toEqual([11]);
   });
 
   it("parses a reconciled entry when the model decides the difference should be persisted", async () => {

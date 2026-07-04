@@ -3,12 +3,13 @@ import {
   ensureAutoFilterJobRunnerStarted,
   getCollectionService,
 } from "@/app/api/services";
+import { toErrorResponse } from "@/app/api/http-error";
 import type {
   CollectionDetailResponse,
   CollectionResponse,
   UpdateCollectionRequest,
 } from "@/shared/types/api";
-import { AppError, ValidationError } from "@/shared/utils/errors";
+import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
@@ -38,33 +39,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error("GET /api/collections/[collectionId] failed", error);
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, "GET /api/collections/[collectionId] failed");
   }
 }
 
@@ -129,33 +104,7 @@ export async function PATCH(
 
     return NextResponse.json(response);
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error("PATCH /api/collections/[collectionId] failed", error);
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, "PATCH /api/collections/[collectionId] failed");
   }
 }
 
@@ -172,32 +121,6 @@ export async function DELETE(
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error("DELETE /api/collections/[collectionId] failed", error);
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, "DELETE /api/collections/[collectionId] failed");
   }
 }

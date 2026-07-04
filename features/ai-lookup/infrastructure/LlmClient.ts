@@ -193,6 +193,63 @@ function parseWordMatchOutput(text: string) {
   }
 }
 
+function normalizeRuleText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, "");
+}
+
+function tokenizeEntryForRuleMatch(entry: AutoFilterDictionaryEntry) {
+  return Array.from(
+    new Set(
+      [
+        entry.word,
+        entry.pronunciation,
+        entry.meaningZh,
+        entry.partOfSpeech,
+        ...entry.meaningZh.split(/[；;、,，。/／\s]+/),
+      ]
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2)
+    )
+  );
+}
+
+function ruleTextMatchesEntry(ruleText: string, entry: AutoFilterDictionaryEntry) {
+  const normalizedRuleText = normalizeRuleText(ruleText);
+
+  if (!normalizedRuleText) {
+    return false;
+  }
+
+  return tokenizeEntryForRuleMatch(entry).some((token) =>
+    normalizedRuleText.includes(normalizeRuleText(token))
+  );
+}
+
+function fallbackCollectionMatches(
+  entry: AutoFilterDictionaryEntry,
+  collections: CollectionAutoFilterRule[]
+) {
+  return collections
+    .filter((collection) =>
+      ruleTextMatchesEntry(
+        `${collection.name}\n${collection.autoFilterCriteria}`,
+        entry
+      )
+    )
+    .map((collection) => collection.collectionId);
+}
+
+function fallbackWordMatches(
+  collection: CollectionAutoFilterRule,
+  entries: AutoFilterDictionaryEntry[]
+) {
+  const ruleText = `${collection.name}\n${collection.autoFilterCriteria}`;
+
+  return entries
+    .filter((entry) => ruleTextMatchesEntry(ruleText, entry))
+    .map((entry) => entry.wordId);
+}
+
 function parseReconciledLookupOutput(
   word: string,
   text: string,
@@ -515,6 +572,7 @@ export class LlmClient {
     collections: CollectionAutoFilterRule[]
   ): Promise<number[]> {
     const apiKey = process.env.OPENAI_API_KEY;
+    const fallbackMatches = fallbackCollectionMatches(entry, collections);
 
     if (!apiKey || collections.length === 0) {
       return [];
@@ -547,13 +605,14 @@ export class LlmClient {
       });
 
       if (!response.ok) {
-        return [];
+        return fallbackMatches;
       }
 
       const data = (await response.json()) as OpenAiResponse;
-      return parseCollectionMatchOutput(extractResponseText(data));
+      const matches = parseCollectionMatchOutput(extractResponseText(data));
+      return Array.from(new Set([...matches, ...fallbackMatches]));
     } catch {
-      return [];
+      return fallbackMatches;
     }
   }
 
@@ -562,6 +621,7 @@ export class LlmClient {
     entries: AutoFilterDictionaryEntry[]
   ): Promise<number[]> {
     const apiKey = process.env.OPENAI_API_KEY;
+    const fallbackMatches = fallbackWordMatches(collection, entries);
 
     if (!apiKey || entries.length === 0) {
       return [];
@@ -594,13 +654,14 @@ export class LlmClient {
       });
 
       if (!response.ok) {
-        return [];
+        return fallbackMatches;
       }
 
       const data = (await response.json()) as OpenAiResponse;
-      return parseWordMatchOutput(extractResponseText(data));
+      const matches = parseWordMatchOutput(extractResponseText(data));
+      return Array.from(new Set([...matches, ...fallbackMatches]));
     } catch {
-      return [];
+      return fallbackMatches;
     }
   }
 }

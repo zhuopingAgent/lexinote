@@ -3,8 +3,9 @@ import {
   ensureAutoFilterJobRunnerStarted,
   getWordLookupService,
 } from "@/app/api/services";
-import { AppError, ValidationError } from "@/shared/utils/errors";
+import { toErrorResponse } from "@/app/api/http-error";
 import type { WordLookupRequest } from "@/shared/types/api";
+import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
@@ -41,32 +42,6 @@ export async function POST(request: Request) {
     );
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error("POST /api/words/lookup failed", error);
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, "POST /api/words/lookup failed");
   }
 }

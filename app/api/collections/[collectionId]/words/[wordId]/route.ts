@@ -3,7 +3,8 @@ import {
   ensureAutoFilterJobRunnerStarted,
   getCollectionWordService,
 } from "@/app/api/services";
-import { AppError, ValidationError } from "@/shared/utils/errors";
+import { toErrorResponse } from "@/app/api/http-error";
+import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
@@ -34,35 +35,9 @@ export async function DELETE(
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error(
-        "DELETE /api/collections/[collectionId]/words/[wordId] failed",
-        error
-      );
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
+    return toErrorResponse(
+      error,
+      "DELETE /api/collections/[collectionId]/words/[wordId] failed"
     );
   }
 }

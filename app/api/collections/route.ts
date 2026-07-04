@@ -3,12 +3,13 @@ import {
   ensureAutoFilterJobRunnerStarted,
   getCollectionService,
 } from "@/app/api/services";
+import { toErrorResponse } from "@/app/api/http-error";
 import type {
   CollectionListResponse,
   CollectionResponse,
   CreateCollectionRequest,
 } from "@/shared/types/api";
-import { AppError, ValidationError } from "@/shared/utils/errors";
+import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
@@ -23,33 +24,7 @@ export async function GET() {
 
     return NextResponse.json(response);
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error("GET /api/collections failed", error);
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, "GET /api/collections failed");
   }
 }
 
@@ -81,32 +56,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.exposeMessage
-              ? error.message
-              : "Service temporarily unavailable",
-          },
-        },
-        { status: error.statusCode }
-      );
-    }
-
-    if (error instanceof Error) {
-      console.error("POST /api/collections failed", error);
-    }
-
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Internal server error",
-        },
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, "POST /api/collections failed");
   }
 }
