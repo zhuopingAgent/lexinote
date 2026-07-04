@@ -53,7 +53,12 @@ export default async function globalSetup() {
         auto_filter_jobs,
         collection_words,
         collections,
-        japanese_dictionary_entries
+        japanese_dictionary_entries,
+        ai_feedback,
+        user_sentences,
+        favorites,
+        review_records,
+        learning_history
       RESTART IDENTITY CASCADE
     `);
     await pool.query(fixturesSql);

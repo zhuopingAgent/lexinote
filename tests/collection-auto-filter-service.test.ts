@@ -112,6 +112,73 @@ describe("CollectionAutoFilterService", () => {
     expect(collectionRepository.replaceAutoWords).toHaveBeenCalledWith(3, 4, [12, 15]);
   });
 
+  it("keeps explicitly named rule matches when the model misses them", async () => {
+    const previousApiKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-key";
+    const collectionRepository = {
+      findDetailById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "食べ物",
+        description: "",
+        wordCount: 0,
+        createdAt: "2026-04-22T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "食べる を必ず含める。",
+        autoFilterSyncStatus: "running",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 4,
+        words: [],
+      }),
+      findById: vi.fn().mockResolvedValue({
+        collectionId: 3,
+        name: "食べ物",
+        description: "",
+        wordCount: 0,
+        createdAt: "2026-04-22T00:00:00.000Z",
+        autoFilterEnabled: true,
+        autoFilterCriteria: "食べる を必ず含める。",
+        autoFilterSyncStatus: "running",
+        autoFilterLastRunAt: null,
+        autoFilterLastError: "",
+        autoFilterRuleVersion: 4,
+        autoFilterLastSyncedRuleVersion: null,
+      }),
+      replaceAutoWords: vi.fn().mockResolvedValue(1),
+    };
+    const dictionaryService = {
+      listEntryCandidates: vi.fn().mockResolvedValue([
+        {
+          wordId: 12,
+          word: "食べる",
+          pronunciation: "たべる",
+          meaningZh: "吃；进食",
+          partOfSpeech: "动词",
+        },
+      ]),
+    };
+    const llmClient = {
+      matchEntriesToCollection: vi.fn().mockResolvedValue([]),
+    };
+
+    try {
+      const service = new CollectionAutoFilterService(
+        collectionRepository as never,
+        dictionaryService as never,
+        llmClient as never
+      );
+
+      await expect(service.syncCollection(3)).resolves.toBe(1);
+      expect(collectionRepository.replaceAutoWords).toHaveBeenCalledWith(3, 4, [12]);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousApiKey;
+      }
+    }
+  });
+
   it("classifies a newly saved word into matching collections", async () => {
     const collectionRepository = {
       listAutoFilterCollections: vi.fn().mockResolvedValue([

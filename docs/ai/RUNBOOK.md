@@ -21,6 +21,7 @@
 - `DATABASE_URL` is required for the lookup flow.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
 - `OPENAI_API_KEY` is optional. If missing, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
+- Grammar practice generation and sentence feedback also work without `OPENAI_API_KEY` by using deterministic local fallback output.
 - `OPENAI_MODEL` defaults to `gpt-5.4`.
 - `AUTO_FILTER_MAX_SYNC_CANDIDATES` defaults to `240` and caps a single collection AI re-sync before any LLM calls are made.
 
@@ -41,6 +42,9 @@
 - When a lookup includes `context`, the app may still build a context-shaped result, but local persisted entries are preferred when they already have examples and the context is not instructional.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 - Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
+- Grammar learning tables, taxonomy, 80 MVP grammar points, examples, and similar grammar relations are created and seeded by `shared/db/sql/schema.sql`.
+- Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
+- Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.
 
 ## Quality Checks
 
@@ -78,6 +82,7 @@
 - Check that `DATABASE_URL` is set in `.env.local`.
 - Check that the local database exists and `shared/db/sql/seed.sql` has been applied.
 - If `OPENAI_API_KEY` is missing, dictionary hits still work but example sentences stay empty, and unknown words fall back to placeholder fields.
+- If `OPENAI_API_KEY` is missing, grammar practice and feedback should still return usable fallback content. The acceptance fallback for `〜てもらえますか` + hospital + polite should flag `先生、もう一度説明してもらえる？` as too casual and suggest `すみません、もう一度説明していただけますか。`.
 
 ### E2E Test Fails Before Browser Starts
 
@@ -111,5 +116,6 @@
 - Prefer reading `docs/ai/ARCHITECTURE.md` before making structural changes.
 - Treat `shared/db/sql/schema.sql` as the single schema source of truth.
 - Keep route handlers thin and push logic into services under `features/`.
+- Keep grammar-learning logic in `features/grammar-learning/`, with prompts under `features/grammar-learning/prompts/`.
 - For future study features, use `features/vocabulary-core/` for shared word-entry access instead of reaching directly into lookup orchestration.
 - If you change collection flows, overview behavior, or lookup persistence side effects, update both `docs/ai/*` and `e2e/*` in the same change.

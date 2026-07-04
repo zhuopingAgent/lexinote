@@ -27,6 +27,11 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 
 - In `lexinote`, word lookup uses AI to complete entries with exactly 3 example sentences.
 - The main UI is no longer a pure single lookup page. `app/page.tsx` is now a multi-view shell for dictionary lookup, overview, history, and collections.
+- Grammar learning functionality is active again. `app/grammar/page.tsx` is a grammar learning workbench, with detail, practice, favorites, and review pages under `/grammar`, `/practice`, `/favorites`, and `/review`.
+- Grammar learning uses `features/grammar-learning/` for service logic, AI/fallback practice generation, AI/fallback sentence feedback, and repository access. Route handlers should stay thin and call `GrammarLearningService`.
+- Grammar tables are created from `shared/db/sql/schema.sql` and seed 8 MVP categories, scene/register tags, 80 grammar points, examples, and similar grammar relations. Do not reintroduce the old `DROP TABLE IF EXISTS grammar_points` cleanup.
+- The grammar MVP is single-user local-first. APIs default to user id `00000000-0000-0000-0000-000000000001` when no user id is supplied.
+- If `OPENAI_API_KEY` is missing, grammar practice generation and sentence feedback fall back to deterministic local feedback, including the hospital + polite `〜てもらえますか` acceptance flow.
 - `features/vocabulary-core/` is the shared service boundary for reusable word-entry operations. New learning features should depend on it for entry reads, detail lookup, pagination, and persistence instead of coupling to lookup orchestration.
 - Persisted dictionary entries use `word + pronunciation` as the storage key so homographs with different readings do not overwrite each other.
 - Local dictionary hits read from PostgreSQL and prefer reusing persisted examples when available; otherwise they may pass through AI for example generation.

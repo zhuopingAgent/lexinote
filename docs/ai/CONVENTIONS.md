@@ -19,6 +19,7 @@
 - Put reusable word-entry reads/writes in `features/vocabulary-core/`.
 - Put orchestration logic in `features/word-lookup/`.
 - Keep Japanese-specific logic in `features/japanese-dictionary/` and Japanese prompt files.
+- Keep grammar-learning logic in `features/grammar-learning/`; keep grammar prompts in `features/grammar-learning/prompts/`.
 - Keep AI generation logic separate from dictionary lookup logic.
 - Keep SQL centralized under `shared/db/sql/`.
 - Use parameterized SQL only.

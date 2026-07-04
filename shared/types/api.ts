@@ -4,6 +4,208 @@ export type WordLookupRequest = {
   pronunciation?: string;
 };
 
+export type Practicality = "S" | "A" | "B" | "C" | "D";
+
+export type SpokenOrWritten = "spoken" | "written" | "both";
+
+export type GrammarSceneTag =
+  | "restaurant"
+  | "shopping"
+  | "hospital"
+  | "workplace"
+  | "email"
+  | "phone_call"
+  | "customer_service"
+  | "government_office"
+  | "transportation"
+  | "housing"
+  | "school"
+  | "friend_chat"
+  | "family"
+  | "travel"
+  | "interview"
+  | "online_chat"
+  | "daily_life";
+
+export type GrammarRegisterTag =
+  | "casual"
+  | "polite"
+  | "business"
+  | "formal"
+  | "written"
+  | "customer"
+  | "academic"
+  | "news"
+  | "rough"
+  | "soft";
+
+export type GrammarTag = {
+  nameEn: string;
+  nameZh: string;
+  description?: string;
+  priority?: number;
+};
+
+export type GrammarCategory = {
+  id: string;
+  slug: string;
+  nameZh: string;
+  nameEn: string;
+  description: string;
+  priority: number;
+  isMvp: boolean;
+};
+
+export type GrammarPointSummary = {
+  id: string;
+  grammarPoint: string;
+  reading?: string | null;
+  categoryId: string | null;
+  categorySlug?: string | null;
+  categoryNameZh?: string | null;
+  categoryNameEn?: string | null;
+  subCategory?: string | null;
+  coreMeaning: string;
+  naturalTranslation?: string | null;
+  structure?: string | null;
+  practicality: Practicality;
+  spokenOrWritten: SpokenOrWritten;
+  sceneTags: GrammarTag[];
+  registerTags: GrammarTag[];
+  isFavorite?: boolean;
+};
+
+export type GrammarExample = {
+  id: string;
+  jp: string;
+  zh?: string | null;
+  sceneTag?: GrammarTag | null;
+  registerTag?: GrammarTag | null;
+  difficulty: number;
+  naturalnessScore?: number | null;
+  notes?: string | null;
+};
+
+export type SimilarGrammarRelation = {
+  id: string;
+  grammarPointId: string;
+  similarGrammarPointId: string;
+  similarGrammarPointText: string;
+  differenceSummary: string;
+  exampleA?: string | null;
+  exampleB?: string | null;
+  notes?: string | null;
+};
+
+export type GrammarPointDetail = GrammarPointSummary & {
+  notes?: string | null;
+  jlptLevel?: string | null;
+  commonMistakes: string[];
+  examples: GrammarExample[];
+  similarGrammar: SimilarGrammarRelation[];
+};
+
+export type GrammarSearchResponse = {
+  items: GrammarPointSummary[];
+};
+
+export type GrammarDetailResponse = {
+  grammarPoint: GrammarPointDetail;
+};
+
+export type GrammarTaxonomyResponse = {
+  categories: GrammarCategory[];
+  sceneTags: GrammarTag[];
+  registerTags: GrammarTag[];
+};
+
+export type PracticeLevel = 1 | 2 | 3 | 4 | 5;
+
+export type PracticeReferenceAnswer = {
+  jp: string;
+  zh: string;
+  noteZh: string;
+};
+
+export type PracticeGenerateRequest = {
+  grammarPointId: string;
+  sceneTag?: GrammarSceneTag | string;
+  registerTag?: GrammarRegisterTag | string;
+  level?: PracticeLevel | number;
+};
+
+export type PracticeGenerateResponse = {
+  prompt: string;
+  referenceAnswers: PracticeReferenceAnswer[];
+  hints: string[];
+  grammarPoint: GrammarPointSummary;
+  sceneTag?: GrammarTag | null;
+  registerTag?: GrammarTag | null;
+  source: "ai" | "fallback";
+};
+
+export type SentencePracticeInput = {
+  userId?: string;
+  grammarPointId: string;
+  sentence: string;
+  sceneTag?: GrammarSceneTag | string;
+  registerTag?: GrammarRegisterTag | string;
+  promptText?: string;
+};
+
+export type AIFeedbackBetterVersion = {
+  sentence: string;
+  registerTag?: string | null;
+  explanationZh: string;
+};
+
+export type AIFeedbackResult = {
+  isCorrect: boolean;
+  grammarScore: number;
+  naturalnessScore: number;
+  registerScore: number;
+  sceneFitScore: number;
+  feedbackText: string;
+  correctedSentence?: string | null;
+  betterVersions: AIFeedbackBetterVersion[];
+  mistakeTypes: string[];
+  nextPracticePrompt?: string | null;
+};
+
+export type PracticeSubmitResponse = AIFeedbackResult & {
+  userSentenceId: string;
+  feedbackId: string;
+  source: "ai" | "fallback";
+};
+
+export type FavoriteGrammarRequest = {
+  userId?: string;
+  grammarPointId: string;
+};
+
+export type GrammarFavoritesResponse = {
+  items: GrammarPointSummary[];
+};
+
+export type ReviewStatus = "new" | "learning" | "reviewing" | "mastered";
+
+export type GrammarReviewItem = {
+  reviewRecordId: string;
+  grammarPoint: GrammarPointSummary;
+  status: ReviewStatus;
+  mistakeCount: number;
+  nextReviewAt: string | null;
+  lastReviewedAt: string | null;
+  latestSentence?: string | null;
+  latestFeedback?: string | null;
+  correctedSentence?: string | null;
+  mistakeTypes: string[];
+};
+
+export type GrammarReviewResponse = {
+  items: GrammarReviewItem[];
+};
+
 export type AutoFilterSyncStatus =
   | "idle"
   | "pending"

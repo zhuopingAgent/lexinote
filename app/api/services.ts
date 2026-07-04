@@ -6,6 +6,9 @@ import { CollectionService } from "@/features/collections/application/Collection
 import { CollectionWordService } from "@/features/collections/application/CollectionWordService";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
+import { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
+import { GrammarAiClient } from "@/features/grammar-learning/infrastructure/GrammarAiClient";
+import { GrammarRepository } from "@/features/grammar-learning/infrastructure/GrammarRepository";
 import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
@@ -41,6 +44,10 @@ const wordLookupService = new WordLookupService(
   new AIWordLookupService(llmClient),
   autoFilterJobService
 );
+const grammarLearningService = new GrammarLearningService(
+  new GrammarRepository(),
+  new GrammarAiClient()
+);
 
 let autoFilterJobPoller: ReturnType<typeof setInterval> | null = null;
 
@@ -62,6 +69,10 @@ export function getDictionaryService() {
 
 export function getWordLookupService() {
   return wordLookupService;
+}
+
+export function getGrammarLearningService() {
+  return grammarLearningService;
 }
 
 export function ensureAutoFilterJobRunnerStarted() {

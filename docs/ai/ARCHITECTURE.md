@@ -13,13 +13,23 @@
 
 - `app/`: UI entry and route handlers
   - `app/page.tsx`: multi-view client shell for dictionary lookup, overview, local history, and collection management
+  - `app/grammar/page.tsx`: grammar learning workbench with search, category browsing, and grammar cards
+  - `app/grammar/[grammarPointId]/page.tsx`: grammar detail view with examples, usage tags, similar grammar, favorites, and practice entry
+  - `app/practice/page.tsx`: grammar scenario practice generation and sentence feedback flow
+  - `app/favorites/page.tsx`: saved grammar points
+  - `app/review/page.tsx`: mistake-book and review records
   - `app/collections/detail/page.tsx`: collection detail page
   - `app/collections/add/page.tsx`: collection add-word page
   - `app/collections/words/detail/page.tsx`: word detail page scoped to a collection
+  - `app/api/grammar/*`: grammar search, detail, and taxonomy endpoints
+  - `app/api/practice/*`: grammar practice generation and sentence feedback endpoints
+  - `app/api/favorites/route.ts`: grammar favorite list/toggle endpoint
+  - `app/api/review/today/route.ts`: grammar review endpoint
   - `app/api/words/lookup/route.ts`: lookup endpoint returning the lookup payload
   - `app/api/words/route.ts`: overview listing endpoint with search and pagination
   - `app/api/collections/*`: collection CRUD and collection-word APIs
 - `features/`: business modules
+  - `features/grammar-learning/`: grammar search/detail, practice generation, sentence feedback, favorites, review, and grammar AI prompts/fallbacks
   - `features/vocabulary-core/`: stable vocabulary-entry boundary shared by lookup, collections, and future study features
   - `features/word-lookup/`: orchestration service
   - `features/japanese-dictionary/`: Japanese-specific dictionary lookup
@@ -106,6 +116,43 @@
 - Paginated client lists must guard reset/load-more requests with aborts or generation tokens, and reset stale cursors when the search query changes.
 - If you change collection membership semantics, update both docs and E2E fixtures/specs in the same change.
 
+## Grammar Learning
+
+### What Lives Here
+
+- `app/grammar/page.tsx`
+- `app/grammar/[grammarPointId]/page.tsx`
+- `app/practice/page.tsx`
+- `app/favorites/page.tsx`
+- `app/review/page.tsx`
+- `app/api/grammar/*`
+- `app/api/practice/*`
+- `app/api/favorites/route.ts`
+- `app/api/review/today/route.ts`
+- `features/grammar-learning/`
+- `shared/db/sql/grammar.sql.ts`
+- grammar tables and seed data in `shared/db/sql/schema.sql`
+
+### Runtime Flow
+
+1. `/grammar` fetches grammar taxonomy and `GET /api/grammar` search results.
+2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]`, render examples, scenario/register tags, common mistakes, similar grammar, and log view history.
+3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`.
+4. Practice generation uses OpenAI when `OPENAI_API_KEY` is available and deterministic fallback output otherwise.
+5. User sentence submission calls `POST /api/practice/submit`, stores `user_sentences`, stores `ai_feedback`, updates `review_records`, and logs learning history.
+6. `/favorites` uses `GET /api/favorites`; detail pages toggle favorites through `POST`/`DELETE /api/favorites`.
+7. `/review` uses `GET /api/review/today` to show due mistakes and retry links.
+
+### Important Rules
+
+- Keep route handlers thin and put grammar behavior in `GrammarLearningService`.
+- The local MVP defaults to user id `00000000-0000-0000-0000-000000000001` when no auth user id exists.
+- Keep grammar AI prompts under `features/grammar-learning/prompts/`.
+- Grammar practice and feedback must remain usable without `OPENAI_API_KEY`; fallback behavior is part of the local development contract.
+- Scenario and register tags are first-class data, not free-form display-only labels.
+- Sentence feedback should distinguish grammatical correctness, naturalness, register fit, and scene fit.
+- Mistakes should update review records so the review page is not disconnected from practice.
+
 ## E2E
 
 ### What Lives Here
@@ -144,14 +191,12 @@
 - Collection CRUD and collection detail pages
 - Adding/removing persisted entries to/from collections
 - AI auto-filtering that classifies words into collections asynchronously
+- Grammar search, detail pages, practical examples, scenario/register tags, similar grammar comparisons, AI/fallback practice generation, sentence feedback, favorites, and mistake review
 
 Out of scope:
 
 - auth
 - multi-user support
-- exercises
-- review
-- favorites
 - voice features beyond the browser `speechSynthesis` helper used in the word card UI
 - cloud deployment
 
