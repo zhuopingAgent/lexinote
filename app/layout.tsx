@@ -16,8 +16,9 @@ const themeInitScript = `
 (() => {
   try {
     const storedTheme = window.localStorage.getItem("lexinote-theme");
-    document.documentElement.dataset.theme =
-      storedTheme === "paper" || storedTheme === "dark" ? storedTheme : "dark";
+    const isStoredTheme =
+      storedTheme === "paper" || storedTheme === "paper-dark" || storedTheme === "dark";
+    document.documentElement.dataset.theme = isStoredTheme ? storedTheme : "dark";
   } catch {
     document.documentElement.dataset.theme = "dark";
   }

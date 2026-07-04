@@ -2,17 +2,38 @@
 
 import { useSyncExternalStore } from "react";
 
-type ThemeName = "dark" | "paper";
+type ThemeName = "dark" | "paper" | "paper-dark";
 
 const THEME_STORAGE_KEY = "lexinote-theme";
 const THEME_CHANGE_EVENT = "lexinote-theme-change";
-const THEMES: Array<{ label: string; value: ThemeName }> = [
-  { label: "Classic", value: "dark" },
-  { label: "Paper", value: "paper" },
+const THEMES: Array<{
+  ariaLabel: string;
+  label: string;
+  shortLabel: string;
+  value: ThemeName;
+}> = [
+  {
+    ariaLabel: "Classic dark theme",
+    label: "Classic",
+    shortLabel: "Classic",
+    value: "dark",
+  },
+  {
+    ariaLabel: "Paper light theme",
+    label: "Paper",
+    shortLabel: "Paper",
+    value: "paper",
+  },
+  {
+    ariaLabel: "Paper dark theme",
+    label: "Paper Dark",
+    shortLabel: "P Dark",
+    value: "paper-dark",
+  },
 ];
 
 function isThemeName(value: string | null | undefined): value is ThemeName {
-  return value === "dark" || value === "paper";
+  return value === "dark" || value === "paper" || value === "paper-dark";
 }
 
 function applyTheme(theme: ThemeName) {
@@ -67,6 +88,7 @@ export function ThemeToggle() {
           <button
             key={item.value}
             type="button"
+            aria-label={item.ariaLabel}
             aria-pressed={isActive}
             className={
               isActive
@@ -75,7 +97,12 @@ export function ThemeToggle() {
             }
             onClick={() => selectTheme(item.value)}
           >
-            {item.label}
+            <span className="theme-toggle__label theme-toggle__label--full">
+              {item.label}
+            </span>
+            <span className="theme-toggle__label theme-toggle__label--short">
+              {item.shortLabel}
+            </span>
           </button>
         );
       })}
