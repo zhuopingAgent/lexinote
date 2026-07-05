@@ -64,16 +64,19 @@
 4. Reusable vocabulary entry reads/writes go through `VocabularyCoreService`.
 5. `VocabularyCoreService` currently delegates to `JapaneseDictionaryService`, which reads persisted entries from PostgreSQL.
 6. Persisted dictionary rows are keyed by `word + pronunciation`, so homographs with different readings can coexist.
-7. If a local entry already has examples and the provided context is not instructional, lookup may return the local result without calling AI.
-8. `AIWordLookupService` generates exactly 3 example sentences for entries that still need examples and completes full entries when the local dictionary misses.
-9. Context-aware lookup may produce a contextual entry and an optional reconciled entry, but pronunciations are normalized back toward dictionary-form readings before any persistence decision.
-10. Only non-context dictionary-form entries are persisted by default through `persistEntryIfNeeded`.
-11. Newly persisted entries can enqueue asynchronous collection auto-filter classification jobs.
+7. If an exact local miss looks like a common Japanese inflection or adjective form, conservative local base-form fallback rules generate candidates and only adopt one when it hits a persisted local entry.
+8. If a local entry already has examples and the provided context is not instructional, lookup may return the local result without calling AI.
+9. `AIWordLookupService` generates exactly 3 example sentences for entries that still need examples and completes full entries when the local dictionary misses.
+10. Context-aware lookup may produce a contextual entry and an optional reconciled entry, but pronunciations are normalized back toward dictionary-form readings before any persistence decision.
+11. Lookup responses include metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness so the UI can explain the result state.
+12. Only non-context dictionary-form entries are persisted by default through `persistEntryIfNeeded`.
+13. Newly persisted entries can enqueue asynchronous collection auto-filter classification jobs.
 
 ### Important Rules
 
 - Treat `word + pronunciation` as the effective storage key.
 - Use `VocabularyCoreService` for reusable vocabulary entry reads, detail lookup, pagination, and persistence. Keep lookup-only AI/context orchestration in `WordLookupService`.
+- Keep local base-form fallback conservative: generated candidates should only be used after a local dictionary hit.
 - Do not assume every query with context should call AI; the service is now local-first in many cases.
 - Do not assume context-shaped readings should be persisted as standalone entries.
 - If you change lookup behavior, also review `Memory.md`, `RUNBOOK.md`, and `e2e/app-regression.spec.ts`.

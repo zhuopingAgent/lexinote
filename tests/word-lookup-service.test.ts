@@ -49,7 +49,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("  食べる  ")).resolves.toEqual({
+    await expect(service.lookupWord("  食べる  ")).resolves.toMatchObject({
       word: "食べる",
       lookupWord: "食べる",
       source: "dictionary",
@@ -140,7 +140,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "请解释不安を抱く的用法")).resolves.toEqual({
+    await expect(service.lookupWord("抱く", "请解释不安を抱く的用法")).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -237,7 +237,7 @@ describe("WordLookupService", () => {
 
     await expect(
       service.lookupWord("巡る", "请解释問題を巡り議論する这个用法")
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       word: "巡る",
       lookupWord: "巡る",
       source: "dictionary",
@@ -346,7 +346,7 @@ describe("WordLookupService", () => {
 
     await expect(
       service.lookupWord("抱く", "请解释不安を抱く和普通抱く的区别")
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -371,7 +371,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("食べる")).resolves.toEqual({
+    await expect(service.lookupWord("食べる")).resolves.toMatchObject({
       word: "食べる",
       lookupWord: "食べる",
       source: "dictionary",
@@ -382,7 +382,99 @@ describe("WordLookupService", () => {
     expect(dictionaryService.saveEntry).not.toHaveBeenCalled();
   });
 
-  it("resolves the base form and retries the dictionary lookup", async () => {
+  it("uses local base-form fallback before AI for common inflections", async () => {
+    const dictionaryService = {
+      findEntries: vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([
+        completedEntry,
+      ]),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 1, isNewEntry: false }),
+    };
+    const aiWordLookupService = {
+      resolveLookupWord: vi.fn(),
+      completeEntry: vi.fn(),
+      reconcileEntries: vi.fn(),
+    };
+
+    const service = new WordLookupService(
+      dictionaryService as never,
+      aiWordLookupService as never
+    );
+
+    await expect(service.lookupWord("「食べました。」")).resolves.toMatchObject({
+      word: "食べました",
+      lookupWord: "食べる",
+      lookupReason: expect.stringContaining("本地规则还原"),
+      source: "dictionary",
+      entry: completedEntry,
+      metadata: {
+        resolutionType: "local_base_form",
+        persistenceStatus: "saved",
+        exampleStatus: "ready",
+      },
+    });
+    expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(1, "食べました");
+    expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(2, "食べる");
+    expect(aiWordLookupService.resolveLookupWord).not.toHaveBeenCalled();
+    expect(aiWordLookupService.completeEntry).not.toHaveBeenCalled();
+  });
+
+  it("uses local base-form fallback for adjective forms", async () => {
+    const quietEntry: DictionaryEntry = {
+      word: "静か",
+      pronunciation: "しずか",
+      meaningZh: "安静；安稳",
+      partOfSpeech: "形容动词",
+      examples: [
+        {
+          japanese: "この部屋は静かだ。",
+          reading: "この へや は しずか だ。",
+          translationZh: "这个房间很安静。",
+        },
+        {
+          japanese: "静かな場所で勉強する。",
+          reading: "しずか な ばしょ で べんきょう する。",
+          translationZh: "在安静的地方学习。",
+        },
+        {
+          japanese: "夜の町は静かだった。",
+          reading: "よる の まち は しずか だった。",
+          translationZh: "夜晚的街道很安静。",
+        },
+      ],
+    };
+    const dictionaryService = {
+      findEntries: vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([
+        quietEntry,
+      ]),
+      saveEntry: vi.fn().mockResolvedValue({ wordId: 2, isNewEntry: false }),
+    };
+    const aiWordLookupService = {
+      resolveLookupWord: vi.fn(),
+      completeEntry: vi.fn(),
+      reconcileEntries: vi.fn(),
+    };
+
+    const service = new WordLookupService(
+      dictionaryService as never,
+      aiWordLookupService as never
+    );
+
+    await expect(service.lookupWord("静かだった")).resolves.toMatchObject({
+      word: "静かだった",
+      lookupWord: "静か",
+      source: "dictionary",
+      entry: quietEntry,
+      metadata: {
+        resolutionType: "local_base_form",
+        persistenceStatus: "saved",
+      },
+    });
+    expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(1, "静かだった");
+    expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(2, "静か");
+    expect(aiWordLookupService.resolveLookupWord).not.toHaveBeenCalled();
+  });
+
+  it("falls back to AI base-form resolution when local rules miss", async () => {
     const resolvedEntry: DictionaryEntry = {
       word: "見通せる",
       pronunciation: "みとおせる",
@@ -432,16 +524,20 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("見通せない")).resolves.toEqual({
-      word: "見通せない",
+    await expect(service.lookupWord("見通せぬ")).resolves.toMatchObject({
+      word: "見通せぬ",
       lookupWord: "見通せる",
       lookupReason: "输入是否定形，查词时通常还原为对应的词典形。",
       source: "dictionary",
       entry: completedResolvedEntry,
+      metadata: {
+        resolutionType: "ai_base_form",
+        persistenceStatus: "saved",
+      },
     });
-    expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(1, "見通せない");
+    expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(1, "見通せぬ");
     expect(aiWordLookupService.resolveLookupWord).toHaveBeenCalledWith(
-      "見通せない",
+      "見通せぬ",
       undefined
     );
     expect(dictionaryService.findEntries).toHaveBeenNthCalledWith(2, "見通せる");
@@ -494,7 +590,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("未知词")).resolves.toEqual({
+    await expect(service.lookupWord("未知词")).resolves.toMatchObject({
       word: "未知词",
       lookupWord: "未知词",
       source: "ai",
@@ -580,7 +676,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("未知词")).resolves.toEqual({
+    await expect(service.lookupWord("未知词")).resolves.toMatchObject({
       word: "未知词",
       lookupWord: "未知词",
       source: "ai",
@@ -655,7 +751,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("巡る", "制度を巡り議論が起きた")).resolves.toEqual({
+    await expect(service.lookupWord("巡る", "制度を巡り議論が起きた")).resolves.toMatchObject({
       word: "巡る",
       lookupWord: "巡る",
       source: "ai",
@@ -731,7 +827,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く")).resolves.toEqual({
+    await expect(service.lookupWord("抱く")).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -805,7 +901,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "不安を抱く")).resolves.toEqual({
+    await expect(service.lookupWord("抱く", "不安を抱く")).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -879,7 +975,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "希望を抱く")).resolves.toEqual({
+    await expect(service.lookupWord("抱く", "希望を抱く")).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -958,7 +1054,7 @@ describe("WordLookupService", () => {
 
     await expect(
       service.lookupWord("抱く", "不安を抱く，希望例句偏日常会话，解释简单一点")
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -1035,7 +1131,7 @@ describe("WordLookupService", () => {
       aiWordLookupService as never
     );
 
-    await expect(service.lookupWord("抱く", "解释简单一点")).resolves.toEqual({
+    await expect(service.lookupWord("抱く", "解释简单一点")).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",
@@ -1135,7 +1231,7 @@ describe("WordLookupService", () => {
 
     await expect(
       service.lookupWord("抱く", "不安を抱く", "いだく")
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
       source: "dictionary",

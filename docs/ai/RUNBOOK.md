@@ -21,6 +21,7 @@
 - `DATABASE_URL` is required for the lookup flow.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
 - `OPENAI_API_KEY` is optional. If missing, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
+- Common Japanese inflections and adjective forms can still resolve locally without `OPENAI_API_KEY` when the conservative local base-form fallback hits an existing persisted entry.
 - Grammar practice generation and sentence feedback also work without `OPENAI_API_KEY` by using deterministic local fallback output.
 - `OPENAI_MODEL` defaults to `gpt-5.4`.
 - `AUTO_FILTER_MAX_SYNC_CANDIDATES` defaults to `240` and caps a single collection AI re-sync before any LLM calls are made.
@@ -40,6 +41,7 @@
 - Editing auto-filter criteria affects future incremental classification, but rescanning existing words now requires an explicit collection-level AI resync.
 - If a collection AI re-sync fails with a candidate-count message, either narrow the local dataset/rule first or intentionally raise `AUTO_FILTER_MAX_SYNC_CANDIDATES`.
 - When a lookup includes `context`, the app may still build a context-shaped result, but local persisted entries are preferred when they already have examples and the context is not instructional.
+- Lookup responses include result metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness; the dictionary UI uses this for status tags.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 - Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
 - Grammar learning tables, the 9-major-group taxonomy, 56 MVP grammar subcategories, 155 grammar points, examples, common mistakes, and similar grammar relations are created and seeded by `shared/db/sql/schema.sql`.

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { BookOpenIcon, LightbulbIcon, VolumeIcon } from "@/app/components/icons";
 
 export interface WordData {
@@ -18,9 +19,10 @@ export interface WordData {
 
 interface WordCardProps {
   word: WordData;
+  actions?: ReactNode;
 }
 
-export function WordCard({ word }: WordCardProps) {
+export function WordCard({ word, actions }: WordCardProps) {
   const handleSpeak = () => {
     if (!("speechSynthesis" in window)) {
       return;
@@ -127,6 +129,12 @@ export function WordCard({ word }: WordCardProps) {
           <p className="text-sm leading-6 text-white/40">暂时没有生成例句。</p>
         )}
       </div>
+
+      {actions ? (
+        <div className="border-t border-white/10 p-[clamp(14px,2.2vw,18px)]">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

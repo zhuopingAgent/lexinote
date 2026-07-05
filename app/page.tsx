@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
+import { DictionaryEntryActions } from "@/app/components/dictionary-entry-actions";
 import { HistoryList } from "@/app/components/history-list";
 import { OverviewList } from "@/app/components/overview-list";
 import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
@@ -19,6 +20,7 @@ import { useCollections } from "@/app/hooks/use-collections";
 import { useLookupFlow } from "@/app/hooks/use-lookup-flow";
 import { useOverviewWords } from "@/app/hooks/use-overview-words";
 import type { AppView } from "@/app/lib/app-view";
+import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
 
 const SIDEBAR_ITEMS = [
   { label: "辞書", icon: BookIcon, view: "dictionary" as AppView },
@@ -45,6 +47,39 @@ function getRequestedView() {
     requestedView === "collections"
     ? requestedView
     : "dictionary";
+}
+
+function buildLookupStatusBadges(result: WordLookupResponse | null) {
+  if (!result) {
+    return [];
+  }
+
+  const metadata = result.metadata;
+  const badges = [result.source === "dictionary" ? "本地词库" : "AI 生成"];
+
+  if (metadata?.resolutionType === "local_base_form") {
+    badges.push("本地原形还原");
+  } else if (metadata?.resolutionType === "ai_base_form") {
+    badges.push("AI 原形还原");
+  } else if (metadata?.resolutionType === "ai_generated") {
+    badges.push("AI 补全词条");
+  }
+
+  if (metadata?.isContextual) {
+    badges.push("按语境处理");
+  }
+
+  if (metadata?.persistenceStatus === "saved") {
+    badges.push("已保存");
+  } else if (metadata?.persistenceStatus === "not_saved") {
+    badges.push("未保存");
+  } else if (metadata?.persistenceStatus === "not_persistable") {
+    badges.push("暂不可保存");
+  }
+
+  badges.push(metadata?.exampleStatus === "missing" ? "例句待生成" : "例句已就绪");
+
+  return badges;
 }
 
 export default function Home() {
@@ -85,6 +120,8 @@ export default function Home() {
     onRetrySubmit,
     onToggleRetryPanel,
     onCancelRetry,
+    onSelectResultEntry,
+    onStartRetryWithEntry,
     onDismissAiApiError: onDismissLookupAiApiError,
   } = useLookupFlow(setActiveView);
   const {
@@ -117,6 +154,7 @@ export default function Home() {
     hasLoadedCollections,
     ensureCollectionsLoaded,
     onAddOverviewWordToCollection,
+    onAddDictionaryEntryToCollection,
     onCreateCollection,
     onStartEditingCollection,
     onCancelEditingCollection,
@@ -125,6 +163,7 @@ export default function Home() {
     onResyncCollection,
     onDismissAiApiError: onDismissCollectionAiApiError,
   } = useCollections(activeView);
+  const lookupStatusBadges = buildLookupStatusBadges(result);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -176,6 +215,40 @@ export default function Home() {
                 ? `已完成 ${result.word} 的查询，并按原形 ${result.lookupWord} 检索。`
                 : `已完成 ${result.word} 的查询。`
             : "输入一个日语词即可开始查询。";
+
+  function getLookupEntryCollectionState(entry: DictionaryEntry) {
+    if (!result) {
+      return {
+        canAddToCollection: false,
+        addDisabledReason: "当前没有可添加的查询结果。",
+      };
+    }
+
+    const isPrimaryEntry =
+      entry.word === result.entry.word &&
+      entry.pronunciation === result.entry.pronunciation;
+    const persistenceStatus = result.metadata?.persistenceStatus;
+
+    if (isPrimaryEntry && persistenceStatus === "not_saved") {
+      return {
+        canAddToCollection: false,
+        addDisabledReason: "当前语境结果尚未保存，暂不能加入 collection。",
+      };
+    }
+
+    if (isPrimaryEntry && persistenceStatus === "not_persistable") {
+      return {
+        canAddToCollection: false,
+        addDisabledReason: "当前结果还不是可保存词条，暂不能加入 collection。",
+      };
+    }
+
+    return {
+      canAddToCollection:
+        result.source === "dictionary" || persistenceStatus === "saved",
+      addDisabledReason: "请先保存或生成完整词条后再加入 collection。",
+    };
+  }
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
@@ -397,6 +470,18 @@ export default function Home() {
                           ) : null}
                         </div>
                       ) : null}
+                      {lookupStatusBadges.length > 0 ? (
+                        <div className="flex flex-wrap justify-center gap-2">
+                          {lookupStatusBadges.map((badge) => (
+                            <span
+                              key={badge}
+                              className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs leading-5 text-white/42"
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       {hasMultipleResults && wordCardsData.length > 0 ? (
                         <div className="w-full max-w-[960px]">
                           <div className="mb-3 flex items-center justify-between gap-3">
@@ -409,18 +494,85 @@ export default function Home() {
                           </div>
 
                           <div className="flex gap-4 overflow-x-auto pb-2 pr-1 [scrollbar-width:thin]">
-                            {wordCardsData.map((wordCard, index) => (
-                              <div
-                                key={`${wordCard.word}-${wordCard.reading}-${index}`}
-                                className="basis-[86%] shrink-0 sm:basis-[390px] lg:basis-[420px]"
-                              >
-                                <WordCard word={wordCard} />
-                              </div>
-                            ))}
+                            {wordCardsData.map((wordCard, index) => {
+                              const entry = resultEntries[index];
+                              const collectionState = entry
+                                ? getLookupEntryCollectionState(entry)
+                                : {
+                                    canAddToCollection: false,
+                                    addDisabledReason: "当前词条信息不完整。",
+                                  };
+
+                              return (
+                                <div
+                                  key={`${wordCard.word}-${wordCard.reading}-${index}`}
+                                  className="basis-[86%] shrink-0 sm:basis-[390px] lg:basis-[420px]"
+                                >
+                                  <WordCard
+                                    word={wordCard}
+                                    actions={
+                                      entry ? (
+                                        <DictionaryEntryActions
+                                          entry={entry}
+                                          isPrimary={
+                                            result?.entry.pronunciation ===
+                                            entry.pronunciation
+                                          }
+                                          canAddToCollection={
+                                            collectionState.canAddToCollection
+                                          }
+                                          addDisabledReason={
+                                            collectionState.addDisabledReason
+                                          }
+                                          collections={collections}
+                                          isCollectionsLoading={isCollectionsLoading}
+                                          onSelectEntry={onSelectResultEntry}
+                                          onStartRetryWithEntry={
+                                            onStartRetryWithEntry
+                                          }
+                                          onEnsureCollectionsLoaded={
+                                            ensureCollectionsLoaded
+                                          }
+                                          onAddEntryToCollection={
+                                            onAddDictionaryEntryToCollection
+                                          }
+                                        />
+                                      ) : null
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       ) : wordCardsData[0] ? (
-                        <WordCard word={wordCardsData[0]} />
+                        <WordCard
+                          word={wordCardsData[0]}
+                          actions={
+                            resultEntries[0] ? (
+                              <DictionaryEntryActions
+                                entry={resultEntries[0]}
+                                isPrimary
+                                canAddToCollection={
+                                  getLookupEntryCollectionState(resultEntries[0])
+                                    .canAddToCollection
+                                }
+                                addDisabledReason={
+                                  getLookupEntryCollectionState(resultEntries[0])
+                                    .addDisabledReason
+                                }
+                                collections={collections}
+                                isCollectionsLoading={isCollectionsLoading}
+                                onSelectEntry={onSelectResultEntry}
+                                onStartRetryWithEntry={onStartRetryWithEntry}
+                                onEnsureCollectionsLoaded={ensureCollectionsLoaded}
+                                onAddEntryToCollection={
+                                  onAddDictionaryEntryToCollection
+                                }
+                              />
+                            ) : null
+                          }
+                        />
                       ) : (
                         <WordCardSkeleton />
                       )}

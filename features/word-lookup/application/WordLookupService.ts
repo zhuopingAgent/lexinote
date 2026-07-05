@@ -4,6 +4,19 @@ import { VocabularyCoreService } from "@/features/vocabulary-core/application/Vo
 import type { WordLookupResponse } from "@/shared/types/api";
 import { ValidationError } from "@/shared/utils/errors";
 
+type LookupMetadata = NonNullable<WordLookupResponse["metadata"]>;
+
+type LookupResultOptions = {
+  resolutionType?: LookupMetadata["resolutionType"];
+  isContextual?: boolean;
+  persistenceStatus?: LookupMetadata["persistenceStatus"];
+};
+
+type LocalBaseFormCandidate = {
+  lookupWord: string;
+  lookupReason: string;
+};
+
 export class WordLookupService {
   private static readonly INSTRUCTIONAL_CONTEXT_PATTERNS = [
     /(?:请|請|希望|想要|我想|帮我|幫我).{0,12}(?:解释|解釈|说明|説明|例句|例文|区别|區別|違い|ニュアンス|简单|簡單|簡単|日常会话|日常會話|日常会話|商务|商務|ビジネス)/,
@@ -25,15 +38,30 @@ export class WordLookupService {
     source: WordLookupResponse["source"],
     entry: WordLookupResponse["entry"],
     lookupReason?: string,
-    entries?: WordLookupResponse["entries"]
+    entries?: WordLookupResponse["entries"],
+    options?: LookupResultOptions
   ): WordLookupResponse {
     const candidateEntries = this.buildEntriesWithPrimaryEntry(entry, entries);
+    const metadata: LookupMetadata = {
+      resolutionType: options?.resolutionType ?? "exact",
+      isContextual: options?.isContextual ?? false,
+      persistenceStatus:
+        options?.persistenceStatus ??
+        (source === "dictionary"
+          ? "saved"
+          : entry.examples.length > 0
+            ? "saved"
+            : "not_persistable"),
+      selectedPronunciation: entry.pronunciation,
+      exampleStatus: entry.examples.length > 0 ? "ready" : "missing",
+    };
 
     return {
       word,
       lookupWord,
       source,
       entry,
+      metadata,
       ...(lookupReason ? { lookupReason } : {}),
       ...(candidateEntries ? { entries: candidateEntries } : {}),
     };
@@ -225,6 +253,164 @@ export class WordLookupService {
     return uniqueReasons.length > 0 ? uniqueReasons.join(" ") : undefined;
   }
 
+  private normalizeLookupInput(rawWord: string) {
+    return rawWord
+      .trim()
+      .replace(/^[\s"'`“”‘’「」『』【】（）()\[\]{}〈〉《》、。，．.!！?？;；:：]+/u, "")
+      .replace(/[\s"'`“”‘’「」『』【】（）()\[\]{}〈〉《》、。，．.!！?？;；:：]+$/u, "")
+      .trim();
+  }
+
+  private addLocalBaseFormCandidate(
+    candidates: LocalBaseFormCandidate[],
+    seenLookupWords: Set<string>,
+    originalWord: string,
+    lookupWord: string
+  ) {
+    const normalizedLookupWord = lookupWord.trim();
+    if (
+      !normalizedLookupWord ||
+      normalizedLookupWord === originalWord ||
+      seenLookupWords.has(normalizedLookupWord)
+    ) {
+      return;
+    }
+
+    seenLookupWords.add(normalizedLookupWord);
+    candidates.push({
+      lookupWord: normalizedLookupWord,
+      lookupReason: `输入看起来是活用形，已先按本地规则还原为「${normalizedLookupWord}」查询。`,
+    });
+  }
+
+  private buildLocalBaseFormCandidates(word: string): LocalBaseFormCandidate[] {
+    const candidates: LocalBaseFormCandidate[] = [];
+    const seenLookupWords = new Set<string>();
+    const addCandidate = (lookupWord: string) =>
+      this.addLocalBaseFormCandidate(
+        candidates,
+        seenLookupWords,
+        word,
+        lookupWord
+      );
+
+    const replaceSuffix = (suffix: string, replacement: string) => {
+      if (word.endsWith(suffix) && word.length > suffix.length) {
+        addCandidate(`${word.slice(0, -suffix.length)}${replacement}`);
+      }
+    };
+
+    const replaceSuffixWithMany = (suffix: string, replacements: string[]) => {
+      if (!word.endsWith(suffix) || word.length <= suffix.length) {
+        return;
+      }
+
+      const stem = word.slice(0, -suffix.length);
+      for (const replacement of replacements) {
+        addCandidate(`${stem}${replacement}`);
+      }
+    };
+
+    for (const [suffix, replacement] of [
+      ["くなかった", "い"],
+      ["くありませんでした", "い"],
+      ["くありません", "い"],
+      ["くない", "い"],
+      ["かった", "い"],
+      ["ではありませんでした", ""],
+      ["じゃありませんでした", ""],
+      ["ではありません", ""],
+      ["じゃありません", ""],
+      ["ではなかった", ""],
+      ["じゃなかった", ""],
+      ["ではない", ""],
+      ["じゃない", ""],
+      ["でした", ""],
+      ["だった", ""],
+      ["です", ""],
+    ] as const) {
+      replaceSuffix(suffix, replacement);
+    }
+
+    for (const [suffix, replacement] of [
+      ["いました", "う"],
+      ["ちました", "つ"],
+      ["りました", "る"],
+      ["みました", "む"],
+      ["びました", "ぶ"],
+      ["にました", "ぬ"],
+      ["きました", "く"],
+      ["ぎました", "ぐ"],
+      ["しました", "す"],
+      ["いました", "いる"],
+      ["えました", "える"],
+      ["しました", "する"],
+      ["ました", "る"],
+      ["います", "う"],
+      ["ちます", "つ"],
+      ["ります", "る"],
+      ["みます", "む"],
+      ["びます", "ぶ"],
+      ["にます", "ぬ"],
+      ["きます", "く"],
+      ["ぎます", "ぐ"],
+      ["します", "す"],
+      ["います", "いる"],
+      ["えます", "える"],
+      ["します", "する"],
+      ["ます", "る"],
+    ] as const) {
+      replaceSuffix(suffix, replacement);
+    }
+
+    for (const [suffix, replacement] of [
+      ["わない", "う"],
+      ["かない", "く"],
+      ["がない", "ぐ"],
+      ["さない", "す"],
+      ["たない", "つ"],
+      ["なない", "ぬ"],
+      ["ばない", "ぶ"],
+      ["まない", "む"],
+      ["らない", "る"],
+      ["しない", "する"],
+      ["えない", "える"],
+      ["いない", "いる"],
+      ["ない", "る"],
+    ] as const) {
+      replaceSuffix(suffix, replacement);
+    }
+
+    replaceSuffixWithMany("った", ["う", "つ", "る"]);
+    replaceSuffix("いた", "く");
+    replaceSuffix("いだ", "ぐ");
+    replaceSuffixWithMany("んだ", ["む", "ぶ", "ぬ"]);
+    replaceSuffix("した", "す");
+    replaceSuffix("した", "する");
+    replaceSuffix("えた", "える");
+    replaceSuffix("いた", "いる");
+    replaceSuffix("た", "る");
+
+    return candidates;
+  }
+
+  private async findLocalBaseFormEntries(word: string) {
+    for (const candidate of this.buildLocalBaseFormCandidates(word)) {
+      const entries = await this.vocabularyCoreService.findEntries(
+        candidate.lookupWord
+      );
+
+      if (entries.length > 0) {
+        return {
+          ...candidate,
+          entries,
+        };
+      }
+    }
+
+    return null;
+  }
+
   private toComparableKana(text: string) {
     return text
       .trim()
@@ -279,20 +465,22 @@ export class WordLookupService {
     context?: string
   ) {
     if (entry.examples.length === 0 || context) {
-      return;
+      return null;
     }
 
     if (!this.hasDictionaryFormPronunciation(lookupWord, entry.pronunciation)) {
-      return;
+      return null;
     }
 
     const savedEntry = await this.vocabularyCoreService.saveEntry(entry);
 
-    if (!savedEntry.isNewEntry) {
-      return;
+    if (savedEntry.isNewEntry) {
+      await this.collectionAutoFilterJobService?.enqueueEntryClassification(
+        savedEntry.wordId
+      );
     }
 
-    await this.collectionAutoFilterJobService?.enqueueEntryClassification(savedEntry.wordId);
+    return savedEntry;
   }
 
   private async getGenericEntry(
@@ -337,7 +525,8 @@ export class WordLookupService {
     context: string,
     existingEntry?: WordLookupResponse["entry"],
     lookupReason?: string,
-    entries?: WordLookupResponse["entries"]
+    entries?: WordLookupResponse["entries"],
+    resolutionType: LookupMetadata["resolutionType"] = "exact"
   ): Promise<WordLookupResponse> {
     const shouldPersistGenericEntryImmediately = Boolean(existingEntry);
     const genericEntry = await this.getGenericEntry(
@@ -370,9 +559,11 @@ export class WordLookupService {
         )
       : null;
 
-    if (normalizedReconciledEntry) {
-      await this.persistEntryIfNeeded(normalizedReconciledEntry, lookupWord);
-    } else if (!shouldPersistGenericEntryImmediately) {
+    const persistedReconciledEntry = normalizedReconciledEntry
+      ? await this.persistEntryIfNeeded(normalizedReconciledEntry, lookupWord)
+      : null;
+
+    if (!normalizedReconciledEntry && !shouldPersistGenericEntryImmediately) {
       await this.persistEntryIfNeeded(genericEntry, lookupWord);
     }
 
@@ -383,7 +574,12 @@ export class WordLookupService {
         source,
         contextualEntry,
         lookupReason,
-        entries
+        entries,
+        {
+          resolutionType,
+          isContextual: true,
+          persistenceStatus: "not_saved",
+        }
       );
     }
 
@@ -393,7 +589,172 @@ export class WordLookupService {
       source,
       normalizedReconciledEntry ?? contextualEntry,
       lookupReason,
-      entries
+      entries,
+      {
+        resolutionType,
+        isContextual: true,
+        persistenceStatus: persistedReconciledEntry ? "saved" : "not_saved",
+      }
+    );
+  }
+
+  private async buildDictionaryLookupResult(
+    word: string,
+    lookupWord: string,
+    entries: WordLookupResponse["entry"][],
+    context?: string,
+    pronunciation?: string,
+    lookupReason?: string,
+    resolutionType: LookupMetadata["resolutionType"] = "exact"
+  ): Promise<WordLookupResponse> {
+    const entry = this.selectEntry(entries, pronunciation);
+
+    if (!entry) {
+      throw new ValidationError("word is required");
+    }
+
+    if (context) {
+      if (entries.length > 1) {
+        const selection = this.resolveContextSelection(
+          entries,
+          context,
+          lookupWord,
+          pronunciation
+        );
+        const selectedEntry = selection.selectedEntry ?? entries[0];
+
+        if (!selection.isConfident) {
+          return this.buildLookupResult(
+            word,
+            lookupWord,
+            "dictionary",
+            selectedEntry,
+            this.joinLookupReasons(
+              lookupReason,
+              "参考语境后仍有多个可能词条，请先选择更符合的一项。"
+            ),
+            selection.rankedEntries,
+            {
+              resolutionType,
+              isContextual: true,
+              persistenceStatus: "saved",
+            }
+          );
+        }
+
+        if (
+          selectedEntry.examples.length > 0 &&
+          !pronunciation &&
+          !this.isInstructionalContext(context)
+        ) {
+          return this.buildLookupResult(
+            word,
+            lookupWord,
+            "dictionary",
+            selectedEntry,
+            lookupReason,
+            selection.rankedEntries,
+            {
+              resolutionType,
+              isContextual: true,
+              persistenceStatus: "saved",
+            }
+          );
+        }
+
+        return this.buildContextAwareResult(
+          word,
+          lookupWord,
+          "dictionary",
+          context,
+          selectedEntry,
+          lookupReason,
+          selection.rankedEntries,
+          resolutionType
+        );
+      }
+
+      if (entry.examples.length > 0 && !this.isInstructionalContext(context)) {
+        return this.buildLookupResult(
+          word,
+          lookupWord,
+          "dictionary",
+          entry,
+          lookupReason,
+          undefined,
+          {
+            resolutionType,
+            isContextual: true,
+            persistenceStatus: "saved",
+          }
+        );
+      }
+
+      return this.buildContextAwareResult(
+        word,
+        lookupWord,
+        "dictionary",
+        context,
+        entry,
+        lookupReason,
+        undefined,
+        resolutionType
+      );
+    }
+
+    if (entries.length > 1) {
+      return this.buildLookupResult(
+        word,
+        lookupWord,
+        "dictionary",
+        entry,
+        lookupReason,
+        entries,
+        {
+          resolutionType,
+          persistenceStatus: "saved",
+        }
+      );
+    }
+
+    if (entry.examples.length > 0) {
+      return this.buildLookupResult(
+        word,
+        lookupWord,
+        "dictionary",
+        entry,
+        lookupReason,
+        undefined,
+        {
+          resolutionType,
+          persistenceStatus: "saved",
+        }
+      );
+    }
+
+    const completedEntry = await this.aiWordLookupService.completeEntry(
+      lookupWord,
+      entry,
+      context
+    );
+    const normalizedCompletedEntry = this.normalizeEntryPronunciation(
+      lookupWord,
+      completedEntry,
+      entry.pronunciation
+    );
+    await this.persistEntryIfNeeded(normalizedCompletedEntry, lookupWord, context);
+
+    return this.buildLookupResult(
+      word,
+      lookupWord,
+      "dictionary",
+      normalizedCompletedEntry,
+      lookupReason,
+      undefined,
+      {
+        resolutionType,
+        persistenceStatus: "saved",
+      }
     );
   }
 
@@ -402,7 +763,7 @@ export class WordLookupService {
     rawContext?: string,
     rawPronunciation?: string
   ): Promise<WordLookupResponse> {
-    const word = rawWord.trim();
+    const word = this.normalizeLookupInput(rawWord);
     const context = rawContext?.trim() || undefined;
     const pronunciation = rawPronunciation?.trim() || undefined;
     if (!word) {
@@ -410,101 +771,28 @@ export class WordLookupService {
     }
 
     const entries = await this.vocabularyCoreService.findEntries(word);
-    const entry = this.selectEntry(entries, pronunciation);
 
-    if (entry) {
-      if (context) {
-        if (entries.length > 1) {
-          const selection = this.resolveContextSelection(
-            entries,
-            context,
-            word,
-            pronunciation
-          );
-          const selectedEntry = selection.selectedEntry ?? entries[0];
-
-          if (!selection.isConfident) {
-            return this.buildLookupResult(
-              word,
-              word,
-              "dictionary",
-              selectedEntry,
-              "参考语境后仍有多个可能词条，请先选择更符合的一项。",
-              selection.rankedEntries
-            );
-          }
-
-          if (
-            selectedEntry.examples.length > 0 &&
-            !pronunciation &&
-            !this.isInstructionalContext(context)
-          ) {
-            return this.buildLookupResult(
-              word,
-              word,
-              "dictionary",
-              selectedEntry,
-              undefined,
-              selection.rankedEntries
-            );
-          }
-
-          return this.buildContextAwareResult(
-            word,
-            word,
-            "dictionary",
-            context,
-            selectedEntry,
-            undefined,
-            selection.rankedEntries
-          );
-        }
-
-        if (entry.examples.length > 0 && !this.isInstructionalContext(context)) {
-          return this.buildLookupResult(word, word, "dictionary", entry);
-        }
-
-        return this.buildContextAwareResult(
-          word,
-          word,
-          "dictionary",
-          context,
-          entry
-        );
-      }
-
-      if (entries.length > 1) {
-        return this.buildLookupResult(
-          word,
-          word,
-          "dictionary",
-          entry,
-          undefined,
-          entries
-        );
-      }
-
-      if (entry.examples.length > 0) {
-        return this.buildLookupResult(word, word, "dictionary", entry);
-      }
-
-      const completedEntry = await this.aiWordLookupService.completeEntry(
+    if (entries.length > 0) {
+      return this.buildDictionaryLookupResult(
         word,
-        entry,
-        context
+        word,
+        entries,
+        context,
+        pronunciation
       );
-      const normalizedCompletedEntry = this.normalizeEntryPronunciation(
-        word,
-        completedEntry,
-        entry.pronunciation
-      );
-      await this.persistEntryIfNeeded(normalizedCompletedEntry, word, context);
+    }
 
-      return this.buildLookupResult(
+    const localBaseFormMatch = await this.findLocalBaseFormEntries(word);
+
+    if (localBaseFormMatch) {
+      return this.buildDictionaryLookupResult(
         word,
-        word,
-        "dictionary",
-        normalizedCompletedEntry
+        localBaseFormMatch.lookupWord,
+        localBaseFormMatch.entries,
+        context,
+        pronunciation,
+        localBaseFormMatch.lookupReason,
+        "local_base_form"
       );
     }
 
@@ -516,125 +804,16 @@ export class WordLookupService {
     if (resolvedLookupWord !== word) {
       const resolvedEntries =
         await this.vocabularyCoreService.findEntries(resolvedLookupWord);
-      const resolvedEntry = this.selectEntry(resolvedEntries, pronunciation);
 
-      if (resolvedEntry) {
-        if (context) {
-          if (resolvedEntries.length > 1) {
-            const selection = this.resolveContextSelection(
-              resolvedEntries,
-              context,
-              resolvedLookupWord,
-              pronunciation
-            );
-            const selectedEntry = selection.selectedEntry ?? resolvedEntries[0];
-
-            if (!selection.isConfident) {
-              return this.buildLookupResult(
-                word,
-                resolvedLookupWord,
-                "dictionary",
-                selectedEntry,
-                this.joinLookupReasons(
-                  lookupReason,
-                  "参考语境后仍有多个可能词条，请先选择更符合的一项。"
-                ),
-                selection.rankedEntries
-              );
-            }
-
-            if (
-              selectedEntry.examples.length > 0 &&
-              !pronunciation &&
-              !this.isInstructionalContext(context)
-            ) {
-              return this.buildLookupResult(
-                word,
-                resolvedLookupWord,
-                "dictionary",
-                selectedEntry,
-                lookupReason,
-                selection.rankedEntries
-              );
-            }
-
-            return this.buildContextAwareResult(
-              word,
-              resolvedLookupWord,
-              "dictionary",
-              context,
-              selectedEntry,
-              lookupReason,
-              selection.rankedEntries
-            );
-          }
-
-          if (
-            resolvedEntry.examples.length > 0 &&
-            !this.isInstructionalContext(context)
-          ) {
-            return this.buildLookupResult(
-              word,
-              resolvedLookupWord,
-              "dictionary",
-              resolvedEntry,
-              lookupReason
-            );
-          }
-
-          return this.buildContextAwareResult(
-            word,
-            resolvedLookupWord,
-            "dictionary",
-            context,
-            resolvedEntry,
-            lookupReason
-          );
-        }
-
-        if (resolvedEntries.length > 1) {
-          return this.buildLookupResult(
-            word,
-            resolvedLookupWord,
-            "dictionary",
-            resolvedEntry,
-            lookupReason,
-            resolvedEntries
-          );
-        }
-
-        if (resolvedEntry.examples.length > 0) {
-          return this.buildLookupResult(
-            word,
-            resolvedLookupWord,
-            "dictionary",
-            resolvedEntry,
-            lookupReason
-          );
-        }
-
-        const completedResolvedEntry = await this.aiWordLookupService.completeEntry(
-          resolvedLookupWord,
-          resolvedEntry,
-          context
-        );
-        const normalizedCompletedResolvedEntry = this.normalizeEntryPronunciation(
-          resolvedLookupWord,
-          completedResolvedEntry,
-          resolvedEntry.pronunciation
-        );
-        await this.persistEntryIfNeeded(
-          normalizedCompletedResolvedEntry,
-          resolvedLookupWord,
-          context
-        );
-
-        return this.buildLookupResult(
+      if (resolvedEntries.length > 0) {
+        return this.buildDictionaryLookupResult(
           word,
           resolvedLookupWord,
-          "dictionary",
-          normalizedCompletedResolvedEntry,
-          lookupReason
+          resolvedEntries,
+          context,
+          pronunciation,
+          lookupReason,
+          "ai_base_form"
         );
       }
     }
@@ -646,7 +825,9 @@ export class WordLookupService {
         "ai",
         context,
         undefined,
-        lookupReason
+        lookupReason,
+        undefined,
+        "ai_generated"
       );
     }
 
@@ -656,14 +837,23 @@ export class WordLookupService {
       context
     );
 
-    await this.persistEntryIfNeeded(completedEntry, resolvedLookupWord, context);
+    const savedEntry = await this.persistEntryIfNeeded(
+      completedEntry,
+      resolvedLookupWord,
+      context
+    );
 
     return this.buildLookupResult(
       word,
       resolvedLookupWord,
       "ai",
       completedEntry,
-      lookupReason
+      lookupReason,
+      undefined,
+      {
+        resolutionType: "ai_generated",
+        persistenceStatus: savedEntry ? "saved" : "not_persistable",
+      }
     );
   }
 }

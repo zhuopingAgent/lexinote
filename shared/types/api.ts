@@ -365,6 +365,19 @@ export type UpdateCollectionRequest = {
 
 export type LookupSource = "dictionary" | "ai";
 
+export type LookupResolutionType =
+  | "exact"
+  | "local_base_form"
+  | "ai_base_form"
+  | "ai_generated";
+
+export type LookupPersistenceStatus =
+  | "saved"
+  | "not_saved"
+  | "not_persistable";
+
+export type LookupExampleStatus = "ready" | "missing";
+
 export type DictionaryExample = {
   japanese: string;
   reading: string;
@@ -386,4 +399,11 @@ export type WordLookupResponse = {
   source: LookupSource;
   entry: DictionaryEntry;
   entries?: DictionaryEntry[];
+  metadata?: {
+    resolutionType: LookupResolutionType;
+    isContextual: boolean;
+    persistenceStatus: LookupPersistenceStatus;
+    selectedPronunciation: string;
+    exampleStatus: LookupExampleStatus;
+  };
 };
