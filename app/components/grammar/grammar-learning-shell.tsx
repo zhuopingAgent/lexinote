@@ -113,6 +113,12 @@ export function GrammarLearningShell() {
     };
   }, [query]);
 
+  function clearFilters() {
+    setQuery("");
+    setSubmittedQuery("");
+    setCategorySlug("");
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1120px]">
       <GrammarSearch
@@ -123,6 +129,7 @@ export function GrammarLearningShell() {
         resultCount={items.length}
         onQueryChange={setQuery}
         onCategoryChange={setCategorySlug}
+        onClearFilters={clearFilters}
         onSubmit={() => setSubmittedQuery(query)}
       />
 
@@ -136,7 +143,7 @@ export function GrammarLearningShell() {
       ) : null}
 
       {isTaxonomyLoading ? (
-        <div className="mt-5 flex flex-wrap gap-2 overflow-hidden">
+        <div className="mt-5 flex gap-2 overflow-hidden md:flex-wrap">
           {Array.from({ length: 5 }).map((_, index) => (
             <div
               key={index}
@@ -145,13 +152,14 @@ export function GrammarLearningShell() {
           ))}
         </div>
       ) : (
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
           <button
             type="button"
+            aria-pressed={!categorySlug}
             onClick={() => setCategorySlug("")}
             className={
               categorySlug
-                ? "inline-flex h-10 shrink-0 items-center rounded-full border border-white/10 px-4 text-sm text-white/45"
+                ? "inline-flex h-10 shrink-0 items-center rounded-full border border-white/10 px-4 text-sm text-white/45 transition hover:border-white/18 hover:text-white/68"
                 : "inline-flex h-10 shrink-0 items-center rounded-full border border-accent/30 bg-accent-soft px-4 text-sm font-semibold text-accent-strong"
             }
           >
@@ -161,6 +169,7 @@ export function GrammarLearningShell() {
             <button
               key={category.slug}
               type="button"
+              aria-pressed={categorySlug === category.slug}
               onClick={() => setCategorySlug(category.slug)}
               className={
                 categorySlug === category.slug

@@ -124,6 +124,8 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
     setIsGenerating(true);
     setActionError(null);
     setFeedback(null);
+    setPractice(null);
+    setSentence("");
 
     try {
       const nextPractice = await fetch("/api/practice/generate", {
@@ -318,13 +320,15 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
 
         <PracticePrompt practice={practice} isLoading={isGenerating} />
 
-        <SentenceInput
-          value={sentence}
-          isSubmitting={isSubmitting}
-          disabled={!practice}
-          onChange={setSentence}
-          onSubmit={submitSentence}
-        />
+        {practice ? (
+          <SentenceInput
+            value={sentence}
+            isSubmitting={isSubmitting}
+            autoFocus
+            onChange={setSentence}
+            onSubmit={submitSentence}
+          />
+        ) : null}
 
         <FeedbackPanel feedback={feedback} isLoading={isSubmitting} />
       </div>

@@ -8,11 +8,14 @@ type GrammarCardProps = {
 };
 
 export function GrammarCard({ grammarPoint }: GrammarCardProps) {
+  const titleId = `grammar-card-title-${grammarPoint.id}`;
+
   return (
     <article className="flex min-h-[238px] flex-col rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link
+            id={titleId}
             href={`/grammar/${grammarPoint.id}`}
             className="block min-h-10 min-w-10 max-w-full rounded-[8px] py-1 text-[26px] leading-tight font-medium text-white/82 transition hover:text-white"
           >
@@ -53,16 +56,26 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
         ))}
       </div>
 
-      <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5">
         <span className="text-xs text-white/35">
           {grammarPoint.isFavorite ? "已收藏" : "语法卡片"}
         </span>
-        <Link
-          href={`/practice?grammarId=${grammarPoint.id}`}
-          className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 px-4 text-sm font-medium text-white/62 transition hover:border-white/22 hover:text-white/78"
-        >
-          练习
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/grammar/${grammarPoint.id}`}
+            aria-describedby={titleId}
+            className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 px-4 text-sm font-medium text-white/62 transition hover:border-white/22 hover:text-white/78"
+          >
+            查看详情
+          </Link>
+          <Link
+            href={`/practice?grammarId=${grammarPoint.id}`}
+            aria-describedby={titleId}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-accent px-4 text-sm font-semibold text-black transition hover:bg-accent-strong"
+          >
+            开始练习
+          </Link>
+        </div>
       </div>
     </article>
   );

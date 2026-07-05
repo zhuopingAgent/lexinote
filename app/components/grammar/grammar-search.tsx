@@ -12,6 +12,7 @@ type GrammarSearchProps = {
   resultCount: number;
   onQueryChange: (query: string) => void;
   onCategoryChange: (categorySlug: string) => void;
+  onClearFilters: () => void;
   onSubmit: () => void;
 };
 
@@ -23,8 +24,13 @@ export function GrammarSearch({
   resultCount,
   onQueryChange,
   onCategoryChange,
+  onClearFilters,
   onSubmit,
 }: GrammarSearchProps) {
+  const selectedCategory = categories.find((category) => category.slug === categorySlug);
+  const trimmedQuery = query.trim();
+  const hasActiveFilters = Boolean(trimmedQuery || categorySlug);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -55,7 +61,7 @@ export function GrammarSearch({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-6 grid gap-3 md:grid-cols-[1fr_260px_auto]">
+      <form onSubmit={handleSubmit} className="mt-6 grid gap-3 md:grid-cols-[1fr_auto] lg:grid-cols-[1fr_260px_auto]">
         <label className="relative block">
           <span className="sr-only">搜索语法</span>
           <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-white/30" />
@@ -68,7 +74,7 @@ export function GrammarSearch({
           />
         </label>
 
-        <label>
+        <label className="hidden lg:block">
           <span className="sr-only">分类</span>
           <select
             value={categorySlug}
@@ -120,13 +126,49 @@ export function GrammarSearch({
           type="button"
           onClick={() => {
             onQueryChange("は");
-            onCategoryChange("particles-relationships");
+            onCategoryChange("particles_and_relations");
           }}
           className="inline-flex h-10 items-center rounded-full border border-white/8 px-3 text-white/48 transition hover:border-white/18 hover:text-white/68"
         >
           は / が
         </button>
       </div>
+
+      {hasActiveFilters ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[14px] border border-white/8 bg-[#15151599] px-4 py-3 text-xs leading-5 text-white/44">
+          <span className="font-semibold text-white/58">当前筛选</span>
+          {trimmedQuery ? (
+            <span className="rounded-full border border-white/8 px-3 py-1 text-white/54">
+              关键词：{trimmedQuery}
+            </span>
+          ) : null}
+          {selectedCategory ? (
+            <span className="rounded-full border border-white/8 px-3 py-1 text-white/54">
+              分类：{selectedCategory.nameZh}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="ml-auto inline-flex h-8 items-center rounded-full border border-white/10 px-3 text-white/52 transition hover:border-white/20 hover:text-white/72"
+          >
+            清除
+          </button>
+        </div>
+      ) : null}
+
+      {selectedCategory ? (
+        <div className="mt-4 hidden rounded-[14px] border border-white/8 bg-[#15151599] px-4 py-3 md:block">
+          <p className="text-sm leading-6 text-white/58">
+            {selectedCategory.description}
+          </p>
+          {selectedCategory.exampleExpressions.length > 0 ? (
+            <p className="mt-2 text-xs leading-5 text-white/36">
+              示例：{selectedCategory.exampleExpressions.join("、")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

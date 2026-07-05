@@ -6,6 +6,7 @@ type SentenceInputProps = {
   value: string;
   isSubmitting: boolean;
   disabled?: boolean;
+  autoFocus?: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
 };
@@ -14,6 +15,7 @@ export function SentenceInput({
   value,
   isSubmitting,
   disabled,
+  autoFocus,
   onChange,
   onSubmit,
 }: SentenceInputProps) {
@@ -35,6 +37,7 @@ export function SentenceInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled || isSubmitting}
+        autoFocus={autoFocus}
         rows={5}
         placeholder="先生、もう一度説明してもらえる？"
         className="mt-4 min-h-32 w-full resize-y rounded-[14px] border border-white/12 bg-[#151515cc] px-4 py-3 text-base leading-7 text-white/76 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10 disabled:opacity-60"
