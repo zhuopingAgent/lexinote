@@ -16,13 +16,8 @@ import {
   getResultEntries,
   mapResultToWordDataList,
 } from "@/app/lib/word-data";
+import { isAiQuotaExhaustedError, readJson } from "@/app/lib/api-client";
 import type { WordLookupResponse } from "@/shared/types/api";
-
-type ApiError = {
-  error?: {
-    message?: string;
-  };
-};
 
 type LookupMode = "search" | "retry";
 
@@ -42,6 +37,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
   const [result, setResult] = useState<WordLookupResponse | null>(null);
   const [historyItems, setHistoryItems] = useState<SearchHistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeContext, setActiveContext] = useState("");
   const [loadingContext, setLoadingContext] = useState("");
@@ -147,6 +143,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
         cachedResult
       );
       setError(null);
+      setAiApiErrorMessage(null);
       setResult(cachedResult);
       setActiveContext(normalizedContext);
       setSearchContextDraft(normalizedContext);
@@ -182,12 +179,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
         }),
       });
 
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as WordLookupResponse;
+      const payload = await readJson<WordLookupResponse>(response);
       resultCacheRef.current.set(cacheKey, payload);
       rememberSearchResult(
         normalizedWord,
@@ -201,8 +193,12 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
       setIsRetryPanelOpen(false);
       setRetryContext("");
       setSelectedRetryPronunciation(payload.entry.pronunciation);
+      setAiApiErrorMessage(null);
     } catch (lookupError) {
       const message = lookupError instanceof Error ? lookupError.message : "发生了意外错误";
+      if (isAiQuotaExhaustedError(lookupError)) {
+        setAiApiErrorMessage(message);
+      }
       setError(
         options?.preserveResult
           ? `重新查询失败，当前仍显示上次成功结果。${message}`
@@ -275,6 +271,10 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     setSelectedRetryPronunciation(result?.entry.pronunciation || "");
   }
 
+  function onDismissAiApiError() {
+    setAiApiErrorMessage(null);
+  }
+
   return {
     word,
     setWord,
@@ -287,6 +287,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     result,
     historyItems,
     error,
+    aiApiErrorMessage,
     isLoading,
     activeContext,
     loadingContext,
@@ -309,5 +310,6 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     onRetrySubmit,
     onToggleRetryPanel,
     onCancelRetry,
+    onDismissAiApiError,
   };
 }

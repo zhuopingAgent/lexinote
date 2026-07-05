@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppError } from "@/shared/utils/errors";
+import {
+  AI_QUOTA_EXHAUSTED_CODE,
+  AI_QUOTA_EXHAUSTED_MESSAGE,
+  AiQuotaExhaustedError,
+  AppError,
+} from "@/shared/utils/errors";
 
 const lookupWordMock = vi.fn();
 
@@ -190,6 +195,29 @@ describe("POST /api/words/lookup", () => {
       },
     });
     expect(lookupWordMock).toHaveBeenCalledWith("食べる", undefined, undefined);
+  });
+
+  it("returns a visible AI quota error when lookup exhausts API balance", async () => {
+    lookupWordMock.mockRejectedValue(new AiQuotaExhaustedError());
+
+    const { POST } = await import("@/app/api/words/lookup/route");
+    const request = new Request("http://localhost/api/words/lookup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ word: "未知词" }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: AI_QUOTA_EXHAUSTED_CODE,
+        message: AI_QUOTA_EXHAUSTED_MESSAGE,
+      },
+    });
   });
 
   it("forwards the optional context to the lookup service", async () => {

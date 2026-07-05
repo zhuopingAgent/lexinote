@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
 import type {
   GrammarDetailResponse,
   GrammarPointDetail,
@@ -16,7 +17,19 @@ import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { PracticePrompt } from "@/app/components/grammar/practice-prompt";
 import { SentenceInput } from "@/app/components/grammar/sentence-input";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
-import { readJson } from "@/app/lib/api-client";
+import { isAiQuotaExhaustedError, readJson } from "@/app/lib/api-client";
+
+const PRACTICE_REGISTER_OPTIONS = [
+  { value: "casual", label: "随便" },
+  { value: "polite", label: "一般礼貌" },
+  { value: "business", label: "正式 / 商务" },
+] as const;
+
+const PRACTICE_LEVEL_OPTIONS = [
+  { value: 3, label: "中译日" },
+  { value: 4, label: "语体转换" },
+  { value: 5, label: "易混对比" },
+] as const;
 
 function findInitialTag(tags: GrammarTag[], preferred: string, fallback?: string) {
   return (
@@ -27,21 +40,41 @@ function findInitialTag(tags: GrammarTag[], preferred: string, fallback?: string
   );
 }
 
+function normalizePracticeRegisterTag(registerTag?: string | null) {
+  if (registerTag === "casual" || registerTag === "rough") {
+    return "casual";
+  }
+
+  if (
+    registerTag === "business" ||
+    registerTag === "formal" ||
+    registerTag === "written" ||
+    registerTag === "customer" ||
+    registerTag === "academic" ||
+    registerTag === "news"
+  ) {
+    return "business";
+  }
+
+  return "polite";
+}
+
 export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) {
   const [grammarPoint, setGrammarPoint] = useState<GrammarPointDetail | null>(null);
   const [sceneTags, setSceneTags] = useState<GrammarTag[]>([]);
-  const [registerTags, setRegisterTags] = useState<GrammarTag[]>([]);
   const [sceneTag, setSceneTag] = useState("");
   const [registerTag, setRegisterTag] = useState("");
-  const [level, setLevel] = useState<PracticeLevel>(2);
+  const [level, setLevel] = useState<PracticeLevel>(3);
   const [practice, setPractice] = useState<PracticeGenerateResponse | null>(null);
   const [sentence, setSentence] = useState("");
   const [feedback, setFeedback] = useState<PracticeSubmitResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const generationRef = useRef(0);
 
   const hasGrammarPointId = Boolean(grammarPointId?.trim());
   const selectedScene = useMemo(
@@ -49,8 +82,10 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
     [sceneTags, sceneTag]
   );
   const selectedRegister = useMemo(
-    () => registerTags.find((tag) => tag.nameEn === registerTag),
-    [registerTags, registerTag]
+    () =>
+      PRACTICE_REGISTER_OPTIONS.find((option) => option.value === registerTag) ??
+      PRACTICE_REGISTER_OPTIONS[1],
+    [registerTag]
   );
 
   useEffect(() => {
@@ -81,7 +116,6 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
 
         setGrammarPoint(detail.grammarPoint);
         setSceneTags(taxonomy.sceneTags);
-        setRegisterTags(taxonomy.registerTags);
         setSceneTag(
           detail.grammarPoint.grammarPoint === "〜てもらえますか"
             ? findInitialTag(taxonomy.sceneTags, "hospital", "daily_life")
@@ -91,10 +125,7 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
               )
         );
         setRegisterTag(
-          findInitialTag(
-            taxonomy.registerTags,
-            detail.grammarPoint.registerTags[0]?.nameEn ?? "polite"
-          )
+          normalizePracticeRegisterTag(detail.grammarPoint.registerTags[0]?.nameEn)
         );
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -116,10 +147,26 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
     };
   }, [grammarPointId]);
 
+  function resetGeneratedPractice() {
+    generationRef.current += 1;
+    setPractice(null);
+    setSentence("");
+    setFeedback(null);
+    setActionError(null);
+    setAiApiErrorMessage(null);
+    setIsGenerating(false);
+  }
+
   async function generatePractice() {
     if (!grammarPoint) {
       return;
     }
+
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    const nextSceneTag = sceneTag;
+    const nextRegisterTag = registerTag;
+    const nextLevel = level;
 
     setIsGenerating(true);
     setActionError(null);
@@ -133,20 +180,32 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
         headers: {
           "Content-Type": "application/json",
         },
+        cache: "no-store",
         body: JSON.stringify({
           grammarPointId: grammarPoint.id,
-          sceneTag,
-          registerTag,
-          level,
+          sceneTag: nextSceneTag,
+          registerTag: nextRegisterTag,
+          level: nextLevel,
         }),
       }).then((response) => readJson<PracticeGenerateResponse>(response));
-      setPractice(nextPractice);
+
+      if (generationRef.current === generation) {
+        setPractice(nextPractice);
+        setAiApiErrorMessage(null);
+      }
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "练习生成失败，请稍后再试。"
-      );
+      if (generationRef.current === generation) {
+        if (isAiQuotaExhaustedError(error)) {
+          setAiApiErrorMessage(error.message);
+        }
+        setActionError(
+          error instanceof Error ? error.message : "练习生成失败，请稍后再试。"
+        );
+      }
     } finally {
-      setIsGenerating(false);
+      if (generationRef.current === generation) {
+        setIsGenerating(false);
+      }
     }
   }
 
@@ -173,7 +232,11 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
         }),
       }).then((response) => readJson<PracticeSubmitResponse>(response));
       setFeedback(nextFeedback);
+      setAiApiErrorMessage(null);
     } catch (error) {
+      if (isAiQuotaExhaustedError(error)) {
+        setAiApiErrorMessage(error.message);
+      }
       setActionError(
         error instanceof Error ? error.message : "句子反馈失败，请稍后再试。"
       );
@@ -218,10 +281,17 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
 
   return (
     <div className="mx-auto grid w-full max-w-[1120px] gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <AiApiErrorModal
+        message={aiApiErrorMessage}
+        onClose={() => setAiApiErrorMessage(null)}
+      />
       <aside className="space-y-5">
         <section className="rounded-[18px] border border-white/10 bg-[#1e1e1eb3] p-5">
           <div className="flex flex-wrap items-center gap-2">
             <PracticalityBadge practicality={grammarPoint.practicality} />
+            {grammarPoint.categoryGroupNameZh ? (
+              <TagBadge tag={grammarPoint.categoryGroupNameZh} />
+            ) : null}
             {grammarPoint.categoryNameZh ? <TagBadge tag={grammarPoint.categoryNameZh} /> : null}
           </div>
           <h1 className="mt-4 break-words text-3xl leading-tight font-semibold text-white/82">
@@ -250,7 +320,10 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
               <span className="text-sm text-white/42">场景</span>
               <select
                 value={sceneTag}
-                onChange={(event) => setSceneTag(event.target.value)}
+                onChange={(event) => {
+                  setSceneTag(event.target.value);
+                  resetGeneratedPractice();
+                }}
                 className="mt-2 h-11 w-full rounded-[12px] border border-white/12 bg-[#151515cc] px-3 text-sm text-white/70 outline-none focus:border-white/26 focus:ring-2 focus:ring-white/10"
               >
                 {sceneTags.map((tag) => (
@@ -265,12 +338,15 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
               <span className="text-sm text-white/42">语体</span>
               <select
                 value={registerTag}
-                onChange={(event) => setRegisterTag(event.target.value)}
+                onChange={(event) => {
+                  setRegisterTag(event.target.value);
+                  resetGeneratedPractice();
+                }}
                 className="mt-2 h-11 w-full rounded-[12px] border border-white/12 bg-[#151515cc] px-3 text-sm text-white/70 outline-none focus:border-white/26 focus:ring-2 focus:ring-white/10"
               >
-                {registerTags.map((tag) => (
-                  <option key={tag.nameEn} value={tag.nameEn}>
-                    {tag.nameZh}
+                {PRACTICE_REGISTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -280,14 +356,17 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
               <span className="text-sm text-white/42">等级</span>
               <select
                 value={level}
-                onChange={(event) => setLevel(Number(event.target.value) as PracticeLevel)}
+                onChange={(event) => {
+                  setLevel(Number(event.target.value) as PracticeLevel);
+                  resetGeneratedPractice();
+                }}
                 className="mt-2 h-11 w-full rounded-[12px] border border-white/12 bg-[#151515cc] px-3 text-sm text-white/70 outline-none focus:border-white/26 focus:ring-2 focus:ring-white/10"
               >
-                <option value={1}>1 模仿造句</option>
-                <option value={2}>2 场景造句</option>
-                <option value={3}>3 中译日</option>
-                <option value={4}>4 语体转换</option>
-                <option value={5}>5 易混对比</option>
+                {PRACTICE_LEVEL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -297,13 +376,13 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
               disabled={isGenerating}
               className="inline-flex h-11 w-full items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isGenerating ? "生成中" : "生成练习"}
+              {isGenerating ? "生成中" : practice ? "重新生成练习" : "生成练习"}
             </button>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
             {selectedScene ? <TagBadge tag={selectedScene} tone="scene" /> : null}
-            {selectedRegister ? <TagBadge tag={selectedRegister} tone="register" /> : null}
+            <TagBadge tag={selectedRegister.label} tone="register" />
           </div>
         </section>
       </aside>

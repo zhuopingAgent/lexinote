@@ -4,6 +4,7 @@ import {
 } from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
+import { AiQuotaExhaustedError } from "@/shared/utils/errors";
 
 const MAX_ERROR_LENGTH = 280;
 
@@ -20,6 +21,14 @@ function normalizeErrorMessage(error: unknown) {
 
 function hasRetryAttemptsRemaining(job: { attemptCount?: number; maxAttempts?: number }) {
   return (job.attemptCount ?? 1) < (job.maxAttempts ?? 1);
+}
+
+function shouldRetryJob(error: unknown, job: { attemptCount?: number; maxAttempts?: number }) {
+  if (error instanceof AiQuotaExhaustedError) {
+    return false;
+  }
+
+  return hasRetryAttemptsRemaining(job);
 }
 
 export class CollectionAutoFilterJobService {
@@ -74,7 +83,7 @@ export class CollectionAutoFilterJobService {
         await this.jobRepository.markCompleted(job.jobId);
       } catch (error) {
         const message = normalizeErrorMessage(error);
-        const shouldRetry = hasRetryAttemptsRemaining(job);
+        const shouldRetry = shouldRetryJob(error, job);
 
         if (job.jobType === "collection_sync" && job.collectionId !== null) {
           const collection = await this.collectionRepository.findById(job.collectionId);

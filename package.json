@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run typecheck && next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "node scripts/tsc7.mjs --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
@@ -26,7 +27,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5",
+    "typescript": "^6.0.3",
+    "typescript-7": "npm:typescript@^7.0.1-rc",
     "vitest": "^4.0.18"
   }
 }

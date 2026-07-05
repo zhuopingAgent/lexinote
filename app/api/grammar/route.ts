@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const result = await grammarLearningService.searchGrammarPoints({
       query: url.searchParams.get("query") ?? undefined,
       categorySlug: url.searchParams.get("category") ?? undefined,
+      groupSlug: url.searchParams.get("group") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
       userId: url.searchParams.get("userId") ?? undefined,
     });

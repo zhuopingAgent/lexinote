@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { GrammarReviewItem, GrammarReviewResponse } from "@/shared/types/api";
+import {
+  displayMistakeTypeLabel,
+  displayReviewStatusLabel,
+} from "@/app/components/grammar/display-labels";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 import { readJson } from "@/app/lib/api-client";
@@ -124,7 +128,7 @@ export function ReviewClient() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <PracticalityBadge practicality={item.grammarPoint.practicality} />
-                    <TagBadge tag={item.status} />
+                    <TagBadge tag={displayReviewStatusLabel(item.status)} />
                     <TagBadge tag={`错误 ${item.mistakeCount}`} />
                   </div>
                   <Link
@@ -166,7 +170,7 @@ export function ReviewClient() {
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
                   {item.mistakeTypes.map((mistakeType) => (
-                    <TagBadge key={mistakeType} tag={mistakeType} />
+                    <TagBadge key={mistakeType} tag={displayMistakeTypeLabel(mistakeType)} />
                   ))}
                 </div>
                 <Link

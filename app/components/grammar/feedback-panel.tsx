@@ -1,4 +1,8 @@
 import type { AIFeedbackResult } from "@/shared/types/api";
+import {
+  displayMistakeTypeLabel,
+  displayRegisterTagLabel,
+} from "@/app/components/grammar/display-labels";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 
 type FeedbackPanelProps = {
@@ -72,7 +76,9 @@ export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <p className="text-sm leading-6 text-white/76">{version.sentence}</p>
-                  {version.registerTag ? <TagBadge tag={version.registerTag} /> : null}
+                  {version.registerTag ? (
+                    <TagBadge tag={displayRegisterTagLabel(version.registerTag)} />
+                  ) : null}
                 </div>
                 <p className="mt-2 text-sm leading-6 text-white/46">
                   {version.explanationZh}
@@ -86,7 +92,7 @@ export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
       {feedback.mistakeTypes.length > 0 ? (
         <div className="mt-5 flex flex-wrap gap-2">
           {feedback.mistakeTypes.map((mistakeType) => (
-            <TagBadge key={mistakeType} tag={mistakeType} />
+            <TagBadge key={mistakeType} tag={displayMistakeTypeLabel(mistakeType)} />
           ))}
         </div>
       ) : null}

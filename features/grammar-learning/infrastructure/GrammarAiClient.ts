@@ -7,6 +7,8 @@ import type {
   PracticeLevel,
   PracticeReferenceAnswer,
 } from "@/shared/types/api";
+import { throwIfOpenAiQuotaExhausted } from "@/shared/utils/ai-api-errors";
+import { AiQuotaExhaustedError } from "@/shared/utils/errors";
 
 type OpenAiTextItem = {
   type?: string;
@@ -254,6 +256,18 @@ function normalizePattern(value: string) {
     .trim();
 }
 
+function resolveTeFormConnectionCue(grammarPoint: string, structure?: string | null) {
+  const normalizedGrammarPoint = normalizePattern(grammarPoint);
+  const requiresTeForm =
+    normalizedGrammarPoint.startsWith("て") || Boolean(structure?.includes("Vて"));
+
+  if (!requiresTeForm || !normalizedGrammarPoint.startsWith("て")) {
+    return "";
+  }
+
+  return normalizedGrammarPoint.replace(/^て/, "").replace(/[？?]$/g, "");
+}
+
 function isHospitalPoliteMoraemasuCase(input: {
   grammarPoint: GrammarPointDetail;
   sceneTag?: string;
@@ -268,16 +282,112 @@ function isHospitalPoliteMoraemasuCase(input: {
   );
 }
 
+function resolveSceneLabel(input: {
+  grammarPoint: GrammarPointDetail;
+  sceneTag?: string;
+  sceneTagLabel?: string;
+}) {
+  return (
+    input.sceneTagLabel ||
+    input.grammarPoint.sceneTags.find((tag) => tag.nameEn === input.sceneTag)?.nameZh ||
+    input.grammarPoint.sceneTags[0]?.nameZh ||
+    "日常生活"
+  );
+}
+
+function resolveRegisterLabel(input: {
+  grammarPoint: GrammarPointDetail;
+  registerTag?: string;
+  registerTagLabel?: string;
+}) {
+  return (
+    input.registerTagLabel ||
+    input.grammarPoint.registerTags.find((tag) => tag.nameEn === input.registerTag)
+      ?.nameZh ||
+    input.grammarPoint.registerTags[0]?.nameZh ||
+    "一般礼貌"
+  );
+}
+
+function resolveCategoryPath(grammarPoint: GrammarPointDetail) {
+  return [grammarPoint.categoryGroupNameZh, grammarPoint.categoryNameZh]
+    .filter((item): item is string => Boolean(item))
+    .join(" / ") || "文法";
+}
+
+const PRACTICE_LEVEL_LABELS: Record<PracticeLevel, string> = {
+  1: "模仿造句",
+  2: "场景造句",
+  3: "中译日",
+  4: "语体转换",
+  5: "易混语法对比",
+};
+
+function rethrowAiQuotaError(error: unknown) {
+  if (error instanceof AiQuotaExhaustedError) {
+    throw error;
+  }
+}
+
+function resolvePracticeLevelLabel(level: PracticeLevel) {
+  return `${level} ${PRACTICE_LEVEL_LABELS[level]}`;
+}
+
+function buildFallbackReferenceAnswers(
+  grammarPoint: GrammarPointDetail
+): PracticeReferenceAnswer[] {
+  const answers = grammarPoint.examples.slice(0, 2).map((example) => ({
+    jp: example.jp,
+    zh: example.zh ?? "自然使用目标语法的例句。",
+    noteZh: example.notes ?? "参考当前语法点中更自然的例句。",
+  }));
+
+  if (answers.length > 0) {
+    return answers;
+  }
+
+  return [
+    {
+      jp: `${normalizePattern(grammarPoint.grammarPoint)}を使って、自然な文を作ってください。`,
+      zh: "请用目标语法造一个自然句子。",
+      noteZh: "先确认目标语法的接续，再放进具体场景。",
+    },
+  ];
+}
+
+function hasPastTimeMismatch(input: {
+  grammarPoint: GrammarPointDetail;
+  sentence: string;
+}) {
+  const isTenseFocused =
+    input.grammarPoint.categorySlug === "tense_and_negation" ||
+    input.grammarPoint.categorySlug === "tense_errors" ||
+    input.grammarPoint.categoryGroupSlug === "morphology_conjugation_tense_aspect";
+  const hasPastTimeCue = /(昨日|先週|先月|去年|さっき|先ほど|この前|以前)/.test(
+    input.sentence
+  );
+  const hasPastForm = /(ました|でした|かった|だった|なかった|ませんでした|た[。！？!?、\s]|だ[。！？!?、\s])/.test(
+    input.sentence
+  );
+  const hasNonPastPoliteEnding = /(ます|です)(。|！|？|!|\?|$)/.test(input.sentence);
+
+  return isTenseFocused && hasPastTimeCue && hasNonPastPoliteEnding && !hasPastForm;
+}
+
 function buildFallbackPractice(input: {
   grammarPoint: GrammarPointDetail;
   sceneTag?: string;
+  sceneTagLabel?: string;
   registerTag?: string;
+  registerTagLabel?: string;
   level: PracticeLevel;
 }): GeneratedPractice {
+  const levelLabel = resolvePracticeLevelLabel(input.level);
+
   if (isHospitalPoliteMoraemasuCase(input)) {
     return {
       prompt:
-        "你在医院听不懂医生的说明，想请医生再说明一遍。请使用「〜てもらえますか」造一句自然的日语句子。",
+        `你在医院听不懂医生的说明，想请医生再说明一遍。请使用「请求、许可与建议」分类中的「〜てもらえますか」造一句自然的日语句子。当前等级：${levelLabel}。`,
       referenceAnswers: [
         {
           jp: "すみません、もう一度説明してもらえますか。",
@@ -290,26 +400,36 @@ function buildFallbackPractice(input: {
           noteZh: "更礼貌，更适合对医生、老师、客户或上司说。",
         },
       ],
-      hints: ["先用すみません缓冲。", "对医生说话时，句尾不要用太随便的「もらえる？」。"],
+      hints: [
+        `练习等级：${levelLabel}`,
+        "先用すみません缓冲。",
+        "对医生说话时，句尾不要用太随便的「もらえる？」。",
+      ],
       source: "fallback",
     };
   }
 
   const example = input.grammarPoint.examples[0];
-  const scene = input.sceneTag ?? input.grammarPoint.sceneTags[0]?.nameEn ?? "daily_life";
-  const register =
-    input.registerTag ?? input.grammarPoint.registerTags[0]?.nameEn ?? "polite";
+  const scene = resolveSceneLabel(input);
+  const register = resolveRegisterLabel(input);
+  const category = resolveCategoryPath(input.grammarPoint);
+  const similarGrammarText =
+    input.grammarPoint.similarGrammar[0]?.similarGrammarPointText ?? "相近表达";
+  const chineseCue =
+    example?.zh ?? input.grammarPoint.naturalTranslation ?? input.grammarPoint.coreMeaning;
+  const promptByLevel: Record<PracticeLevel, string> = {
+    1: `请参考下面的答案结构，替换人物、地点或时间，在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语。重点是接续正确。`,
+    2: `你正在「${scene}」场景里和别人沟通。请设定一个具体听话对象和表达目的，用「${category}」分类中的「${input.grammarPoint.grammarPoint}」写一句能直接说出口的「${register}」语体日语。`,
+    3: `请把中文意图「${chineseCue}」改成自然日语。不要直译中文语序，必须使用「${input.grammarPoint.grammarPoint}」，并保持「${scene}」场景和「${register}」语体。`,
+    4: `请把同一个意思改成「${register}」语体的自然日语，并使用「${input.grammarPoint.grammarPoint}」。注意句尾和称呼不要混用随便体、礼貌体和商务表达。`,
+    5: `请在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语，并特别注意不要和「${similarGrammarText}」混淆。句子要体现目标语法自己的用法边界。`,
+  };
 
   return {
-    prompt: `请在「${scene}」场景中，用「${input.grammarPoint.grammarPoint}」造一个符合「${register}」语体的自然日语句子。`,
-    referenceAnswers: [
-      {
-        jp: example?.jp ?? `${normalizePattern(input.grammarPoint.grammarPoint)}を使って、自然な文を作ってください。`,
-        zh: example?.zh ?? "请用目标语法造一个自然句子。",
-        noteZh: example?.notes ?? "参考答案来自当前语法点的常用语境。",
-      },
-    ],
+    prompt: `${promptByLevel[input.level]}当前等级：${levelLabel}。`,
+    referenceAnswers: buildFallbackReferenceAnswers(input.grammarPoint),
     hints: [
+      `练习等级：${levelLabel}`,
       `核心意思：${input.grammarPoint.coreMeaning}`,
       input.grammarPoint.structure
         ? `接续结构：${input.grammarPoint.structure}`
@@ -360,21 +480,49 @@ function buildFallbackFeedback(input: {
       ? input.sentence.includes(normalizedPattern)
       : input.sentence.includes(normalizedPattern.replace(/[かですます]+$/g, "")) ||
         input.sentence.includes(normalizedPattern);
+  const teFormConnectionCue = resolveTeFormConnectionCue(
+    input.grammarPoint.grammarPoint,
+    input.grammarPoint.structure
+  );
+  const hasConnectionIssue =
+    !usesPattern &&
+    Boolean(teFormConnectionCue) &&
+    input.sentence.includes(teFormConnectionCue);
   const isCasualMismatch =
     input.registerTag &&
     input.registerTag !== "casual" &&
     /だよ|だね|かな|かも|もらえる[？?]?$/.test(input.sentence);
-  const hasMistake = !usesPattern || isCasualMismatch;
+  const isTenseMismatch = hasPastTimeMismatch(input);
+  const hasUnnaturalExpression = input.sentence.length < 7;
+  const mistakeTypes = [
+    !usesPattern && !hasConnectionIssue ? "missing_target_grammar" : null,
+    hasConnectionIssue ? "connection_error" : null,
+    isTenseMismatch ? "tense_mismatch" : null,
+    isCasualMismatch ? "wrong_register" : null,
+    hasUnnaturalExpression ? "unnatural_expression" : null,
+  ].filter((mistakeType): mistakeType is string => Boolean(mistakeType));
+  const hasMistake = mistakeTypes.length > 0;
+  const feedbackText = hasMistake
+    ? [
+        hasConnectionIssue
+          ? "目标语法的接续还不稳，先确认是否需要て形连接。"
+          : null,
+        !usesPattern && !hasConnectionIssue ? "句子里还没有清楚使用目标语法。" : null,
+        isTenseMismatch ? "过去时间词和句末时态不匹配，昨日、先週等通常要用过去形。" : null,
+        isCasualMismatch ? "当前语体偏随便，需要换成更礼貌的句尾。" : null,
+        hasUnnaturalExpression ? "句子过短或表达不完整，建议补足具体场景。" : null,
+      ]
+        .filter(Boolean)
+        .join("")
+    : "目标语法使用基本自然，语体也和当前场景大体匹配。可以继续练习更自然的表达变化。";
 
   return {
     isCorrect: !hasMistake,
-    grammarScore: usesPattern ? 4 : 2,
+    grammarScore: usesPattern && !hasConnectionIssue ? 4 : 2,
     naturalnessScore: hasMistake ? 3 : 4,
     registerScore: isCasualMismatch ? 2 : 4,
     sceneFitScore: 4,
-    feedbackText: hasMistake
-      ? "句子大意可以看，但目标语法或语体还需要调整。先确认接续是否符合结构，再根据场景选择礼貌程度。"
-      : "目标语法使用基本自然，语体也和当前场景大体匹配。可以继续练习更自然的表达变化。",
+    feedbackText,
     correctedSentence: hasMistake
       ? input.grammarPoint.examples[0]?.jp ?? null
       : null,
@@ -388,7 +536,7 @@ function buildFallbackFeedback(input: {
             },
           ]
         : [],
-    mistakeTypes: hasMistake ? ["unnatural_expression"] : [],
+    mistakeTypes,
     nextPracticePrompt: hasMistake
       ? `请再用「${input.grammarPoint.grammarPoint}」造一个更符合场景的句子。`
       : `请换一个场景继续使用「${input.grammarPoint.grammarPoint}」造句。`,
@@ -400,7 +548,9 @@ export class GrammarAiClient {
   async generatePractice(input: {
     grammarPoint: GrammarPointDetail;
     sceneTag?: string;
+    sceneTagLabel?: string;
     registerTag?: string;
+    registerTagLabel?: string;
     level: PracticeLevel;
   }): Promise<GeneratedPractice> {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -433,6 +583,8 @@ export class GrammarAiClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return fallback;
       }
@@ -446,7 +598,8 @@ export class GrammarAiClient {
             source: "ai",
           }
         : fallback;
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return fallback;
     }
   }
@@ -455,7 +608,9 @@ export class GrammarAiClient {
     grammarPoint: GrammarPointDetail;
     sentence: string;
     sceneTag?: string;
+    sceneTagLabel?: string;
     registerTag?: string;
+    registerTagLabel?: string;
     promptText?: string;
   }): Promise<EvaluatedSentence> {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -488,6 +643,8 @@ export class GrammarAiClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return fallback;
       }
@@ -502,7 +659,8 @@ export class GrammarAiClient {
             modelName: resolveModel(),
           }
         : fallback;
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return fallback;
     }
   }

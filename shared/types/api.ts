@@ -46,12 +46,29 @@ export type GrammarTag = {
   priority?: number;
 };
 
-export type GrammarCategory = {
+export type GrammarCategoryGroup = {
   id: string;
   slug: string;
   nameZh: string;
   nameEn: string;
   description: string;
+  priority: number;
+  isMvp: boolean;
+};
+
+export type GrammarCategory = {
+  id: string;
+  slug: string;
+  groupId?: string | null;
+  groupSlug?: string | null;
+  groupNameZh?: string | null;
+  groupNameEn?: string | null;
+  groupDescription?: string | null;
+  groupPriority?: number | null;
+  nameZh: string;
+  nameEn: string;
+  description: string;
+  exampleExpressions: string[];
   priority: number;
   isMvp: boolean;
 };
@@ -64,6 +81,9 @@ export type GrammarPointSummary = {
   categorySlug?: string | null;
   categoryNameZh?: string | null;
   categoryNameEn?: string | null;
+  categoryGroupSlug?: string | null;
+  categoryGroupNameZh?: string | null;
+  categoryGroupNameEn?: string | null;
   subCategory?: string | null;
   coreMeaning: string;
   naturalTranslation?: string | null;
@@ -114,6 +134,7 @@ export type GrammarDetailResponse = {
 };
 
 export type GrammarTaxonomyResponse = {
+  categoryGroups: GrammarCategoryGroup[];
   categories: GrammarCategory[];
   sceneTags: GrammarTag[];
   registerTags: GrammarTag[];

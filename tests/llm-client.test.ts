@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
+import { AI_QUOTA_EXHAUSTED_CODE } from "@/shared/utils/errors";
 
 describe("LlmClient", () => {
   const originalApiKey = process.env.OPENAI_API_KEY;
@@ -739,6 +740,30 @@ describe("LlmClient", () => {
       partOfSpeech: "需结合上下文确认",
       meaningZh: "需结合上下文确认",
       examples: [],
+    });
+  });
+
+  it("throws a quota error when OpenAI reports insufficient quota", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const quotaResponse = {
+      ok: false,
+      status: 429,
+      clone() {
+        return quotaResponse;
+      },
+      json: async () => ({
+        error: {
+          code: "insufficient_quota",
+          message: "You exceeded your current quota, please check billing.",
+        },
+      }),
+    };
+    global.fetch = vi.fn().mockResolvedValue(quotaResponse) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(client.completeWordEntry("未知词")).rejects.toMatchObject({
+      code: AI_QUOTA_EXHAUSTED_CODE,
     });
   });
 

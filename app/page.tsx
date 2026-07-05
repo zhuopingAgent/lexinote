@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
 import { HistoryList } from "@/app/components/history-list";
 import { OverviewList } from "@/app/components/overview-list";
+import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
 import { AppHeader } from "@/app/components/app-header";
 import {
   BookIcon,
@@ -61,6 +62,7 @@ export default function Home() {
     result,
     historyItems,
     error,
+    aiApiErrorMessage: lookupAiApiErrorMessage,
     isLoading,
     activeContext,
     loadingContext,
@@ -83,6 +85,7 @@ export default function Home() {
     onRetrySubmit,
     onToggleRetryPanel,
     onCancelRetry,
+    onDismissAiApiError: onDismissLookupAiApiError,
   } = useLookupFlow(setActiveView);
   const {
     overviewQuery,
@@ -100,6 +103,7 @@ export default function Home() {
     collectionName,
     setCollectionName,
     collectionError,
+    aiApiErrorMessage: collectionAiApiErrorMessage,
     editingCollectionId,
     editingCollectionName,
     setEditingCollectionName,
@@ -119,6 +123,7 @@ export default function Home() {
     onSaveCollectionUpdate,
     onDeleteCollection,
     onResyncCollection,
+    onDismissAiApiError: onDismissCollectionAiApiError,
   } = useCollections(activeView);
 
   useEffect(() => {
@@ -174,6 +179,13 @@ export default function Home() {
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
+      <AiApiErrorModal
+        message={lookupAiApiErrorMessage ?? collectionAiApiErrorMessage}
+        onClose={() => {
+          onDismissLookupAiApiError();
+          onDismissCollectionAiApiError();
+        }}
+      />
       <AppHeader navItems={TOP_NAV_ITEMS} />
 
       <div className="flex flex-1 flex-col md:grid md:grid-cols-[240px_minmax(0,1fr)]">

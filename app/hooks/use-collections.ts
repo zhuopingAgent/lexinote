@@ -1,19 +1,18 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AppView } from "@/app/lib/app-view";
+import {
+  isAiQuotaErrorMessage,
+  isAiQuotaExhaustedError,
+  readJson,
+} from "@/app/lib/api-client";
 import type {
   AddCollectionWordsResponse,
   CollectionListResponse,
   CollectionResponse,
   CollectionSummary,
 } from "@/shared/types/api";
-
-type ApiError = {
-  error?: {
-    message?: string;
-  };
-};
 
 function isPositiveInteger(value: number) {
   return Number.isInteger(value) && value > 0;
@@ -33,12 +32,69 @@ export function useCollections(activeView: AppView) {
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [busyCollectionId, setBusyCollectionId] = useState<number | null>(null);
   const [hasLoadedCollections, setHasLoadedCollections] = useState(false);
+  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
+  const notifiedAiQuotaCollectionIdsRef = useRef(new Set<number>());
+
+  const notifyAiQuotaAutoFilterFailures = useCallback(
+    (nextCollections: CollectionSummary[]) => {
+      const failedCollection = nextCollections.find(
+        (collection) =>
+          collection.autoFilterSyncStatus === "failed" &&
+          isAiQuotaErrorMessage(collection.autoFilterLastError) &&
+          !notifiedAiQuotaCollectionIdsRef.current.has(collection.collectionId)
+      );
+
+      if (!failedCollection) {
+        return;
+      }
+
+      notifiedAiQuotaCollectionIdsRef.current.add(failedCollection.collectionId);
+      setAiApiErrorMessage(failedCollection.autoFilterLastError);
+    },
+    []
+  );
+
+  const loadCollections = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+
+      if (!silent) {
+        setCollectionError(null);
+        setIsCollectionsLoading(true);
+      }
+
+      try {
+        const response = await fetch("/api/collections");
+
+        const payload = await readJson<CollectionListResponse>(response);
+        setCollections(payload.collections);
+        setHasLoadedCollections(true);
+        notifyAiQuotaAutoFilterFailures(payload.collections);
+      } catch (collectionLoadError) {
+        const message =
+          collectionLoadError instanceof Error
+            ? collectionLoadError.message
+            : "发生了意外错误";
+        if (isAiQuotaExhaustedError(collectionLoadError)) {
+          setAiApiErrorMessage(message);
+        }
+        if (!silent) {
+          setCollectionError(message);
+        }
+      } finally {
+        if (!silent) {
+          setIsCollectionsLoading(false);
+        }
+      }
+    },
+    [notifyAiQuotaAutoFilterFailures]
+  );
 
   useEffect(() => {
     if (activeView === "collections" && !hasLoadedCollections && !isCollectionsLoading) {
       void loadCollections();
     }
-  }, [activeView, hasLoadedCollections, isCollectionsLoading]);
+  }, [activeView, hasLoadedCollections, isCollectionsLoading, loadCollections]);
 
   useEffect(() => {
     const shouldPollCollections =
@@ -60,41 +116,7 @@ export function useCollections(activeView: AppView) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [collections, hasLoadedCollections]);
-
-  async function loadCollections(options?: { silent?: boolean }) {
-    const silent = options?.silent ?? false;
-
-    if (!silent) {
-      setCollectionError(null);
-      setIsCollectionsLoading(true);
-    }
-
-    try {
-      const response = await fetch("/api/collections");
-
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionListResponse;
-      setCollections(payload.collections);
-      setHasLoadedCollections(true);
-    } catch (collectionLoadError) {
-      const message =
-        collectionLoadError instanceof Error
-          ? collectionLoadError.message
-          : "发生了意外错误";
-      if (!silent) {
-        setCollectionError(message);
-      }
-    } finally {
-      if (!silent) {
-        setIsCollectionsLoading(false);
-      }
-    }
-  }
+  }, [collections, hasLoadedCollections, loadCollections]);
 
   async function ensureCollectionsLoaded() {
     if (hasLoadedCollections || isCollectionsLoading) {
@@ -122,12 +144,7 @@ export function useCollections(activeView: AppView) {
       }),
     });
 
-    if (!response.ok) {
-      const payload = (await response.json()) as ApiError;
-      throw new Error(payload.error?.message || "请求失败");
-    }
-
-    const payload = (await response.json()) as AddCollectionWordsResponse;
+    const payload = await readJson<AddCollectionWordsResponse>(response);
 
     if (payload.addedCount > 0) {
       setCollections((currentCollections) =>
@@ -169,12 +186,7 @@ export function useCollections(activeView: AppView) {
         }),
       });
 
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionResponse;
+      const payload = await readJson<CollectionResponse>(response);
       setCollections((currentCollections) => [payload.collection, ...currentCollections]);
       setCollectionName("");
       setHasLoadedCollections(true);
@@ -183,6 +195,9 @@ export function useCollections(activeView: AppView) {
         collectionCreateError instanceof Error
           ? collectionCreateError.message
           : "发生了意外错误";
+      if (isAiQuotaExhaustedError(collectionCreateError)) {
+        setAiApiErrorMessage(message);
+      }
       setCollectionError(message);
     } finally {
       setIsCreatingCollection(false);
@@ -239,12 +254,7 @@ export function useCollections(activeView: AppView) {
         }),
       });
 
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionResponse;
+      const payload = await readJson<CollectionResponse>(response);
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
           collection.collectionId === collectionId ? payload.collection : collection
@@ -256,6 +266,9 @@ export function useCollections(activeView: AppView) {
         collectionUpdateError instanceof Error
           ? collectionUpdateError.message
           : "发生了意外错误";
+      if (isAiQuotaExhaustedError(collectionUpdateError)) {
+        setAiApiErrorMessage(message);
+      }
       setCollectionError(message);
     } finally {
       setBusyCollectionId(null);
@@ -276,10 +289,7 @@ export function useCollections(activeView: AppView) {
         method: "DELETE",
       });
 
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
+      await readJson<{ ok?: boolean }>(response);
 
       setCollections((currentCollections) =>
         currentCollections.filter((collection) => collection.collectionId !== collectionId)
@@ -293,6 +303,9 @@ export function useCollections(activeView: AppView) {
         collectionDeleteError instanceof Error
           ? collectionDeleteError.message
           : "发生了意外错误";
+      if (isAiQuotaExhaustedError(collectionDeleteError)) {
+        setAiApiErrorMessage(message);
+      }
       setCollectionError(message);
     } finally {
       setBusyCollectionId(null);
@@ -314,12 +327,7 @@ export function useCollections(activeView: AppView) {
         }),
       });
 
-      if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
-      }
-
-      const payload = (await response.json()) as CollectionResponse;
+      const payload = await readJson<CollectionResponse>(response);
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
           collection.collectionId === collectionId ? payload.collection : collection
@@ -330,10 +338,17 @@ export function useCollections(activeView: AppView) {
         collectionResyncError instanceof Error
           ? collectionResyncError.message
           : "发生了意外错误";
+      if (isAiQuotaExhaustedError(collectionResyncError)) {
+        setAiApiErrorMessage(message);
+      }
       setCollectionError(message);
     } finally {
       setBusyCollectionId(null);
     }
+  }
+
+  function onDismissAiApiError() {
+    setAiApiErrorMessage(null);
   }
 
   return {
@@ -341,6 +356,7 @@ export function useCollections(activeView: AppView) {
     collectionName,
     setCollectionName,
     collectionError,
+    aiApiErrorMessage,
     editingCollectionId,
     editingCollectionName,
     setEditingCollectionName,
@@ -360,5 +376,6 @@ export function useCollections(activeView: AppView) {
     onSaveCollectionUpdate,
     onDeleteCollection,
     onResyncCollection,
+    onDismissAiApiError,
   };
 }

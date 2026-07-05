@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   GrammarCategory,
+  GrammarCategoryGroup,
   GrammarPointSummary,
   GrammarSearchResponse,
   GrammarTaxonomyResponse,
@@ -14,7 +15,9 @@ import { readJson } from "@/app/lib/api-client";
 export function GrammarLearningShell() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const [groupSlug, setGroupSlug] = useState("");
   const [categorySlug, setCategorySlug] = useState("");
+  const [categoryGroups, setCategoryGroups] = useState<GrammarCategoryGroup[]>([]);
   const [categories, setCategories] = useState<GrammarCategory[]>([]);
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
@@ -34,6 +37,7 @@ export function GrammarLearningShell() {
         const taxonomy = await fetch("/api/grammar/taxonomy", {
           signal: controller.signal,
         }).then((response) => readJson<GrammarTaxonomyResponse>(response));
+        setCategoryGroups(taxonomy.categoryGroups ?? []);
         setCategories(taxonomy.categories);
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -71,6 +75,9 @@ export function GrammarLearningShell() {
         if (categorySlug) {
           params.set("category", categorySlug);
         }
+        if (groupSlug) {
+          params.set("group", groupSlug);
+        }
         params.set("limit", "36");
 
         try {
@@ -101,7 +108,7 @@ export function GrammarLearningShell() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [submittedQuery, categorySlug]);
+  }, [submittedQuery, categorySlug, groupSlug]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -116,18 +123,32 @@ export function GrammarLearningShell() {
   function clearFilters() {
     setQuery("");
     setSubmittedQuery("");
+    setGroupSlug("");
     setCategorySlug("");
   }
+
+  function handleGroupChange(nextGroupSlug: string) {
+    setGroupSlug(nextGroupSlug);
+    setCategorySlug("");
+  }
+
+  const categoryButtonGroupSlug = groupSlug || "expressive_functions";
+  const categoryButtonCategories = categories.filter(
+    (category) => category.groupSlug === categoryButtonGroupSlug
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
       <GrammarSearch
-        categories={categories}
+        categoryGroups={categoryGroups}
+        categories={categoryButtonCategories}
         query={query}
+        groupSlug={groupSlug}
         categorySlug={categorySlug}
         isLoading={isSearchLoading}
         resultCount={items.length}
         onQueryChange={setQuery}
+        onGroupChange={handleGroupChange}
         onCategoryChange={setCategorySlug}
         onClearFilters={clearFilters}
         onSubmit={() => setSubmittedQuery(query)}
@@ -165,7 +186,7 @@ export function GrammarLearningShell() {
           >
             全部
           </button>
-          {categories.map((category) => (
+          {categoryButtonCategories.map((category) => (
             <button
               key={category.slug}
               type="button"

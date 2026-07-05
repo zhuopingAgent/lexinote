@@ -1,7 +1,7 @@
 export const DEFAULT_GRAMMAR_USER_ID =
   "00000000-0000-0000-0000-000000000001";
 
-export const SELECT_GRAMMAR_CATEGORIES_SQL = `
+export const SELECT_GRAMMAR_CATEGORY_GROUPS_SQL = `
   SELECT
     id::text,
     slug,
@@ -10,8 +10,32 @@ export const SELECT_GRAMMAR_CATEGORIES_SQL = `
     description,
     priority,
     is_mvp
-  FROM grammar_categories
+  FROM grammar_category_groups
   ORDER BY priority ASC, name_zh ASC;
+`;
+
+export const SELECT_GRAMMAR_CATEGORIES_SQL = `
+  SELECT
+    gc.id::text,
+    gc.slug,
+    gc.group_id::text,
+    cgrp.slug AS group_slug,
+    cgrp.name_zh AS group_name_zh,
+    cgrp.name_en AS group_name_en,
+    cgrp.description AS group_description,
+    cgrp.priority AS group_priority,
+    gc.name_zh,
+    gc.name_en,
+    gc.description,
+    gc.example_expressions,
+    gc.priority,
+    gc.is_mvp
+  FROM grammar_categories gc
+  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
+  ORDER BY
+    cgrp.priority ASC NULLS LAST,
+    gc.priority ASC,
+    gc.name_zh ASC;
 `;
 
 export const SELECT_SCENE_TAGS_SQL = `
@@ -43,6 +67,9 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
     gc.slug AS category_slug,
     gc.name_zh AS category_name_zh,
     gc.name_en AS category_name_en,
+    cgrp.slug AS category_group_slug,
+    cgrp.name_zh AS category_group_name_zh,
+    cgrp.name_en AS category_group_name_en,
     gp.sub_category,
     gp.core_meaning,
     gp.natural_translation,
@@ -75,6 +102,7 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
     ) AS register_tags
   FROM grammar_points gp
   LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
+  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
   LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
   LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
   LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
@@ -87,15 +115,21 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
     OR gp.natural_translation ILIKE $2
     OR gp.structure ILIKE $2
     OR gc.name_zh ILIKE $2
+    OR cgrp.name_zh ILIKE $2
     OR gp.sub_category ILIKE $2
   )
   AND ($5::text = '' OR gc.slug = $5::text)
+  AND ($6::text = '' OR cgrp.slug = $6::text)
   GROUP BY
     gp.id,
     gc.slug,
     gc.name_zh,
     gc.name_en,
-    gc.priority
+    gc.priority,
+    cgrp.slug,
+    cgrp.name_zh,
+    cgrp.name_en,
+    cgrp.priority
   ORDER BY
     CASE
       WHEN $1::text = '' THEN 10
@@ -112,6 +146,7 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
       WHEN 'C' THEN 4
       ELSE 5
     END,
+    cgrp.priority ASC NULLS LAST,
     gc.priority ASC,
     gp.grammar_point ASC
   LIMIT $3;
@@ -126,6 +161,9 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
     gc.slug AS category_slug,
     gc.name_zh AS category_name_zh,
     gc.name_en AS category_name_en,
+    cgrp.slug AS category_group_slug,
+    cgrp.name_zh AS category_group_name_zh,
+    cgrp.name_en AS category_group_name_en,
     gp.sub_category,
     gp.core_meaning,
     gp.natural_translation,
@@ -161,6 +199,7 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
     ) AS register_tags
   FROM grammar_points gp
   LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
+  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
   LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
   LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
   LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
@@ -170,7 +209,10 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
     gp.id,
     gc.slug,
     gc.name_zh,
-    gc.name_en;
+    gc.name_en,
+    cgrp.slug,
+    cgrp.name_zh,
+    cgrp.name_en;
 `;
 
 export const SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL = `
@@ -379,6 +421,9 @@ export const SELECT_FAVORITES_SQL = `
     gc.slug AS category_slug,
     gc.name_zh AS category_name_zh,
     gc.name_en AS category_name_en,
+    cgrp.slug AS category_group_slug,
+    cgrp.name_zh AS category_group_name_zh,
+    cgrp.name_en AS category_group_name_en,
     gp.sub_category,
     gp.core_meaning,
     gp.natural_translation,
@@ -407,6 +452,7 @@ export const SELECT_FAVORITES_SQL = `
   FROM favorites
   JOIN grammar_points gp ON gp.id = favorites.grammar_point_id
   LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
+  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
   LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
   LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
   LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
@@ -417,7 +463,10 @@ export const SELECT_FAVORITES_SQL = `
     gp.id,
     gc.slug,
     gc.name_zh,
-    gc.name_en
+    gc.name_en,
+    cgrp.slug,
+    cgrp.name_zh,
+    cgrp.name_en
   ORDER BY favorites.created_at DESC;
 `;
 
@@ -435,6 +484,9 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     gc.slug AS category_slug,
     gc.name_zh AS category_name_zh,
     gc.name_en AS category_name_en,
+    cgrp.slug AS category_group_slug,
+    cgrp.name_zh AS category_group_name_zh,
+    cgrp.name_en AS category_group_name_en,
     gp.sub_category,
     gp.core_meaning,
     gp.natural_translation,
@@ -472,6 +524,7 @@ export const SELECT_REVIEW_ITEMS_SQL = `
   FROM review_records rr
   JOIN grammar_points gp ON gp.id = rr.grammar_point_id
   LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
+  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
   LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
   LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
   LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
@@ -501,6 +554,9 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     gc.slug,
     gc.name_zh,
     gc.name_en,
+    cgrp.slug,
+    cgrp.name_zh,
+    cgrp.name_en,
     latest_feedback.sentence,
     latest_feedback.feedback_text,
     latest_feedback.corrected_sentence,

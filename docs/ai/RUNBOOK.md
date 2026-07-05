@@ -42,7 +42,7 @@
 - When a lookup includes `context`, the app may still build a context-shaped result, but local persisted entries are preferred when they already have examples and the context is not instructional.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 - Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
-- Grammar learning tables, taxonomy, 80 MVP grammar points, examples, and similar grammar relations are created and seeded by `shared/db/sql/schema.sql`.
+- Grammar learning tables, the 9-major-group taxonomy, 56 MVP grammar subcategories, 155 grammar points, examples, common mistakes, and similar grammar relations are created and seeded by `shared/db/sql/schema.sql`.
 - Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
 - Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.
 

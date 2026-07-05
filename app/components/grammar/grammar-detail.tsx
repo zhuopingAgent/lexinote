@@ -112,6 +112,20 @@ export function GrammarDetail({
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <section>
+            <p className="text-sm font-semibold text-white/48">分类体系</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {grammarPoint.categoryGroupNameZh ? (
+                <TagBadge tag={grammarPoint.categoryGroupNameZh} />
+              ) : null}
+              {grammarPoint.categoryNameZh ? (
+                <TagBadge tag={grammarPoint.categoryNameZh} />
+              ) : null}
+              {grammarPoint.subCategory ? (
+                <TagBadge tag={grammarPoint.subCategory} />
+              ) : null}
+            </div>
+          </section>
+          <section>
             <p className="text-sm font-semibold text-white/48">场景</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {grammarPoint.sceneTags.map((tag) => (

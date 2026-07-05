@@ -101,13 +101,15 @@ export class GrammarLearningService {
   ) {}
 
   async getTaxonomy(): Promise<GrammarTaxonomyResponse> {
-    const [categories, sceneTags, registerTags] = await Promise.all([
+    const [categoryGroups, categories, sceneTags, registerTags] = await Promise.all([
+      this.repository.listCategoryGroups(),
       this.repository.listCategories(),
       this.repository.listSceneTags(),
       this.repository.listRegisterTags(),
     ]);
 
     return {
+      categoryGroups,
       categories,
       sceneTags,
       registerTags,
@@ -117,6 +119,7 @@ export class GrammarLearningService {
   async searchGrammarPoints(options?: {
     query?: string;
     categorySlug?: string;
+    groupSlug?: string;
     limit?: unknown;
     userId?: string;
   }): Promise<GrammarSearchResponse> {
@@ -124,6 +127,7 @@ export class GrammarLearningService {
     const items = await this.repository.searchGrammarPoints({
       query: options?.query,
       categorySlug: options?.categorySlug,
+      groupSlug: options?.groupSlug,
       limit: normalizeLimit(options?.limit),
       userId,
     });
@@ -168,16 +172,18 @@ export class GrammarLearningService {
       throw new NotFoundError("未找到这个语法点。");
     }
 
-    const [resolvedSceneTag, resolvedRegisterTag, generatedPractice] = await Promise.all([
+    const [resolvedSceneTag, resolvedRegisterTag] = await Promise.all([
       this.repository.findTag("scene", sceneTag),
       this.repository.findTag("register", registerTag),
-      this.aiClient.generatePractice({
-        grammarPoint,
-        sceneTag,
-        registerTag,
-        level,
-      }),
     ]);
+    const generatedPractice = await this.aiClient.generatePractice({
+      grammarPoint,
+      sceneTag,
+      sceneTagLabel: resolvedSceneTag?.nameZh,
+      registerTag,
+      registerTagLabel: resolvedRegisterTag?.nameZh,
+      level,
+    });
 
     await this.repository.logLearningHistory({
       userId: DEFAULT_GRAMMAR_USER_ID,
@@ -226,19 +232,25 @@ export class GrammarLearningService {
       throw new NotFoundError("未找到这个语法点。");
     }
 
-    const userSentenceId = await this.repository.insertUserSentence({
-      userId,
-      grammarPointId,
-      sentence,
-      sceneTag,
-      registerTag,
-      promptText,
-    });
+    const [resolvedSceneTag, resolvedRegisterTag, userSentenceId] = await Promise.all([
+      this.repository.findTag("scene", sceneTag),
+      this.repository.findTag("register", registerTag),
+      this.repository.insertUserSentence({
+        userId,
+        grammarPointId,
+        sentence,
+        sceneTag,
+        registerTag,
+        promptText,
+      }),
+    ]);
     const feedback = await this.aiClient.evaluateSentence({
       grammarPoint,
       sentence,
       sceneTag,
+      sceneTagLabel: resolvedSceneTag?.nameZh,
       registerTag,
+      registerTagLabel: resolvedRegisterTag?.nameZh,
       promptText,
     });
     const feedbackId = await this.repository.insertFeedback(userSentenceId, {

@@ -5,6 +5,7 @@ import {
   INSERT_LEARNING_HISTORY_SQL,
   INSERT_USER_SENTENCE_SQL,
   SEARCH_GRAMMAR_POINTS_SQL,
+  SELECT_GRAMMAR_CATEGORY_GROUPS_SQL,
   SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL,
   SELECT_FAVORITES_SQL,
   SELECT_GRAMMAR_CATEGORIES_SQL,
@@ -22,6 +23,7 @@ import { query } from "@/shared/db/query";
 import type {
   AIFeedbackBetterVersion,
   GrammarCategory,
+  GrammarCategoryGroup,
   GrammarExample,
   GrammarPointDetail,
   GrammarPointSummary,
@@ -41,6 +43,9 @@ type GrammarSummaryRow = {
   category_slug: string | null;
   category_name_zh: string | null;
   category_name_en: string | null;
+  category_group_slug: string | null;
+  category_group_name_zh: string | null;
+  category_group_name_en: string | null;
   sub_category: string | null;
   core_meaning: string;
   natural_translation: string | null;
@@ -59,6 +64,23 @@ type GrammarDetailRow = GrammarSummaryRow & {
 };
 
 type GrammarCategoryRow = {
+  id: string;
+  slug: string;
+  group_id: string | null;
+  group_slug: string | null;
+  group_name_zh: string | null;
+  group_name_en: string | null;
+  group_description: string | null;
+  group_priority: number | string | null;
+  name_zh: string;
+  name_en: string;
+  description: string;
+  example_expressions: unknown;
+  priority: number | string;
+  is_mvp: boolean;
+};
+
+type GrammarCategoryGroupRow = {
   id: string;
   slug: string;
   name_zh: string;
@@ -255,6 +277,9 @@ function mapSummaryRow(row: GrammarSummaryRow): GrammarPointSummary {
     categorySlug: row.category_slug,
     categoryNameZh: row.category_name_zh,
     categoryNameEn: row.category_name_en,
+    categoryGroupSlug: row.category_group_slug,
+    categoryGroupNameZh: row.category_group_name_zh,
+    categoryGroupNameEn: row.category_group_name_en,
     subCategory: row.sub_category,
     coreMeaning: row.core_meaning,
     naturalTranslation: row.natural_translation,
@@ -268,8 +293,10 @@ function mapSummaryRow(row: GrammarSummaryRow): GrammarPointSummary {
 }
 
 export class GrammarRepository {
-  async listCategories(): Promise<GrammarCategory[]> {
-    const rows = await query<GrammarCategoryRow>(SELECT_GRAMMAR_CATEGORIES_SQL);
+  async listCategoryGroups(): Promise<GrammarCategoryGroup[]> {
+    const rows = await query<GrammarCategoryGroupRow>(
+      SELECT_GRAMMAR_CATEGORY_GROUPS_SQL
+    );
 
     return rows.map((row) => ({
       id: row.id,
@@ -277,6 +304,30 @@ export class GrammarRepository {
       nameZh: row.name_zh,
       nameEn: row.name_en,
       description: row.description,
+      priority: toInteger(row.priority),
+      isMvp: row.is_mvp,
+    }));
+  }
+
+  async listCategories(): Promise<GrammarCategory[]> {
+    const rows = await query<GrammarCategoryRow>(SELECT_GRAMMAR_CATEGORIES_SQL);
+
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      groupId: row.group_id,
+      groupSlug: row.group_slug,
+      groupNameZh: row.group_name_zh,
+      groupNameEn: row.group_name_en,
+      groupDescription: row.group_description,
+      groupPriority:
+        row.group_priority === null || row.group_priority === undefined
+          ? null
+          : toInteger(row.group_priority),
+      nameZh: row.name_zh,
+      nameEn: row.name_en,
+      description: row.description,
+      exampleExpressions: parseStringArray(row.example_expressions),
       priority: toInteger(row.priority),
       isMvp: row.is_mvp,
     }));
@@ -308,18 +359,21 @@ export class GrammarRepository {
   async searchGrammarPoints(options?: {
     query?: string;
     categorySlug?: string;
+    groupSlug?: string;
     limit?: number;
     userId?: string;
   }): Promise<GrammarPointSummary[]> {
     const normalizedQuery = options?.query?.trim() ?? "";
     const normalizedLimit = Math.min(Math.max(options?.limit ?? 24, 1), 80);
     const categorySlug = options?.categorySlug?.trim() ?? "";
+    const groupSlug = options?.groupSlug?.trim() ?? "";
     const rows = await query<GrammarSummaryRow>(SEARCH_GRAMMAR_POINTS_SQL, [
       normalizedQuery,
       `%${normalizedQuery}%`,
       normalizedLimit,
       options?.userId ?? DEFAULT_GRAMMAR_USER_ID,
       categorySlug,
+      groupSlug,
     ]);
 
     return rows.map((row) => mapSummaryRow(row));

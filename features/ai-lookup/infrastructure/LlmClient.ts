@@ -11,6 +11,8 @@ import type {
   DictionaryEntry,
   DictionaryExample,
 } from "@/shared/types/api";
+import { throwIfOpenAiQuotaExhausted } from "@/shared/utils/ai-api-errors";
+import { AiQuotaExhaustedError } from "@/shared/utils/errors";
 
 type OpenAiTextItem = {
   type?: string;
@@ -421,6 +423,12 @@ function buildCollectionFilterRequestConfig(model: string, maxOutputTokens: numb
   };
 }
 
+function rethrowAiQuotaError(error: unknown) {
+  if (error instanceof AiQuotaExhaustedError) {
+    throw error;
+  }
+}
+
 export class LlmClient {
   async resolveLookupWord(
     word: string,
@@ -454,13 +462,16 @@ export class LlmClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return null;
       }
 
       const data = (await response.json()) as OpenAiResponse;
       return parseLookupWord(extractResponseText(data));
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return null;
     }
   }
@@ -500,13 +511,16 @@ export class LlmClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return fallback;
       }
 
       const data = (await response.json()) as OpenAiResponse;
       return parseLookupOutput(word, extractResponseText(data), baseEntry) ?? fallback;
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return fallback;
     }
   }
@@ -551,6 +565,8 @@ export class LlmClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return null;
       }
@@ -562,7 +578,8 @@ export class LlmClient {
         genericEntry,
         contextualEntry
       );
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return null;
     }
   }
@@ -604,6 +621,8 @@ export class LlmClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return fallbackMatches;
       }
@@ -611,7 +630,8 @@ export class LlmClient {
       const data = (await response.json()) as OpenAiResponse;
       const matches = parseCollectionMatchOutput(extractResponseText(data));
       return Array.from(new Set([...matches, ...fallbackMatches]));
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return fallbackMatches;
     }
   }
@@ -653,6 +673,8 @@ export class LlmClient {
         }),
       });
 
+      await throwIfOpenAiQuotaExhausted(response);
+
       if (!response.ok) {
         return fallbackMatches;
       }
@@ -660,7 +682,8 @@ export class LlmClient {
       const data = (await response.json()) as OpenAiResponse;
       const matches = parseWordMatchOutput(extractResponseText(data));
       return Array.from(new Set([...matches, ...fallbackMatches]));
-    } catch {
+    } catch (error) {
+      rethrowAiQuotaError(error);
       return fallbackMatches;
     }
   }

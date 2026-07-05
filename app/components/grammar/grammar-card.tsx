@@ -31,6 +31,9 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        {grammarPoint.categoryGroupNameZh ? (
+          <TagBadge tag={grammarPoint.categoryGroupNameZh} />
+        ) : null}
         {grammarPoint.categoryNameZh ? (
           <TagBadge tag={grammarPoint.categoryNameZh} />
         ) : null}

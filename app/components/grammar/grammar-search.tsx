@@ -1,35 +1,42 @@
 "use client";
 
 import type { FormEvent } from "react";
-import type { GrammarCategory } from "@/shared/types/api";
+import type { GrammarCategory, GrammarCategoryGroup } from "@/shared/types/api";
 import { SearchIcon } from "@/app/components/icons";
 
 type GrammarSearchProps = {
+  categoryGroups: GrammarCategoryGroup[];
   categories: GrammarCategory[];
   query: string;
+  groupSlug: string;
   categorySlug: string;
   isLoading: boolean;
   resultCount: number;
   onQueryChange: (query: string) => void;
+  onGroupChange: (groupSlug: string) => void;
   onCategoryChange: (categorySlug: string) => void;
   onClearFilters: () => void;
   onSubmit: () => void;
 };
 
 export function GrammarSearch({
+  categoryGroups,
   categories,
   query,
+  groupSlug,
   categorySlug,
   isLoading,
   resultCount,
   onQueryChange,
+  onGroupChange,
   onCategoryChange,
   onClearFilters,
   onSubmit,
 }: GrammarSearchProps) {
+  const selectedGroup = categoryGroups.find((group) => group.slug === groupSlug);
   const selectedCategory = categories.find((category) => category.slug === categorySlug);
   const trimmedQuery = query.trim();
-  const hasActiveFilters = Boolean(trimmedQuery || categorySlug);
+  const hasActiveFilters = Boolean(trimmedQuery || groupSlug || categorySlug);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -100,12 +107,43 @@ export function GrammarSearch({
         </button>
       </form>
 
+      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+        <button
+          type="button"
+          aria-pressed={!groupSlug}
+          onClick={() => onGroupChange("")}
+          className={
+            groupSlug
+              ? "inline-flex h-10 shrink-0 items-center rounded-full border border-white/8 px-3 text-xs text-white/46 transition hover:border-white/18 hover:text-white/68"
+              : "inline-flex h-10 shrink-0 items-center rounded-full border border-accent/30 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
+          }
+        >
+          全部大类
+        </button>
+        {categoryGroups.map((group) => (
+          <button
+            key={group.slug}
+            type="button"
+            aria-pressed={groupSlug === group.slug}
+            onClick={() => onGroupChange(group.slug)}
+            className={
+              groupSlug === group.slug
+                ? "inline-flex h-10 shrink-0 items-center rounded-full border border-accent/30 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
+                : "inline-flex h-10 shrink-0 items-center rounded-full border border-white/8 px-3 text-xs text-white/46 transition hover:border-white/18 hover:text-white/68"
+            }
+          >
+            {group.nameZh}
+          </button>
+        ))}
+      </div>
+
       <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-white/36">
         <span>当前结果 {resultCount} 个</span>
         <button
           type="button"
           onClick={() => {
             onQueryChange("てもらえますか");
+            onGroupChange("expressive_functions");
             onCategoryChange("");
           }}
           className="inline-flex h-10 items-center rounded-full border border-white/8 px-3 text-white/48 transition hover:border-white/18 hover:text-white/68"
@@ -116,6 +154,7 @@ export function GrammarSearch({
           type="button"
           onClick={() => {
             onQueryChange("ので");
+            onGroupChange("expressive_functions");
             onCategoryChange("");
           }}
           className="inline-flex h-10 items-center rounded-full border border-white/8 px-3 text-white/48 transition hover:border-white/18 hover:text-white/68"
@@ -126,11 +165,23 @@ export function GrammarSearch({
           type="button"
           onClick={() => {
             onQueryChange("は");
+            onGroupChange("expressive_functions");
             onCategoryChange("particles_and_relations");
           }}
           className="inline-flex h-10 items-center rounded-full border border-white/8 px-3 text-white/48 transition hover:border-white/18 hover:text-white/68"
         >
           は / が
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onQueryChange("て形");
+            onGroupChange("morphology_conjugation_tense_aspect");
+            onCategoryChange("verb_conjugation_basics");
+          }}
+          className="inline-flex h-10 items-center rounded-full border border-white/8 px-3 text-white/48 transition hover:border-white/18 hover:text-white/68"
+        >
+          て形
         </button>
       </div>
 
@@ -140,6 +191,11 @@ export function GrammarSearch({
           {trimmedQuery ? (
             <span className="rounded-full border border-white/8 px-3 py-1 text-white/54">
               关键词：{trimmedQuery}
+            </span>
+          ) : null}
+          {selectedGroup ? (
+            <span className="rounded-full border border-white/8 px-3 py-1 text-white/54">
+              大类：{selectedGroup.nameZh}
             </span>
           ) : null}
           {selectedCategory ? (
@@ -154,6 +210,12 @@ export function GrammarSearch({
           >
             清除
           </button>
+        </div>
+      ) : null}
+
+      {selectedGroup ? (
+        <div className="mt-4 rounded-[14px] border border-white/8 bg-[#15151599] px-4 py-3">
+          <p className="text-sm leading-6 text-white/58">{selectedGroup.description}</p>
         </div>
       ) : null}
 
