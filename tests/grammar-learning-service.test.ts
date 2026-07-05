@@ -214,13 +214,23 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
 
 describe("GrammarLearningService", () => {
   beforeEach(() => {
-    vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
+
+  function getLastFetchBody() {
+    const calls = vi.mocked(fetch).mock.calls;
+    const lastCall = calls.at(-1);
+
+    expect(lastCall).toBeDefined();
+
+    return JSON.parse(String(lastCall?.[1]?.body)) as Record<string, unknown>;
+  }
 
   it("generates the hospital polite practice fallback for 〜てもらえますか", async () => {
     const repository = createRepositoryMock();
@@ -277,7 +287,7 @@ describe("GrammarLearningService", () => {
   });
 
   it("propagates OpenAI quota errors during practice generation", async () => {
-    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
     const quotaResponse = {
       ok: false,
       status: 429,
@@ -309,6 +319,50 @@ describe("GrammarLearningService", () => {
     ).rejects.toMatchObject({
       code: AI_QUOTA_EXHAUSTED_CODE,
     });
+  });
+
+  it("uses low reasoning for premium teacher sentence feedback", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output_text: JSON.stringify({
+            is_correct: true,
+            grammar_score: 5,
+            register_score: 5,
+            naturalness_score: 5,
+            scene_fit_score: 5,
+            feedback_text_zh: "自然な文です。",
+            mistake_types: [],
+            corrected_sentence: "",
+            better_versions: [],
+            next_practice_prompt_zh: "別の場面でもう一文作ってみましょう。",
+          }),
+        }),
+      })
+    );
+
+    const result = await new GrammarAiClient().evaluateSentence({
+      grammarPoint,
+      sentence: "すみません、もう一度説明していただけますか。",
+      sceneTag: "hospital",
+      sceneTagLabel: "医院",
+      registerTag: "polite",
+      registerTagLabel: "一般礼貌",
+      promptText: "你在医院听不懂医生说明，想请医生再说明一遍。",
+    });
+
+    expect(result.source).toBe("ai");
+    expect(getLastFetchBody()).toEqual(
+      expect.objectContaining({
+        model: "openai/gpt-5-mini",
+        reasoning: {
+          effort: "low",
+        },
+      })
+    );
   });
 
   it("flags a too-casual hospital sentence and schedules review", async () => {

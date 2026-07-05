@@ -1,10 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AutoFilterBudgetExceededError,
   CollectionAutoFilterService,
 } from "@/features/collections/application/CollectionAutoFilterService";
 
 describe("CollectionAutoFilterService", () => {
+  beforeEach(() => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("backfills matching existing words into a collection", async () => {
     const collectionRepository = {
       findDetailById: vi.fn().mockResolvedValue({
@@ -113,8 +122,8 @@ describe("CollectionAutoFilterService", () => {
   });
 
   it("keeps explicitly named rule matches when the model misses them", async () => {
-    const previousApiKey = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "test-key";
+    const previousApiKey = process.env.AI_GATEWAY_API_KEY;
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     const collectionRepository = {
       findDetailById: vi.fn().mockResolvedValue({
         collectionId: 3,
@@ -172,9 +181,9 @@ describe("CollectionAutoFilterService", () => {
       expect(collectionRepository.replaceAutoWords).toHaveBeenCalledWith(3, 4, [12]);
     } finally {
       if (previousApiKey === undefined) {
-        delete process.env.OPENAI_API_KEY;
+        delete process.env.AI_GATEWAY_API_KEY;
       } else {
-        process.env.OPENAI_API_KEY = previousApiKey;
+        process.env.AI_GATEWAY_API_KEY = previousApiKey;
       }
     }
   });

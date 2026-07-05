@@ -11,6 +11,10 @@ import type {
   DictionaryEntry,
   DictionaryExample,
 } from "@/shared/types/api";
+import {
+  buildAiGatewayTextRequestConfig,
+  resolveAiGatewayRequest,
+} from "@/shared/ai/gateway";
 import { throwIfOpenAiQuotaExhausted } from "@/shared/utils/ai-api-errors";
 import { AiQuotaExhaustedError } from "@/shared/utils/errors";
 
@@ -351,78 +355,6 @@ function parseLookupOutput(
   }
 }
 
-function resolveModel() {
-  return process.env.OPENAI_MODEL?.trim() || "gpt-5.4";
-}
-
-function buildRequestConfig(model: string) {
-  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
-    return {
-      model,
-      max_output_tokens: MAX_OUTPUT_TOKENS,
-      reasoning: {
-        effort: "minimal",
-      } as const,
-    };
-  }
-
-  return {
-    model,
-    max_output_tokens: MAX_OUTPUT_TOKENS,
-  };
-}
-
-function buildBaseFormRequestConfig(model: string) {
-  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
-    return {
-      model,
-      max_output_tokens: BASE_FORM_MAX_OUTPUT_TOKENS,
-      reasoning: {
-        effort: "minimal",
-      } as const,
-    };
-  }
-
-  return {
-    model,
-    max_output_tokens: BASE_FORM_MAX_OUTPUT_TOKENS,
-  };
-}
-
-function buildReconcileRequestConfig(model: string) {
-  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
-    return {
-      model,
-      max_output_tokens: RECONCILE_MAX_OUTPUT_TOKENS,
-      reasoning: {
-        effort: "minimal",
-      } as const,
-    };
-  }
-
-  return {
-    model,
-    max_output_tokens: RECONCILE_MAX_OUTPUT_TOKENS,
-  };
-}
-
-function buildCollectionFilterRequestConfig(model: string, maxOutputTokens: number) {
-  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
-    return {
-      model,
-      max_output_tokens: maxOutputTokens,
-      reasoning: {
-        effort: "minimal",
-      } as const,
-    };
-  }
-
-  return {
-    model,
-    max_output_tokens: maxOutputTokens,
-  };
-}
-
 function rethrowAiQuotaError(error: unknown) {
   if (error instanceof AiQuotaExhaustedError) {
     throw error;
@@ -434,20 +366,17 @@ export class LlmClient {
     word: string,
     context?: string
   ): Promise<BaseFormResolution | null> {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    const aiGatewayRequest = resolveAiGatewayRequest();
+    if (!aiGatewayRequest) {
       return null;
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildBaseFormRequestConfig(resolveModel()),
+          ...buildAiGatewayTextRequestConfig("cheap", BASE_FORM_MAX_OUTPUT_TOKENS),
           input: [
             {
               role: "system",
@@ -481,22 +410,19 @@ export class LlmClient {
     baseEntry?: KnownEntryFields,
     context?: string
   ): Promise<DictionaryEntry> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const aiGatewayRequest = resolveAiGatewayRequest();
     const fallback = buildFallbackEntry(word, baseEntry);
 
-    if (!apiKey) {
+    if (!aiGatewayRequest) {
       return fallback;
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildRequestConfig(resolveModel()),
+          ...buildAiGatewayTextRequestConfig("defaultTeacher", MAX_OUTPUT_TOKENS),
           input: [
             {
               role: "system",
@@ -531,21 +457,21 @@ export class LlmClient {
     contextualEntry: DictionaryEntry,
     context: string
   ): Promise<DictionaryEntry | null> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const aiGatewayRequest = resolveAiGatewayRequest();
 
-    if (!apiKey) {
+    if (!aiGatewayRequest) {
       return null;
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildReconcileRequestConfig(resolveModel()),
+          ...buildAiGatewayTextRequestConfig(
+            "premiumTeacher",
+            RECONCILE_MAX_OUTPUT_TOKENS
+          ),
           input: [
             {
               role: "system",
@@ -588,23 +514,20 @@ export class LlmClient {
     entry: AutoFilterDictionaryEntry,
     collections: CollectionAutoFilterRule[]
   ): Promise<number[]> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const aiGatewayRequest = resolveAiGatewayRequest();
     const fallbackMatches = fallbackCollectionMatches(entry, collections);
 
-    if (!apiKey || collections.length === 0) {
+    if (!aiGatewayRequest || collections.length === 0) {
       return [];
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildCollectionFilterRequestConfig(
-            resolveModel(),
+          ...buildAiGatewayTextRequestConfig(
+            "cheap",
             COLLECTION_FILTER_MAX_OUTPUT_TOKENS
           ),
           input: [
@@ -640,23 +563,20 @@ export class LlmClient {
     collection: CollectionAutoFilterRule,
     entries: AutoFilterDictionaryEntry[]
   ): Promise<number[]> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const aiGatewayRequest = resolveAiGatewayRequest();
     const fallbackMatches = fallbackWordMatches(collection, entries);
 
-    if (!apiKey || entries.length === 0) {
+    if (!aiGatewayRequest || entries.length === 0) {
       return [];
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildCollectionFilterRequestConfig(
-            resolveModel(),
+          ...buildAiGatewayTextRequestConfig(
+            "defaultTeacher",
             COLLECTION_BACKFILL_MAX_OUTPUT_TOKENS
           ),
           input: [

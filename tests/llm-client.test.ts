@@ -3,26 +3,53 @@ import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
 import { AI_QUOTA_EXHAUSTED_CODE } from "@/shared/utils/errors";
 
 describe("LlmClient", () => {
-  const originalApiKey = process.env.OPENAI_API_KEY;
-  const originalModel = process.env.OPENAI_MODEL;
+  const originalApiKey = process.env.AI_GATEWAY_API_KEY;
+  const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
+  const originalBaseUrl = process.env.AI_GATEWAY_BASE_URL;
   const originalFetch = global.fetch;
 
   afterEach(() => {
-    process.env.OPENAI_API_KEY = originalApiKey;
-    process.env.OPENAI_MODEL = originalModel;
+    if (originalApiKey === undefined) {
+      delete process.env.AI_GATEWAY_API_KEY;
+    } else {
+      process.env.AI_GATEWAY_API_KEY = originalApiKey;
+    }
+
+    if (originalOidcToken === undefined) {
+      delete process.env.VERCEL_OIDC_TOKEN;
+    } else {
+      process.env.VERCEL_OIDC_TOKEN = originalOidcToken;
+    }
+
+    if (originalBaseUrl === undefined) {
+      delete process.env.AI_GATEWAY_BASE_URL;
+    } else {
+      process.env.AI_GATEWAY_BASE_URL = originalBaseUrl;
+    }
+
     global.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
-  it("returns null for base-form resolution when OPENAI_API_KEY is missing", async () => {
-    delete process.env.OPENAI_API_KEY;
+  function getLastFetchBody() {
+    const calls = vi.mocked(global.fetch).mock.calls;
+    const lastCall = calls.at(-1);
+
+    expect(lastCall).toBeDefined();
+
+    return JSON.parse(String(lastCall?.[1]?.body)) as Record<string, unknown>;
+  }
+
+  it("returns null for base-form resolution when AI Gateway credentials are missing", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     const client = new LlmClient();
 
     await expect(client.resolveLookupWord("見通せない")).resolves.toBeNull();
   });
 
   it("parses a base-form lookup word from the model response", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -42,7 +69,7 @@ describe("LlmClient", () => {
   });
 
   it("includes context in base-form resolution prompts", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -58,15 +85,16 @@ describe("LlmClient", () => {
     await client.resolveLookupWord("抱く", "不安を抱く");
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.openai.com/v1/responses",
+      "https://ai-gateway.vercel.sh/v1/responses",
       expect.objectContaining({
         body: expect.stringContaining("不安を抱く"),
       })
     );
   });
 
-  it("returns a fallback entry when OPENAI_API_KEY is missing", async () => {
-    delete process.env.OPENAI_API_KEY;
+  it("returns a fallback entry when AI Gateway credentials are missing", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     const client = new LlmClient();
 
     await expect(client.completeWordEntry("未知词")).resolves.toEqual({
@@ -78,8 +106,9 @@ describe("LlmClient", () => {
     });
   });
 
-  it("returns null for reconciliation when OPENAI_API_KEY is missing", async () => {
-    delete process.env.OPENAI_API_KEY;
+  it("returns null for reconciliation when AI Gateway credentials are missing", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     const client = new LlmClient();
 
     await expect(
@@ -136,8 +165,9 @@ describe("LlmClient", () => {
     ).resolves.toBeNull();
   });
 
-  it("returns an empty list for collection matching when OPENAI_API_KEY is missing", async () => {
-    delete process.env.OPENAI_API_KEY;
+  it("returns an empty list for collection matching when AI Gateway credentials are missing", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     const client = new LlmClient();
 
     await expect(
@@ -163,7 +193,8 @@ describe("LlmClient", () => {
   });
 
   it("preserves known entry fields when generating examples is unavailable", async () => {
-    delete process.env.OPENAI_API_KEY;
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     const client = new LlmClient();
 
     await expect(
@@ -182,7 +213,7 @@ describe("LlmClient", () => {
   });
 
   it("parses a structured lookup result from output_text", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -239,7 +270,7 @@ describe("LlmClient", () => {
   });
 
   it("includes context in entry completion prompts", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -281,7 +312,7 @@ describe("LlmClient", () => {
     );
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.openai.com/v1/responses",
+      "https://ai-gateway.vercel.sh/v1/responses",
       expect.objectContaining({
         body: expect.stringContaining("不安を抱く"),
       })
@@ -289,7 +320,7 @@ describe("LlmClient", () => {
   });
 
   it("parses matching collection ids for a new entry", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -330,7 +361,7 @@ describe("LlmClient", () => {
   });
 
   it("keeps explicit rule text matches when entry classification returns a non-2xx response", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -361,7 +392,7 @@ describe("LlmClient", () => {
   });
 
   it("includes collection criteria in backfill prompts", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -392,16 +423,24 @@ describe("LlmClient", () => {
       ]
     );
 
+    const body = getLastFetchBody();
+
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.openai.com/v1/responses",
+      "https://ai-gateway.vercel.sh/v1/responses",
       expect.objectContaining({
         body: expect.stringContaining("收录 JLPT N3 常见词"),
       })
     );
+    expect(body).toEqual(
+      expect.objectContaining({
+        model: "openai/gpt-4.1-mini",
+      })
+    );
+    expect(body).not.toHaveProperty("reasoning");
   });
 
   it("keeps explicit rule text matches when live backfill misses them", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -436,7 +475,7 @@ describe("LlmClient", () => {
   });
 
   it("keeps explicit rule text matches when live backfill returns a non-2xx response", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -467,7 +506,7 @@ describe("LlmClient", () => {
   });
 
   it("parses a reconciled entry when the model decides the difference should be persisted", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -576,7 +615,7 @@ describe("LlmClient", () => {
   });
 
   it("returns null when reconciliation says no persistence is needed", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -643,7 +682,7 @@ describe("LlmClient", () => {
   });
 
   it("parses a structured lookup result from output content blocks", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -709,7 +748,7 @@ describe("LlmClient", () => {
   });
 
   it("falls back when the model response is not valid JSON", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -728,8 +767,8 @@ describe("LlmClient", () => {
     });
   });
 
-  it("falls back when the OpenAI request fails", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+  it("falls back when the AI Gateway request fails", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockRejectedValue(new Error("network down")) as typeof fetch;
 
     const client = new LlmClient();
@@ -743,8 +782,8 @@ describe("LlmClient", () => {
     });
   });
 
-  it("throws a quota error when OpenAI reports insufficient quota", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
+  it("throws a quota error when AI Gateway reports insufficient quota", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     const quotaResponse = {
       ok: false,
       status: 429,
@@ -767,9 +806,8 @@ describe("LlmClient", () => {
     });
   });
 
-  it("uses OPENAI_MODEL when it is configured", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENAI_MODEL = "gpt-5-mini";
+  it("uses the default teacher model for entry completion", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -803,9 +841,120 @@ describe("LlmClient", () => {
     await client.completeWordEntry("走る");
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.openai.com/v1/responses",
+      "https://ai-gateway.vercel.sh/v1/responses",
       expect.objectContaining({
-        body: expect.stringContaining('"model":"gpt-5-mini"'),
+        body: expect.stringContaining('"model":"openai/gpt-4.1-mini"'),
+      })
+    );
+  });
+
+  it("uses low reasoning for premium teacher reconciliation", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          shouldPersist: false,
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await client.reconcileWordEntry(
+      "抱く",
+      {
+        word: "抱く",
+        pronunciation: "だく",
+        partOfSpeech: "动词",
+        meaningZh: "抱；拥抱；怀有",
+        examples: [
+          {
+            japanese: "子どもを抱いて眠る。",
+            reading: "こども を だいて ねむる。",
+            translationZh: "抱着孩子睡觉。",
+          },
+          {
+            japanese: "花束を胸に抱く。",
+            reading: "はなたば を むね に だく。",
+            translationZh: "把花束抱在胸前。",
+          },
+          {
+            japanese: "夢を抱いて上京した。",
+            reading: "ゆめ を いだいて じょうきょう した。",
+            translationZh: "怀着梦想去了东京。",
+          },
+        ],
+      },
+      {
+        word: "抱く",
+        pronunciation: "いだく",
+        partOfSpeech: "动词",
+        meaningZh: "怀有；心存",
+        examples: [
+          {
+            japanese: "彼は将来に不安を抱いている。",
+            reading: "かれ は しょうらい に ふあん を いだいて いる。",
+            translationZh: "他对未来怀有不安。",
+          },
+          {
+            japanese: "住民は計画に疑念を抱いた。",
+            reading: "じゅうみん は けいかく に ぎねん を いだいた。",
+            translationZh: "居民对计划产生了疑虑。",
+          },
+          {
+            japanese: "彼女は強い期待を抱いていた。",
+            reading: "かのじょ は つよい きたい を いだいて いた。",
+            translationZh: "她怀有很强的期待。",
+          },
+        ],
+      },
+      "不安を抱く"
+    );
+
+    expect(getLastFetchBody()).toEqual(
+      expect.objectContaining({
+        model: "openai/gpt-5-mini",
+        reasoning: {
+          effort: "low",
+        },
+      })
+    );
+  });
+
+  it("uses Vercel OIDC credentials when no local AI Gateway key is configured", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          lookupWord: "見る",
+          lookupReason: "输入可直接归一为词典形。",
+        }),
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await client.resolveLookupWord("見る");
+
+    const body = getLastFetchBody();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://ai-gateway.vercel.sh/v1/responses",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer oidc-token",
+        }),
+        body: expect.stringContaining('"model":"openai/gpt-5-nano"'),
+      })
+    );
+    expect(body).toEqual(
+      expect.objectContaining({
+        reasoning: {
+          effort: "minimal",
+        },
       })
     );
   });

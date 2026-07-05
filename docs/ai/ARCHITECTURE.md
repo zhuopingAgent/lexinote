@@ -141,7 +141,7 @@
 1. `/grammar` fetches grammar taxonomy and `GET /api/grammar` search results.
 2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]`, render examples, scenario/register tags, common mistakes, similar grammar, and log view history.
 3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`.
-4. Practice generation uses OpenAI when `OPENAI_API_KEY` is available and deterministic fallback output otherwise.
+4. Practice generation uses Vercel AI Gateway when `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available and deterministic fallback output otherwise.
 5. User sentence submission calls `POST /api/practice/submit`, stores `user_sentences`, stores `ai_feedback`, updates `review_records`, and logs learning history.
 6. `/favorites` uses `GET /api/favorites`; detail pages toggle favorites through `POST`/`DELETE /api/favorites`.
 7. `/review` uses `GET /api/review/today` to show due mistakes and retry links.
@@ -151,7 +151,7 @@
 - Keep route handlers thin and put grammar behavior in `GrammarLearningService`.
 - The local MVP defaults to user id `00000000-0000-0000-0000-000000000001` when no auth user id exists.
 - Keep grammar AI prompts under `features/grammar-learning/prompts/`.
-- Grammar practice and feedback must remain usable without `OPENAI_API_KEY`; fallback behavior is part of the local development contract.
+- Grammar practice and feedback must remain usable without AI Gateway credentials; fallback behavior is part of the local development contract.
 - Scenario and register tags are first-class data, not free-form display-only labels.
 - Sentence feedback should distinguish grammatical correctness, naturalness, register fit, and scene fit.
 - Mistakes should update review records so the review page is not disconnected from practice.

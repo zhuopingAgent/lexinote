@@ -42,7 +42,25 @@ Open [http://localhost:3000](http://localhost:3000).
 
 `E2E_DATABASE_URL` is required for `npm run test:e2e`. It must point to a local test database such as `lexinote_e2e`.
 
-`OPENAI_API_KEY` is optional. If missing, local dictionary hits still work, but AI-generated examples and AI auto-filtering are unavailable or fall back.
+`AI_GATEWAY_API_KEY` is optional for local development. In Vercel deployments, the app can use Vercel's project-scoped `VERCEL_OIDC_TOKEN` instead. If neither credential is available, local dictionary hits still work, but AI-generated examples and AI auto-filtering are unavailable or fall back.
+
+AI requests go through Vercel AI Gateway at `AI_GATEWAY_BASE_URL`, which defaults to `https://ai-gateway.vercel.sh/v1`. The canonical model roles are:
+
+- `cheap`: `openai/gpt-5-nano`
+- `defaultTeacher`: `openai/gpt-4.1-mini`
+- `premiumTeacher`: `openai/gpt-5-mini`
+- `longContext`: `alibaba/qwen3.7-plus`
+- `speech`: `openai/whisper-1`
+
+Current text workflows use `cheap` for normalization and incremental collection
+classification, `defaultTeacher` for entry/practice generation and collection
+backfills, and `premiumTeacher` for reconciliation and sentence feedback.
+`longContext` and `speech` are reserved roles for future large-context and
+transcription workflows.
+
+For local AI access, either create a Vercel AI Gateway API key and set
+`AI_GATEWAY_API_KEY`, or link the project with `vercel link` and run
+`vercel env pull` to use Vercel's project-scoped `VERCEL_OIDC_TOKEN`.
 
 `AUTO_FILTER_MAX_SYNC_CANDIDATES` is optional and defaults to `240`. It caps a single collection AI re-sync before any LLM calls are made, preventing accidental large-batch spend.
 

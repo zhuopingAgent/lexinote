@@ -32,7 +32,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - Grammar learning uses `features/grammar-learning/` for service logic, AI/fallback practice generation, AI/fallback sentence feedback, and repository access. Route handlers should stay thin and call `GrammarLearningService`.
 - Grammar tables are created from `shared/db/sql/schema.sql` and seed 9 major grammar category groups, 56 MVP grammar subcategories, category example expressions, scene/register tags, 155 grammar points, examples, common mistakes, and similar grammar relations. Do not reintroduce the old `DROP TABLE IF EXISTS grammar_points` cleanup.
 - The grammar MVP is single-user local-first. APIs default to user id `00000000-0000-0000-0000-000000000001` when no user id is supplied.
-- If `OPENAI_API_KEY` is missing, grammar practice generation and sentence feedback fall back to deterministic local feedback, including the hospital + polite `〜てもらえますか` acceptance flow.
+- If Vercel AI Gateway credentials are missing, grammar practice generation and sentence feedback fall back to deterministic local feedback, including the hospital + polite `〜てもらえますか` acceptance flow.
 - `features/vocabulary-core/` is the shared service boundary for reusable word-entry operations. New learning features should depend on it for entry reads, detail lookup, pagination, and persistence instead of coupling to lookup orchestration.
 - Persisted dictionary entries use `word + pronunciation` as the storage key so homographs with different readings do not overwrite each other.
 - Local dictionary hits read from PostgreSQL and prefer reusing persisted examples when available; otherwise they may pass through AI for example generation.
@@ -48,7 +48,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - `auto_filter_jobs` has bounded retries, a stale-running lease, and request-triggered polling so pending or crashed jobs can be recovered without manual database edits. Exhausted stale `collection_sync` jobs must also move the owning collection to `failed` when the job still matches the current rule version.
 - Saving or editing an auto-filter rule no longer rescans all existing words by default. Existing words are only re-evaluated when the user explicitly requests an AI re-sync for that collection.
 - Collection AI re-sync has a candidate-count guard controlled by `AUTO_FILTER_MAX_SYNC_CANDIDATES` (default `240`) so large dictionaries do not accidentally create unbounded LLM cost.
-- If `OPENAI_API_KEY` is missing, dictionary hits still return core fields but examples stay empty, and misses return fallback placeholder fields.
+- If Vercel AI Gateway credentials are missing, dictionary hits still return core fields but examples stay empty, and misses return fallback placeholder fields.
 
 ## Conflict Handling
 

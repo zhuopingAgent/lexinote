@@ -20,10 +20,13 @@
 
 - `DATABASE_URL` is required for the lookup flow.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
-- `OPENAI_API_KEY` is optional. If missing, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
-- Common Japanese inflections and adjective forms can still resolve locally without `OPENAI_API_KEY` when the conservative local base-form fallback hits an existing persisted entry.
-- Grammar practice generation and sentence feedback also work without `OPENAI_API_KEY` by using deterministic local fallback output.
-- `OPENAI_MODEL` defaults to `gpt-5.4`.
+- `AI_GATEWAY_API_KEY` is optional for local development. Vercel deployments can use `VERCEL_OIDC_TOKEN` instead. If neither Gateway credential is available, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
+- Common Japanese inflections and adjective forms can still resolve locally without AI Gateway credentials when the conservative local base-form fallback hits an existing persisted entry.
+- Grammar practice generation and sentence feedback also work without AI Gateway credentials by using deterministic local fallback output.
+- `AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
+- Canonical AI Gateway model roles live in `shared/ai/gateway.ts`: `cheap` is `openai/gpt-5-nano`, `defaultTeacher` is `openai/gpt-4.1-mini`, `premiumTeacher` is `openai/gpt-5-mini`, `longContext` is `alibaba/qwen3.7-plus`, and `speech` is `openai/whisper-1`.
+- Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.
+- For local AI access, either set `AI_GATEWAY_API_KEY` from Vercel AI Gateway API Keys or run `vercel link && vercel env pull` to obtain a project-scoped `VERCEL_OIDC_TOKEN`. Local OIDC tokens are short-lived, so pull again if they expire.
 - `AUTO_FILTER_MAX_SYNC_CANDIDATES` defaults to `240` and caps a single collection AI re-sync before any LLM calls are made.
 
 ## Database Notes
@@ -83,8 +86,8 @@
 
 - Check that `DATABASE_URL` is set in `.env.local`.
 - Check that the local database exists and `shared/db/sql/seed.sql` has been applied.
-- If `OPENAI_API_KEY` is missing, dictionary hits still work but example sentences stay empty, and unknown words fall back to placeholder fields.
-- If `OPENAI_API_KEY` is missing, grammar practice and feedback should still return usable fallback content. The acceptance fallback for `〜てもらえますか` + hospital + polite should flag `先生、もう一度説明してもらえる？` as too casual and suggest `すみません、もう一度説明していただけますか。`.
+- If AI Gateway credentials are missing, dictionary hits still work but example sentences stay empty, and unknown words fall back to placeholder fields.
+- If AI Gateway credentials are missing, grammar practice and feedback should still return usable fallback content. The acceptance fallback for `〜てもらえますか` + hospital + polite should flag `先生、もう一度説明してもらえる？` as too casual and suggest `すみません、もう一度説明していただけますか。`.
 
 ### E2E Test Fails Before Browser Starts
 

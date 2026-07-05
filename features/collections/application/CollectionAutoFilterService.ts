@@ -1,6 +1,7 @@
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
+import { hasAiGatewayCredentials } from "@/shared/ai/gateway";
 import type { AutoFilterDictionaryEntry } from "@/shared/types/api";
 
 const AUTO_FILTER_BATCH_SIZE = 24;
@@ -78,7 +79,7 @@ function findExplicitRuleWordIds(
   ruleText: string,
   entries: AutoFilterDictionaryEntry[]
 ) {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasAiGatewayCredentials()) {
     return [];
   }
 

@@ -15,6 +15,12 @@ import {
   waitForAutoFilterCompletion,
 } from "./helpers";
 
+function hasAiGatewayCredentials() {
+  return Boolean(
+    process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()
+  );
+}
+
 test("dictionary lookup, retry selection, and history recovery work end-to-end", async ({
   page,
 }) => {
@@ -210,7 +216,10 @@ test("overview search can add a word into a collection and prevent duplicates", 
 test("AI auto-filter can sync matching local words into a collection", async ({
   page,
 }, testInfo) => {
-  test.skip(!process.env.OPENAI_API_KEY, "OPENAI_API_KEY is required for the live auto-filter flow.");
+  test.skip(
+    !hasAiGatewayCredentials(),
+    "AI Gateway credentials are required for the live auto-filter flow."
+  );
   test.slow();
 
   const browserErrors = createBrowserErrorCollector(page);

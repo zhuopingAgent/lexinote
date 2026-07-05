@@ -7,6 +7,11 @@ import type {
   PracticeLevel,
   PracticeReferenceAnswer,
 } from "@/shared/types/api";
+import {
+  buildAiGatewayTextRequestConfig,
+  resolveAiGatewayRequest,
+  resolveAiModel,
+} from "@/shared/ai/gateway";
 import { throwIfOpenAiQuotaExhausted } from "@/shared/utils/ai-api-errors";
 import { AiQuotaExhaustedError } from "@/shared/utils/errors";
 
@@ -57,29 +62,6 @@ export type EvaluatedSentence = AIFeedbackResult & {
 
 const PRACTICE_MAX_OUTPUT_TOKENS = 620;
 const FEEDBACK_MAX_OUTPUT_TOKENS = 760;
-
-function resolveModel() {
-  return process.env.OPENAI_MODEL?.trim() || "gpt-5.4";
-}
-
-function buildRequestConfig(maxOutputTokens: number) {
-  const model = resolveModel();
-
-  if (model === "gpt-5-mini" || model === "gpt-5-nano") {
-    return {
-      model,
-      max_output_tokens: maxOutputTokens,
-      reasoning: {
-        effort: "minimal",
-      } as const,
-    };
-  }
-
-  return {
-    model,
-    max_output_tokens: maxOutputTokens,
-  };
-}
 
 function extractResponseText(data: OpenAiResponse): string {
   if (typeof data.output_text === "string" && data.output_text.trim()) {
@@ -553,22 +535,22 @@ export class GrammarAiClient {
     registerTagLabel?: string;
     level: PracticeLevel;
   }): Promise<GeneratedPractice> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const aiGatewayRequest = resolveAiGatewayRequest();
     const fallback = buildFallbackPractice(input);
 
-    if (!apiKey) {
+    if (!aiGatewayRequest) {
       return fallback;
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildRequestConfig(PRACTICE_MAX_OUTPUT_TOKENS),
+          ...buildAiGatewayTextRequestConfig(
+            "defaultTeacher",
+            PRACTICE_MAX_OUTPUT_TOKENS
+          ),
           input: [
             {
               role: "system",
@@ -613,22 +595,22 @@ export class GrammarAiClient {
     registerTagLabel?: string;
     promptText?: string;
   }): Promise<EvaluatedSentence> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const aiGatewayRequest = resolveAiGatewayRequest();
     const fallback = buildFallbackFeedback(input);
 
-    if (!apiKey) {
+    if (!aiGatewayRequest) {
       return fallback;
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const response = await fetch(aiGatewayRequest.url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: aiGatewayRequest.headers,
         body: JSON.stringify({
-          ...buildRequestConfig(FEEDBACK_MAX_OUTPUT_TOKENS),
+          ...buildAiGatewayTextRequestConfig(
+            "premiumTeacher",
+            FEEDBACK_MAX_OUTPUT_TOKENS
+          ),
           input: [
             {
               role: "system",
@@ -656,7 +638,7 @@ export class GrammarAiClient {
         ? {
             ...parsed,
             source: "ai",
-            modelName: resolveModel(),
+            modelName: resolveAiModel("premiumTeacher"),
           }
         : fallback;
     } catch (error) {
