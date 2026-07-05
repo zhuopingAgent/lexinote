@@ -33,10 +33,19 @@ test("dictionary lookup, retry selection, and history recovery work end-to-end",
   await expect(page.getByText("各结果之间的区别")).toBeVisible();
   await expect(page.getByText("だく", { exact: true })).toBeVisible();
   await expect(page.getByText("いだく", { exact: true })).toBeVisible();
+  await expect(page.getByText("本地词库")).toBeVisible();
+  await expect(page.getByRole("button", { name: "当前词条 抱く だく" })).toBeVisible();
 
-  await page.getByRole("button", { name: "重新查询" }).click();
+  await page.getByRole("button", { name: "选择这个词条 抱く いだく" }).click();
+  await expect(page.getByRole("button", { name: "当前词条 抱く いだく" })).toBeVisible();
+  await page.getByRole("button", { name: "按此读音重查 抱く いだく" }).click();
   await expect(page.getByText("选择要重查的词条")).toBeVisible();
-  await page.locator("label").filter({ hasText: "いだく" }).first().click();
+  await expect(
+    page
+      .locator("label")
+      .filter({ hasText: "いだく" })
+      .locator('input[type="radio"]')
+  ).toBeChecked();
   await page.getByLabel("重新查询补充说明").fill("不安を抱く");
   await page.getByRole("button", { name: "按补充说明重新查询" }).click();
   await expect(page.getByText("已参考语境「不安を抱く」")).toBeVisible({ timeout: 30_000 });
@@ -47,6 +56,37 @@ test("dictionary lookup, retry selection, and history recovery work end-to-end",
   await page.getByRole("button").filter({ hasText: "食べる" }).first().click();
   await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("たべる", { exact: true })).toBeVisible();
+
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("dictionary result actions can add a word into a collection and prevent duplicates", async ({
+  page,
+}, testInfo) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  const collectionName = createCollectionName("e2e-dictionary", testInfo);
+
+  await gotoCollections(page);
+  await createCollection(page, collectionName);
+
+  await gotoDictionary(page);
+  await searchWord(page, "食べる");
+  await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("本地词库")).toBeVisible();
+
+  await page.getByRole("button", { name: "加入 collection 食べる たべる" }).click();
+  await page.getByRole("button", { name: collectionName }).click();
+  await expect(page.getByText("已加入所选 collection。")).toBeVisible();
+
+  await page.getByRole("button", { name: "加入 collection 食べる たべる" }).click();
+  await page.getByRole("button", { name: collectionName }).click();
+  await expect(page.getByText("这个词条已经在所选 collection 中。")).toBeVisible();
+
+  await gotoCollections(page);
+  await openCollectionDetail(page, collectionName);
+  await expect(page.getByText("1 个单词")).toBeVisible();
+  await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("手动添加")).toBeVisible();
 
   expectNoBrowserErrors(browserErrors);
 });

@@ -17,7 +17,7 @@ import {
   mapResultToWordDataList,
 } from "@/app/lib/word-data";
 import { isAiQuotaExhaustedError, readJson } from "@/app/lib/api-client";
-import type { WordLookupResponse } from "@/shared/types/api";
+import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
 
 type LookupMode = "search" | "retry";
 
@@ -27,6 +27,18 @@ function buildLookupCacheKey(word: string, context = "", pronunciation = "") {
     context: context.trim(),
     pronunciation: pronunciation.trim(),
   });
+}
+
+function reorderEntriesWithPrimary(
+  primaryEntry: DictionaryEntry,
+  entries: DictionaryEntry[]
+) {
+  return [
+    primaryEntry,
+    ...entries.filter(
+      (entry) => entry.pronunciation !== primaryEntry.pronunciation
+    ),
+  ];
 }
 
 export function useLookupFlow(onViewChange: (view: AppView) => void) {
@@ -242,9 +254,10 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
       hasMultipleResults && selectedRetryPronunciation
         ? selectedRetryPronunciation
         : undefined;
+    const retryWord = result.lookupWord || result.word;
 
-    setWord(result.word);
-    await lookupWord(result.word, retryContext, {
+    setWord(retryWord);
+    await lookupWord(retryWord, retryContext, {
       preserveResult: true,
       source: "retry",
       pronunciation: retryPronunciation,
@@ -269,6 +282,40 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     setIsRetryPanelOpen(false);
     setRetryContext("");
     setSelectedRetryPronunciation(result?.entry.pronunciation || "");
+  }
+
+  function onSelectResultEntry(entry: DictionaryEntry) {
+    if (!result) {
+      return;
+    }
+
+    const nextEntries = result.entries
+      ? reorderEntriesWithPrimary(entry, result.entries)
+      : undefined;
+
+    setResult({
+      ...result,
+      entry,
+      ...(nextEntries ? { entries: nextEntries } : {}),
+      metadata: result.metadata
+        ? {
+            ...result.metadata,
+            selectedPronunciation: entry.pronunciation,
+            exampleStatus: entry.examples.length > 0 ? "ready" : "missing",
+          }
+        : result.metadata,
+    });
+    setSelectedRetryPronunciation(entry.pronunciation);
+  }
+
+  function onStartRetryWithEntry(entry: DictionaryEntry) {
+    onSelectResultEntry(entry);
+    setSelectedRetryPronunciation(entry.pronunciation);
+    setIsRetryPanelOpen(true);
+
+    if (!retryContext.trim() && activeContext) {
+      setRetryContext(activeContext);
+    }
   }
 
   function onDismissAiApiError() {
@@ -310,6 +357,8 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     onRetrySubmit,
     onToggleRetryPanel,
     onCancelRetry,
+    onSelectResultEntry,
+    onStartRetryWithEntry,
     onDismissAiApiError,
   };
 }

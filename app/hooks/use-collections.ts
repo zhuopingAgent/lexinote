@@ -8,6 +8,7 @@ import {
   readJson,
 } from "@/app/lib/api-client";
 import type {
+  AddCollectionWordResponse,
   AddCollectionWordsResponse,
   CollectionListResponse,
   CollectionResponse,
@@ -162,6 +163,48 @@ export function useCollections(activeView: AppView) {
     }
 
     return "already_exists";
+  }
+
+  async function onAddDictionaryEntryToCollection(
+    collectionId: number,
+    word: string,
+    pronunciation: string
+  ): Promise<"added" | "already_exists"> {
+    if (!isPositiveInteger(collectionId) || !word.trim() || !pronunciation.trim()) {
+      throw new Error("当前词条或 collection 信息无效，请刷新页面后重试。");
+    }
+
+    const response = await fetch(`/api/collections/${collectionId}/words`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        word: word.trim(),
+        pronunciation: pronunciation.trim(),
+      }),
+    });
+
+    const payload = await readJson<AddCollectionWordResponse>(response);
+
+    if (payload.status === "requires_selection") {
+      throw new Error("这个词有多个读音，请先选择一个具体词条。");
+    }
+
+    if (payload.status === "added") {
+      setCollections((currentCollections) =>
+        currentCollections.map((collection) =>
+          collection.collectionId === collectionId
+            ? {
+                ...collection,
+                wordCount: collection.wordCount + 1,
+              }
+            : collection
+        )
+      );
+    }
+
+    return payload.status;
   }
 
   async function onCreateCollection(event: FormEvent<HTMLFormElement>) {
@@ -370,6 +413,7 @@ export function useCollections(activeView: AppView) {
     hasLoadedCollections,
     ensureCollectionsLoaded,
     onAddOverviewWordToCollection,
+    onAddDictionaryEntryToCollection,
     onCreateCollection,
     onStartEditingCollection,
     onCancelEditingCollection,

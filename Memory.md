@@ -9,6 +9,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - When the user's English is not correct, I should first give a short corrected version, then answer simply and clearly.
 - For local development and database inspection, prefer CLI tools by default and use MCP only when it is specifically needed.
 - When the user asks a question in Chinese, first provide an English version of the question before answering in Chinese.
+- When pushing code to `origin`, automatically create a PR and merge it into `main` when repository permissions, branch protection, and checks allow it.
 
 ## Start Here
 
@@ -37,6 +38,8 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - Local dictionary hits read from PostgreSQL and prefer reusing persisted examples when available; otherwise they may pass through AI for example generation.
 - Dictionary misses fall back to a fully AI-completed entry and persist that result into PostgreSQL.
 - Optional lookup context can be supplied to disambiguate meaning and regenerate context-aware examples, but the lookup flow is now more local-first: if a persisted entry already has examples and the context is not instructional, the app may return the local result without calling AI.
+- Before AI base-form resolution, lookup uses conservative local fallback rules for common Japanese inflections and adjective forms, and only adopts a fallback when it hits a persisted local entry.
+- Lookup responses include metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness; the dictionary UI surfaces these as result status tags.
 - Context-aware results are not persisted as standalone contextual rows by default. The service normalizes context-shaped readings back to dictionary-form pronunciations before deciding whether anything should be saved.
 - Collections are now a first-class product surface. `collections` and `collection_words` model a many-to-many relation between concrete dictionary entries (`word_id`) and collections.
 - A single dictionary entry can belong to multiple collections, but the same `word_id` can appear only once inside a given collection, no matter whether it was added manually or by AI auto-filtering.
