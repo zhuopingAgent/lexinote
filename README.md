@@ -62,6 +62,8 @@ For local AI access, either create a Vercel AI Gateway API key and set
 `AI_GATEWAY_API_KEY`, or link the project with `vercel link` and run
 `vercel env pull` to use Vercel's project-scoped `VERCEL_OIDC_TOKEN`.
 
+`APP_BASIC_AUTH_PASSWORD` enables deployment-wide Basic Auth for all app routes and APIs. Leave it empty for local development unless you explicitly want to test production-style access protection. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
+
 `AUTO_FILTER_MAX_SYNC_CANDIDATES` is optional and defaults to `240`. It caps a single collection AI re-sync before any LLM calls are made, preventing accidental large-batch spend.
 
 Project-level PostgreSQL MCP uses Next's environment loading, so it follows the same `DATABASE_URL` resolution as the app.
@@ -86,7 +88,7 @@ It exposes schema resources plus a `query_readonly` tool for debugging local dat
 - Collection CRUD and collection word management
 - Async AI auto-filtering with job retries, stale-job recovery, and a per-sync candidate cap
 
-Out of scope for now: auth, multi-user support, favorites, exercises, review, advanced voice, cloud deployment.
+Out of scope for now: multi-user account separation, advanced voice, and fully automated database migrations.
 
 ## Structure
 

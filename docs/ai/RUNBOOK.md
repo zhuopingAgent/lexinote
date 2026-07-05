@@ -27,7 +27,25 @@
 - Canonical AI Gateway model roles live in `shared/ai/gateway.ts`: `cheap` is `openai/gpt-5-nano`, `defaultTeacher` is `openai/gpt-4.1-mini`, `premiumTeacher` is `openai/gpt-5-mini`, `longContext` is `alibaba/qwen3.7-plus`, and `speech` is `openai/whisper-1`.
 - Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.
 - For local AI access, either set `AI_GATEWAY_API_KEY` from Vercel AI Gateway API Keys or run `vercel link && vercel env pull` to obtain a project-scoped `VERCEL_OIDC_TOKEN`. Local OIDC tokens are short-lived, so pull again if they expire.
+- `APP_BASIC_AUTH_PASSWORD` enables Basic Auth for all app routes and APIs. Vercel Production and Preview deployments should set it while local development can leave it empty. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
 - `AUTO_FILTER_MAX_SYNC_CANDIDATES` defaults to `240` and caps a single collection AI re-sync before any LLM calls are made.
+
+## Vercel Deployment
+
+- GitHub `main` is connected as the production branch, so pushing or merging to `main` triggers a production deployment.
+- Production and Preview must use separate Neon resources. Production uses `lexinote-postgres`; Preview uses `lexinote-postgres-preview`.
+- Production and Preview must use separate AI Gateway API keys. Production should use a `$10` monthly budget; Preview should use a `$1` monthly budget.
+- Vercel SSO deployment protection is enabled for production deployment URLs and previews, and Git fork protection is enabled. Because the production alias can remain publicly reachable on the current plan, the app also uses Basic Auth when `APP_BASIC_AUTH_PASSWORD` is set.
+- After changing any Vercel environment variable that is read at runtime, trigger a new deployment so the serverless functions receive the updated value.
+
+## Production Database Changes
+
+- Treat `shared/db/sql/schema.sql` as the schema source of truth until a migration tool is introduced.
+- Apply schema changes intentionally before deploying code that depends on them:
+  `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/db/sql/schema.sql`
+- Apply seed data when needed:
+  `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/db/sql/seed.sql`
+- Do not run schema or seed SQL against Production from a generic `.env.local` shell without first confirming the target host. Use the Vercel-pulled environment file or print only the database host/name before running SQL.
 
 ## Database Notes
 
