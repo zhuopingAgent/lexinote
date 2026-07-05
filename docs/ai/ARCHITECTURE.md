@@ -25,6 +25,8 @@
   - `app/api/practice/*`: grammar practice generation and sentence feedback endpoints
   - `app/api/favorites/route.ts`: grammar favorite list/toggle endpoint
   - `app/api/review/today/route.ts`: grammar review endpoint
+  - `app/auth/two-factor/page.tsx`: TOTP challenge page for deployment access protection
+  - `app/api/auth/two-factor/verify/route.ts`: TOTP verification endpoint that issues the 2FA session cookie
   - `app/api/words/lookup/route.ts`: lookup endpoint returning the lookup payload
   - `app/api/words/route.ts`: overview listing endpoint with search and pagination
   - `app/api/collections/*`: collection CRUD and collection-word APIs
@@ -36,13 +38,44 @@
   - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
   - `features/collections/`: collection CRUD, collection-word workflows, and auto-filter job processing
 - `shared/`: cross-cutting code
+  - `shared/auth/`: Basic Auth-adjacent two-factor helpers, TOTP verification, and signed 2FA session cookies
   - `shared/db/`: centralized PostgreSQL access and SQL
   - `shared/types/`: request/response DTOs
   - `shared/utils/`: app-level errors
 - `types/`: local ambient typings
 - Root configs: `next.config.ts`, `tsconfig.json`, `eslint.config.mjs`, `postcss.config.mjs`
+- Root proxy: `proxy.ts` enforces deployment-level Basic Auth and optional TOTP before app routes and APIs run
 - E2E coverage: `playwright.config.ts`, `e2e/*`
 - AI docs index: root `Memory.md` (with `AGENTS.md` compatibility alias) -> `docs/ai/*`
+
+## Access Protection
+
+### What Lives Here
+
+- `proxy.ts`
+- `app/auth/two-factor/page.tsx`
+- `app/auth/two-factor/setup/page.tsx`
+- `app/api/auth/two-factor/verify/route.ts`
+- `shared/auth/two-factor.ts`
+- `scripts/reset-two-factor.mjs`
+
+### Runtime Flow
+
+1. `proxy.ts` is the first application-level gate for pages and APIs.
+2. When `APP_BASIC_AUTH_PASSWORD` is set, requests must pass Basic Auth before any app route runs.
+3. When `APP_TWO_FACTOR_TOTP_SECRET` is set, requests that passed Basic Auth must also present a valid signed `lexinote_2fa` cookie.
+4. Page requests without a valid 2FA cookie redirect to `/auth/two-factor`; API requests return `403 TWO_FACTOR_REQUIRED`.
+5. `/auth/two-factor/setup?token=...` shows an authenticator QR code only when `APP_TWO_FACTOR_SETUP_TOKEN` matches.
+6. `POST /api/auth/two-factor/verify` checks a 6-digit TOTP code and sets an HttpOnly signed 2FA session cookie.
+7. The 2FA session cookie is signed with `APP_TWO_FACTOR_COOKIE_SECRET`, expires according to `APP_TWO_FACTOR_SESSION_SECONDS`, and is bound to the current TOTP secret fingerprint so TOTP secret rotation invalidates existing sessions.
+8. Administrator reset is intentionally backend-only through `npm run auth:reset-2fa`, which generates a new TOTP secret, cookie secret, setup token, `otpauth://` URI, and QR setup path.
+
+### Important Rules
+
+- Do not add a public reset endpoint for 2FA. Reset should remain an administrator backend operation unless a full user auth system exists.
+- Do not leave `APP_TWO_FACTOR_SETUP_TOKEN` configured after QR enrollment is complete.
+- Keep local development easy: Basic Auth and 2FA are disabled unless their env vars are set.
+- After changing any Vercel auth env var, redeploy so proxy/serverless runtime receives the new value.
 
 ## Lookup
 
@@ -198,10 +231,10 @@
 
 Out of scope:
 
-- auth
 - multi-user support
+- self-service user registration/login and role-based access control
 - voice features beyond the browser `speechSynthesis` helper used in the word card UI
-- cloud deployment
+- fully automated database migrations
 
 ## Extension Guidance
 

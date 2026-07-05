@@ -28,6 +28,9 @@
 - Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.
 - For local AI access, either set `AI_GATEWAY_API_KEY` from Vercel AI Gateway API Keys or run `vercel link && vercel env pull` to obtain a project-scoped `VERCEL_OIDC_TOKEN`. Local OIDC tokens are short-lived, so pull again if they expire.
 - `APP_BASIC_AUTH_PASSWORD` enables Basic Auth for all app routes and APIs. Vercel Production and Preview deployments should set it while local development can leave it empty. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
+- `APP_TWO_FACTOR_TOTP_SECRET` enables the TOTP second factor after Basic Auth. `APP_TWO_FACTOR_COOKIE_SECRET` signs the HttpOnly 2FA session cookie, and `APP_TWO_FACTOR_SESSION_SECONDS` defaults to `43200`.
+- `APP_TWO_FACTOR_SETUP_TOKEN` enables the protected QR setup page at `/auth/two-factor/setup?token=...`. It should be present only during administrator binding/reset and removed from Vercel after the authenticator app is enrolled.
+- `APP_TWO_FACTOR_ISSUER` and `APP_TWO_FACTOR_ACCOUNT_NAME` customize the label shown inside authenticator apps.
 - `AUTO_FILTER_MAX_SYNC_CANDIDATES` defaults to `240` and caps a single collection AI re-sync before any LLM calls are made.
 
 ## Vercel Deployment
@@ -36,7 +39,19 @@
 - Production and Preview must use separate Neon resources. Production uses `lexinote-postgres`; Preview uses `lexinote-postgres-preview`.
 - Production and Preview must use separate AI Gateway API keys. Production should use a `$10` monthly budget; Preview should use a `$1` monthly budget.
 - Vercel SSO deployment protection is enabled for production deployment URLs and previews, and Git fork protection is enabled. Because the production alias can remain publicly reachable on the current plan, the app also uses Basic Auth when `APP_BASIC_AUTH_PASSWORD` is set.
+- Production and Preview should set `APP_TWO_FACTOR_TOTP_SECRET` and `APP_TWO_FACTOR_COOKIE_SECRET` after the administrator has saved the authenticator secret. Temporarily set `APP_TWO_FACTOR_SETUP_TOKEN` only while binding through the QR setup page.
 - After changing any Vercel environment variable that is read at runtime, trigger a new deployment so the serverless functions receive the updated value.
+
+## Two-Factor Reset
+
+- Generate a new administrator TOTP secret:
+  `npm run auth:reset-2fa`
+- Generate and write the new values into local `.env.local`:
+  `npm run auth:reset-2fa -- --write-local`
+- The command prints an `otpauth://` URI and a `setupPath` for adding the account to an authenticator app. Treat the terminal output as sensitive.
+- For Vercel, remove the old `APP_TWO_FACTOR_TOTP_SECRET`, `APP_TWO_FACTOR_COOKIE_SECRET`, and `APP_TWO_FACTOR_SETUP_TOKEN`, add the new values to the target environment, and redeploy.
+- Open `/auth/two-factor/setup?token=...` after redeploy, scan the QR code, enter one TOTP code, then remove `APP_TWO_FACTOR_SETUP_TOKEN` and redeploy again.
+- Rotating `APP_TWO_FACTOR_TOTP_SECRET` invalidates existing 2FA sessions because the session cookie is bound to the current TOTP secret fingerprint. Rotating `APP_TWO_FACTOR_COOKIE_SECRET` also invalidates all existing 2FA sessions.
 
 ## Production Database Changes
 

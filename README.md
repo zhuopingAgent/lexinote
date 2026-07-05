@@ -64,6 +64,16 @@ For local AI access, either create a Vercel AI Gateway API key and set
 
 `APP_BASIC_AUTH_PASSWORD` enables deployment-wide Basic Auth for all app routes and APIs. Leave it empty for local development unless you explicitly want to test production-style access protection. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
 
+`APP_TWO_FACTOR_TOTP_SECRET` enables the second authentication layer. When set,
+the app requires a 6-digit TOTP code after Basic Auth and stores successful
+verification in a signed HttpOnly cookie. `APP_TWO_FACTOR_COOKIE_SECRET` signs
+that cookie, and `APP_TWO_FACTOR_SESSION_SECONDS` defaults to `43200`. To reset
+the administrator authenticator secret, run `npm run auth:reset-2fa`; add
+`-- --write-local` to update `.env.local`. The reset command also prints a
+`setupPath` for `/auth/two-factor/setup`, where the administrator can scan a QR
+code with an authenticator app. `APP_TWO_FACTOR_SETUP_TOKEN` protects that setup
+page and should be removed from Vercel after binding is complete.
+
 `AUTO_FILTER_MAX_SYNC_CANDIDATES` is optional and defaults to `240`. It caps a single collection AI re-sync before any LLM calls are made, preventing accidental large-batch spend.
 
 Project-level PostgreSQL MCP uses Next's environment loading, so it follows the same `DATABASE_URL` resolution as the app.
