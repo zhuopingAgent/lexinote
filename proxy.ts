@@ -3,12 +3,14 @@ import { NextResponse, type NextRequest } from "next/server";
 const REALM = "LexiNote";
 
 function parseBasicAuth(value: string | null) {
-  if (!value?.startsWith("Basic ")) {
+  const match = value?.match(/^basic\s+(.+)$/i);
+
+  if (!match) {
     return null;
   }
 
   try {
-    const decoded = atob(value.slice("Basic ".length));
+    const decoded = atob(match[1]);
     const separatorIndex = decoded.indexOf(":");
 
     if (separatorIndex === -1) {
