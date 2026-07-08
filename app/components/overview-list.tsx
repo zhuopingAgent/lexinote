@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { getErrorMessage } from "@/app/lib/api-client";
+import { formatShortDateTime } from "@/app/lib/date";
+import { isPositiveInteger } from "@/app/lib/number";
+import { summarizeMeaning } from "@/app/lib/text";
 import type { CollectionSummary, DictionaryOverviewItem } from "@/shared/types/api";
 
 type OverviewListProps = {
@@ -20,29 +24,6 @@ type OverviewListProps = {
     wordId: number
   ) => Promise<"added" | "already_exists">;
 };
-
-function isPositiveInteger(value: number) {
-  return Number.isInteger(value) && value > 0;
-}
-
-function summarizeMeaning(meaning: string) {
-  return meaning.split(/[；;。]/)[0]?.trim() || meaning.trim();
-}
-
-function formatCreatedAt(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
 
 export function OverviewList({
   words,
@@ -119,7 +100,7 @@ export function OverviewList({
       }));
       setOpenPickerWordId(null);
     } catch (actionError) {
-      const message = actionError instanceof Error ? actionError.message : "添加失败，请稍后再试。";
+      const message = getErrorMessage(actionError, "添加失败，请稍后再试。");
       setWordNoticeMap((currentMap) => ({
         ...currentMap,
         [wordId]: message,
@@ -222,7 +203,7 @@ export function OverviewList({
                       </p>
                     </div>
                     <span className="shrink-0 text-xs leading-5 text-white/28">
-                      {formatCreatedAt(word.createdAt)}
+                      {formatShortDateTime(word.createdAt)}
                     </span>
                   </div>
 

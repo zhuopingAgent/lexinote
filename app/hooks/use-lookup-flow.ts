@@ -16,7 +16,11 @@ import {
   getResultEntries,
   mapResultToWordDataList,
 } from "@/app/lib/word-data";
-import { isAiQuotaExhaustedError, readJson } from "@/app/lib/api-client";
+import {
+  getErrorMessage,
+  isAiQuotaExhaustedError,
+  readJson,
+} from "@/app/lib/api-client";
 import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
 
 type LookupMode = "search" | "retry";
@@ -207,7 +211,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
       setSelectedRetryPronunciation(payload.entry.pronunciation);
       setAiApiErrorMessage(null);
     } catch (lookupError) {
-      const message = lookupError instanceof Error ? lookupError.message : "发生了意外错误";
+      const message = getErrorMessage(lookupError, "发生了意外错误");
       if (isAiQuotaExhaustedError(lookupError)) {
         setAiApiErrorMessage(message);
       }

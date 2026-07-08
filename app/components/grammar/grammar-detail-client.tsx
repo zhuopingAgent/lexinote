@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { GrammarDetailResponse, GrammarPointDetail } from "@/shared/types/api";
 import { GrammarDetail } from "@/app/components/grammar/grammar-detail";
-import { readJson } from "@/app/lib/api-client";
+import { getErrorMessage, readJson } from "@/app/lib/api-client";
 
 export function GrammarDetailClient({
   grammarPointId,
@@ -28,11 +28,7 @@ export function GrammarDetailClient({
         setGrammarPoint(detail.grammarPoint);
       } catch (loadError) {
         if (!controller.signal.aborted) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "语法详情加载失败，请稍后再试。"
-          );
+          setError(getErrorMessage(loadError, "语法详情加载失败，请稍后再试。"));
         }
       } finally {
         if (!controller.signal.aborted) {

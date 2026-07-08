@@ -17,7 +17,11 @@ import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { PracticePrompt } from "@/app/components/grammar/practice-prompt";
 import { SentenceInput } from "@/app/components/grammar/sentence-input";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
-import { isAiQuotaExhaustedError, readJson } from "@/app/lib/api-client";
+import {
+  getErrorMessage,
+  isAiQuotaExhaustedError,
+  readJson,
+} from "@/app/lib/api-client";
 
 const PRACTICE_REGISTER_OPTIONS = [
   { value: "casual", label: "随便" },
@@ -129,9 +133,7 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
         );
       } catch (error) {
         if (!controller.signal.aborted) {
-          setLoadError(
-            error instanceof Error ? error.message : "练习数据加载失败，请稍后再试。"
-          );
+          setLoadError(getErrorMessage(error, "练习数据加载失败，请稍后再试。"));
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -198,9 +200,7 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
         if (isAiQuotaExhaustedError(error)) {
           setAiApiErrorMessage(error.message);
         }
-        setActionError(
-          error instanceof Error ? error.message : "练习生成失败，请稍后再试。"
-        );
+        setActionError(getErrorMessage(error, "练习生成失败，请稍后再试。"));
       }
     } finally {
       if (generationRef.current === generation) {
@@ -237,9 +237,7 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
       if (isAiQuotaExhaustedError(error)) {
         setAiApiErrorMessage(error.message);
       }
-      setActionError(
-        error instanceof Error ? error.message : "句子反馈失败，请稍后再试。"
-      );
+      setActionError(getErrorMessage(error, "句子反馈失败，请稍后再试。"));
     } finally {
       setIsSubmitting(false);
     }

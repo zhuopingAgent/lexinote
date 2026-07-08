@@ -54,3 +54,9 @@ export async function throwIfOpenAiQuotaExhausted(response: Response) {
     throw new AiQuotaExhaustedError();
   }
 }
+
+export function rethrowAiQuotaError(error: unknown) {
+  if (error instanceof AiQuotaExhaustedError) {
+    throw error;
+  }
+}

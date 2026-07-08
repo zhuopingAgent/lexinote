@@ -3,10 +3,16 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AppView } from "@/app/lib/app-view";
 import {
+  getErrorMessage,
   isAiQuotaErrorMessage,
   isAiQuotaExhaustedError,
   readJson,
 } from "@/app/lib/api-client";
+import {
+  isAutoFilterSyncActive,
+  isAutoFilterSyncFailed,
+} from "@/app/lib/collection-status";
+import { isPositiveInteger } from "@/app/lib/number";
 import type {
   AddCollectionWordResponse,
   AddCollectionWordsResponse,
@@ -14,10 +20,6 @@ import type {
   CollectionResponse,
   CollectionSummary,
 } from "@/shared/types/api";
-
-function isPositiveInteger(value: number) {
-  return Number.isInteger(value) && value > 0;
-}
 
 export function useCollections(activeView: AppView) {
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
@@ -40,7 +42,7 @@ export function useCollections(activeView: AppView) {
     (nextCollections: CollectionSummary[]) => {
       const failedCollection = nextCollections.find(
         (collection) =>
-          collection.autoFilterSyncStatus === "failed" &&
+          isAutoFilterSyncFailed(collection.autoFilterSyncStatus) &&
           isAiQuotaErrorMessage(collection.autoFilterLastError) &&
           !notifiedAiQuotaCollectionIdsRef.current.has(collection.collectionId)
       );
@@ -72,10 +74,7 @@ export function useCollections(activeView: AppView) {
         setHasLoadedCollections(true);
         notifyAiQuotaAutoFilterFailures(payload.collections);
       } catch (collectionLoadError) {
-        const message =
-          collectionLoadError instanceof Error
-            ? collectionLoadError.message
-            : "发生了意外错误";
+        const message = getErrorMessage(collectionLoadError, "发生了意外错误");
         if (isAiQuotaExhaustedError(collectionLoadError)) {
           setAiApiErrorMessage(message);
         }
@@ -100,10 +99,8 @@ export function useCollections(activeView: AppView) {
   useEffect(() => {
     const shouldPollCollections =
       hasLoadedCollections &&
-      collections.some(
-        (collection) =>
-          collection.autoFilterSyncStatus === "pending" ||
-          collection.autoFilterSyncStatus === "running"
+      collections.some((collection) =>
+        isAutoFilterSyncActive(collection.autoFilterSyncStatus)
       );
 
     if (!shouldPollCollections) {
@@ -234,10 +231,7 @@ export function useCollections(activeView: AppView) {
       setCollectionName("");
       setHasLoadedCollections(true);
     } catch (collectionCreateError) {
-      const message =
-        collectionCreateError instanceof Error
-          ? collectionCreateError.message
-          : "发生了意外错误";
+      const message = getErrorMessage(collectionCreateError, "发生了意外错误");
       if (isAiQuotaExhaustedError(collectionCreateError)) {
         setAiApiErrorMessage(message);
       }
@@ -305,10 +299,7 @@ export function useCollections(activeView: AppView) {
       );
       onCancelEditingCollection();
     } catch (collectionUpdateError) {
-      const message =
-        collectionUpdateError instanceof Error
-          ? collectionUpdateError.message
-          : "发生了意外错误";
+      const message = getErrorMessage(collectionUpdateError, "发生了意外错误");
       if (isAiQuotaExhaustedError(collectionUpdateError)) {
         setAiApiErrorMessage(message);
       }
@@ -342,10 +333,7 @@ export function useCollections(activeView: AppView) {
         onCancelEditingCollection();
       }
     } catch (collectionDeleteError) {
-      const message =
-        collectionDeleteError instanceof Error
-          ? collectionDeleteError.message
-          : "发生了意外错误";
+      const message = getErrorMessage(collectionDeleteError, "发生了意外错误");
       if (isAiQuotaExhaustedError(collectionDeleteError)) {
         setAiApiErrorMessage(message);
       }
@@ -377,10 +365,7 @@ export function useCollections(activeView: AppView) {
         )
       );
     } catch (collectionResyncError) {
-      const message =
-        collectionResyncError instanceof Error
-          ? collectionResyncError.message
-          : "发生了意外错误";
+      const message = getErrorMessage(collectionResyncError, "发生了意外错误");
       if (isAiQuotaExhaustedError(collectionResyncError)) {
         setAiApiErrorMessage(message);
       }

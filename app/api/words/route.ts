@@ -4,6 +4,10 @@ import {
   getVocabularyCoreService,
 } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
+import {
+  MAX_WORD_PAGE_SIZE,
+  WORD_PAGE_SIZE,
+} from "@/shared/constants/pagination";
 import type { DictionaryOverviewResponse } from "@/shared/types/api";
 import { ValidationError } from "@/shared/utils/errors";
 
@@ -13,7 +17,7 @@ const vocabularyCoreService = getVocabularyCoreService();
 
 function parseLimit(rawLimit: string | null) {
   if (rawLimit === null || rawLimit.trim() === "") {
-    return 24;
+    return WORD_PAGE_SIZE;
   }
 
   const limit = Number(rawLimit);
@@ -21,7 +25,7 @@ function parseLimit(rawLimit: string | null) {
     throw new ValidationError("limit must be a positive integer");
   }
 
-  return Math.min(limit, 100);
+  return Math.min(limit, MAX_WORD_PAGE_SIZE);
 }
 
 export async function GET(request: Request) {

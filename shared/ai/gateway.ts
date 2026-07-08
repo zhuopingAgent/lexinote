@@ -18,6 +18,18 @@ type AiGatewayTextRequestConfig = {
   };
 };
 
+type AiGatewayTextItem = {
+  type?: string;
+  text?: string;
+};
+
+export type AiGatewayResponse = {
+  output_text?: string;
+  output?: Array<{
+    content?: AiGatewayTextItem[];
+  }>;
+};
+
 const DEFAULT_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 
 export function resolveAiModel(role: AiModelRole) {
@@ -101,4 +113,20 @@ export function resolveAiGatewayRequest() {
       Authorization: `Bearer ${apiKey}`,
     },
   };
+}
+
+export function extractAiGatewayResponseText(data: AiGatewayResponse): string {
+  if (typeof data.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+
+  return (
+    data.output
+      ?.flatMap((message) => message.content ?? [])
+      .filter((item) => item.type === "output_text" && typeof item.text === "string")
+      .map((item) => item.text?.trim() ?? "")
+      .filter(Boolean)
+      .join("\n")
+      .trim() ?? ""
+  );
 }

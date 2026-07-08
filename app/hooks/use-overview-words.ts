@@ -2,20 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AppView } from "@/app/lib/app-view";
+import {
+  getErrorMessage,
+  isAbortError,
+  readResponseErrorMessage,
+} from "@/app/lib/api-client";
+import { isPositiveInteger } from "@/app/lib/number";
+import { mergeUniqueWordEntriesById } from "@/app/lib/word-list";
 import type {
   DictionaryOverviewItem,
   DictionaryOverviewResponse,
 } from "@/shared/types/api";
-
-type ApiError = {
-  error?: {
-    message?: string;
-  };
-};
-
-function isPositiveInteger(value: number) {
-  return Number.isInteger(value) && value > 0;
-}
+import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
 
 export function useOverviewWords(activeView: AppView) {
   const [overviewQuery, setOverviewQuery] = useState("");
@@ -83,7 +81,7 @@ export function useOverviewWords(activeView: AppView) {
 
     try {
       const searchParams = new URLSearchParams();
-      searchParams.set("limit", "24");
+      searchParams.set("limit", String(WORD_PAGE_SIZE));
       if (normalizedQuery) {
         searchParams.set("query", normalizedQuery);
       }
@@ -98,8 +96,7 @@ export function useOverviewWords(activeView: AppView) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
+        throw new Error(await readResponseErrorMessage(response, "请求失败"));
       }
 
       const payload = (await response.json()) as DictionaryOverviewResponse;
@@ -116,21 +113,12 @@ export function useOverviewWords(activeView: AppView) {
           return validEntries;
         }
 
-        const mergedEntries = [...currentEntries];
-        for (const entry of validEntries) {
-          if (!mergedEntries.some((currentEntry) => currentEntry.wordId === entry.wordId)) {
-            mergedEntries.push(entry);
-          }
-        }
-        return mergedEntries;
+        return mergeUniqueWordEntriesById(currentEntries, validEntries);
       });
       setOverviewNextCursor(payload.nextCursor);
       setHasLoadedOverview(true);
     } catch (overviewLoadError) {
-      if (
-        overviewLoadError instanceof DOMException &&
-        overviewLoadError.name === "AbortError"
-      ) {
+      if (isAbortError(overviewLoadError)) {
         return;
       }
 
@@ -138,8 +126,7 @@ export function useOverviewWords(activeView: AppView) {
         return;
       }
 
-      const message =
-        overviewLoadError instanceof Error ? overviewLoadError.message : "发生了意外错误";
+      const message = getErrorMessage(overviewLoadError, "发生了意外错误");
       setOverviewError(message);
 
       if (reset) {

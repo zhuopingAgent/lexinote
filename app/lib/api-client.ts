@@ -3,6 +3,8 @@ import {
   AI_QUOTA_EXHAUSTED_MESSAGE,
 } from "@/shared/utils/errors";
 
+export { getErrorMessage } from "@/shared/utils/errors";
+
 type ErrorResponse = {
   error?: {
     code?: unknown;
@@ -47,6 +49,20 @@ export function isAiQuotaErrorMessage(message: string | null | undefined) {
       (message.includes(AI_QUOTA_EXHAUSTED_CODE) ||
         message.includes(AI_QUOTA_EXHAUSTED_MESSAGE))
   );
+}
+
+export function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+export async function readResponseErrorMessage(
+  response: Response,
+  fallback: string
+) {
+  const data = (await response.json()) as unknown;
+  const error = readError(data);
+
+  return error.message || fallback;
 }
 
 export async function readJson<T>(response: Response): Promise<T> {

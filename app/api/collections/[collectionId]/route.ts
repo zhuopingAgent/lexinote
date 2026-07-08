@@ -4,6 +4,7 @@ import {
   getCollectionService,
 } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
+import { parsePositiveIntegerParam, readJsonBody } from "@/app/api/request";
 import type {
   CollectionDetailResponse,
   CollectionResponse,
@@ -15,16 +16,6 @@ export const runtime = "nodejs";
 
 const collectionService = getCollectionService();
 
-function parseCollectionId(rawCollectionId: string) {
-  const collectionId = Number(rawCollectionId);
-
-  if (!Number.isInteger(collectionId) || collectionId <= 0) {
-    throw new ValidationError("collectionId must be a positive integer");
-  }
-
-  return collectionId;
-}
-
 export async function GET(
   _request: Request,
   context: { params: Promise<{ collectionId: string }> }
@@ -33,7 +24,7 @@ export async function GET(
 
   try {
     const { collectionId: rawCollectionId } = await context.params;
-    const collectionId = parseCollectionId(rawCollectionId);
+    const collectionId = parsePositiveIntegerParam(rawCollectionId, "collectionId");
     const collection = await collectionService.getCollectionDetail(collectionId);
     const response: CollectionDetailResponse = { collection };
 
@@ -50,13 +41,7 @@ export async function PATCH(
   ensureAutoFilterJobRunnerStarted();
 
   try {
-    let body: Partial<UpdateCollectionRequest>;
-
-    try {
-      body = (await request.json()) as Partial<UpdateCollectionRequest>;
-    } catch {
-      throw new ValidationError("request body must be valid JSON");
-    }
+    const body = await readJsonBody<UpdateCollectionRequest>(request);
 
     if (body.name !== undefined && typeof body.name !== "string") {
       throw new ValidationError("name must be a string");
@@ -98,7 +83,7 @@ export async function PATCH(
     }
 
     const { collectionId: rawCollectionId } = await context.params;
-    const collectionId = parseCollectionId(rawCollectionId);
+    const collectionId = parsePositiveIntegerParam(rawCollectionId, "collectionId");
     const collection = await collectionService.updateCollection(collectionId, body);
     const response: CollectionResponse = { collection };
 
@@ -116,7 +101,7 @@ export async function DELETE(
 
   try {
     const { collectionId: rawCollectionId } = await context.params;
-    const collectionId = parseCollectionId(rawCollectionId);
+    const collectionId = parsePositiveIntegerParam(rawCollectionId, "collectionId");
     await collectionService.deleteCollection(collectionId);
 
     return new NextResponse(null, { status: 204 });

@@ -2,17 +2,15 @@
 
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
+import {
+  getErrorMessage,
+  readResponseErrorMessage,
+} from "@/app/lib/api-client";
 import type { CollectionWordItem } from "@/shared/types/api";
 
 type CollectionWordGridProps = {
   collectionId: number;
   words: CollectionWordItem[];
-};
-
-type ApiError = {
-  error?: {
-    message?: string;
-  };
 };
 
 function getSourceLabel(source: CollectionWordItem["source"]) {
@@ -71,8 +69,7 @@ export function CollectionWordGrid({
       );
 
       if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
+        throw new Error(await readResponseErrorMessage(response, "请求失败"));
       }
 
       setCurrentWords((currentItems) =>
@@ -81,9 +78,7 @@ export function CollectionWordGrid({
       setNotice("已从当前 collection 中移除该词条。");
       router.refresh();
     } catch (removeError) {
-      setError(
-        removeError instanceof Error ? removeError.message : "移除失败，请稍后重试。"
-      );
+      setError(getErrorMessage(removeError, "移除失败，请稍后重试。"));
     } finally {
       setBusyWordId(null);
     }

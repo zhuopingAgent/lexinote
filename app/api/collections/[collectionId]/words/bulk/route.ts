@@ -4,6 +4,7 @@ import {
   getCollectionWordService,
 } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
+import { parsePositiveIntegerParam, readJsonBody } from "@/app/api/request";
 import type {
   AddCollectionWordsRequest,
   AddCollectionWordsResponse,
@@ -14,16 +15,6 @@ export const runtime = "nodejs";
 
 const collectionWordService = getCollectionWordService();
 
-function parseCollectionId(rawCollectionId: string) {
-  const collectionId = Number(rawCollectionId);
-
-  if (!Number.isInteger(collectionId) || collectionId <= 0) {
-    throw new ValidationError("collectionId must be a positive integer");
-  }
-
-  return collectionId;
-}
-
 export async function POST(
   request: Request,
   context: { params: Promise<{ collectionId: string }> }
@@ -31,20 +22,14 @@ export async function POST(
   ensureAutoFilterJobRunnerStarted();
 
   try {
-    let body: Partial<AddCollectionWordsRequest>;
-
-    try {
-      body = (await request.json()) as Partial<AddCollectionWordsRequest>;
-    } catch {
-      throw new ValidationError("request body must be valid JSON");
-    }
+    const body = await readJsonBody<AddCollectionWordsRequest>(request);
 
     if (!Array.isArray(body.wordIds)) {
       throw new ValidationError("wordIds must be an array");
     }
 
     const { collectionId: rawCollectionId } = await context.params;
-    const collectionId = parseCollectionId(rawCollectionId);
+    const collectionId = parsePositiveIntegerParam(rawCollectionId, "collectionId");
     const result = await collectionWordService.addWordsByIds(
       collectionId,
       body.wordIds

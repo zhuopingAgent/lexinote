@@ -4,6 +4,7 @@ import {
   getWordLookupService,
 } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
+import { readJsonBody } from "@/app/api/request";
 import type { WordLookupRequest } from "@/shared/types/api";
 import { ValidationError } from "@/shared/utils/errors";
 
@@ -15,13 +16,7 @@ export async function POST(request: Request) {
   ensureAutoFilterJobRunnerStarted();
 
   try {
-    let body: Partial<WordLookupRequest>;
-
-    try {
-      body = (await request.json()) as Partial<WordLookupRequest>;
-    } catch {
-      throw new ValidationError("request body must be valid JSON");
-    }
+    const body = await readJsonBody<WordLookupRequest>(request);
 
     if (typeof body.word !== "string") {
       throw new ValidationError("word must be a string");

@@ -4,6 +4,7 @@ import {
   getCollectionService,
 } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
+import { readJsonBody } from "@/app/api/request";
 import type {
   CollectionListResponse,
   CollectionResponse,
@@ -32,13 +33,7 @@ export async function POST(request: Request) {
   ensureAutoFilterJobRunnerStarted();
 
   try {
-    let body: Partial<CreateCollectionRequest>;
-
-    try {
-      body = (await request.json()) as Partial<CreateCollectionRequest>;
-    } catch {
-      throw new ValidationError("request body must be valid JSON");
-    }
+    const body = await readJsonBody<CreateCollectionRequest>(request);
 
     if (typeof body.name !== "string") {
       throw new ValidationError("name must be a string");

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatShortDateTime } from "@/app/lib/date";
 import type { SearchHistoryItem } from "@/app/lib/search-history";
 
 type HistoryListProps = {
@@ -80,7 +81,7 @@ export function HistoryList({
                     </div>
 
                     <p className="shrink-0 text-xs leading-5 text-white/28">
-                      {formatHistoryTimestamp(item.searchedAt)}
+                      {formatShortDateTime(item.searchedAt)}
                     </p>
                   </div>
                 </button>
@@ -98,19 +99,4 @@ export function HistoryList({
       </div>
     </div>
   );
-}
-
-function formatHistoryTimestamp(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
 }

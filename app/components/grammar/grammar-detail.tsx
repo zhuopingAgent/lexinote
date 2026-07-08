@@ -8,6 +8,7 @@ import {
   SpokenOrWrittenBadge,
 } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
+import { getErrorMessage } from "@/app/lib/api-client";
 
 type GrammarDetailProps = {
   grammarPoint: GrammarPointDetail;
@@ -35,7 +36,7 @@ export function GrammarDetail({
       await onFavoriteChange(nextFavorite);
       setIsFavorite(nextFavorite);
     } catch (error) {
-      setFavoriteError(error instanceof Error ? error.message : "收藏状态保存失败。");
+      setFavoriteError(getErrorMessage(error, "收藏状态保存失败。"));
     } finally {
       setIsSavingFavorite(false);
     }

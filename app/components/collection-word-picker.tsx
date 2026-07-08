@@ -2,46 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  getErrorMessage,
+  isAbortError,
+  readResponseErrorMessage,
+} from "@/app/lib/api-client";
+import { summarizeMeaning } from "@/app/lib/text";
+import { mergeUniqueWordEntriesById } from "@/app/lib/word-list";
 import type {
   AddCollectionWordsResponse,
   DictionaryOverviewItem,
   DictionaryOverviewResponse,
 } from "@/shared/types/api";
-
-type ApiError = {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-};
+import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
 
 type CollectionWordPickerProps = {
   collectionId: number;
   existingWordIds: number[];
 };
-
-const PAGE_SIZE = 24;
-
-function summarizeMeaning(meaning: string) {
-  return meaning.split(/[；;。]/)[0]?.trim() || meaning.trim();
-}
-
-function mergeUniqueEntries(
-  currentEntries: DictionaryOverviewItem[],
-  nextEntries: DictionaryOverviewItem[]
-) {
-  const mergedEntries = [...currentEntries];
-  const existingWordIds = new Set(currentEntries.map((entry) => entry.wordId));
-
-  for (const entry of nextEntries) {
-    if (!existingWordIds.has(entry.wordId)) {
-      existingWordIds.add(entry.wordId);
-      mergedEntries.push(entry);
-    }
-  }
-
-  return mergedEntries;
-}
 
 export function CollectionWordPicker({
   collectionId,
@@ -124,7 +102,7 @@ export function CollectionWordPicker({
       if (options.query) {
         searchParams.set("query", options.query);
       }
-      searchParams.set("limit", String(PAGE_SIZE));
+      searchParams.set("limit", String(WORD_PAGE_SIZE));
       if (options.cursor) {
         searchParams.set("cursor", options.cursor);
       }
@@ -136,8 +114,7 @@ export function CollectionWordPicker({
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
+        throw new Error(await readResponseErrorMessage(response, "请求失败"));
       }
 
       const payload = (await response.json()) as DictionaryOverviewResponse;
@@ -147,12 +124,12 @@ export function CollectionWordPicker({
       setEntries((currentEntries) =>
         options.reset
           ? payload.words
-          : mergeUniqueEntries(currentEntries, payload.words)
+          : mergeUniqueWordEntriesById(currentEntries, payload.words)
       );
       setNextCursor(payload.nextCursor);
       setHasLoaded(true);
     } catch (loadError) {
-      if (loadError instanceof DOMException && loadError.name === "AbortError") {
+      if (isAbortError(loadError)) {
         return;
       }
 
@@ -160,7 +137,7 @@ export function CollectionWordPicker({
         return;
       }
 
-      setError(loadError instanceof Error ? loadError.message : "发生了意外错误");
+      setError(getErrorMessage(loadError, "发生了意外错误"));
       if (options.reset) {
         setEntries([]);
         setNextCursor(null);
@@ -206,8 +183,7 @@ export function CollectionWordPicker({
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as ApiError;
-        throw new Error(payload.error?.message || "请求失败");
+        throw new Error(await readResponseErrorMessage(response, "请求失败"));
       }
 
       const payload = (await response.json()) as AddCollectionWordsResponse;
@@ -222,7 +198,7 @@ export function CollectionWordPicker({
       );
       router.refresh();
     } catch (addError) {
-      const message = addError instanceof Error ? addError.message : "发生了意外错误";
+      const message = getErrorMessage(addError, "发生了意外错误");
       setError(message);
     } finally {
       setIsSubmitting(false);
