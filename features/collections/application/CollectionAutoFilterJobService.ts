@@ -4,15 +4,14 @@ import {
 } from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { AiQuotaExhaustedError } from "@/shared/utils/errors";
+import { AiQuotaExhaustedError, getErrorMessage } from "@/shared/utils/errors";
 
 const MAX_ERROR_LENGTH = 280;
 
 let processingPromise: Promise<void> | null = null;
 
 function normalizeErrorMessage(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "AI 自动筛选执行失败，请稍后重试。";
+  const message = getErrorMessage(error, "AI 自动筛选执行失败，请稍后重试。");
 
   return message.length > MAX_ERROR_LENGTH
     ? `${message.slice(0, MAX_ERROR_LENGTH - 1)}…`

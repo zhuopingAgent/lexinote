@@ -2,6 +2,12 @@
 
 import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
 import { useRouter } from "next/navigation";
+import {
+  isAutoFilterSyncActive,
+  isImportantAutoFilterStatus,
+  shouldSuppressAutoFilterResyncHint,
+} from "@/app/lib/collection-status";
+import { formatMediumDateTimeOrOriginal } from "@/app/lib/date";
 import type { CollectionSummary } from "@/shared/types/api";
 
 type CollectionPanelProps = {
@@ -31,21 +37,6 @@ function formatWordCount(count: number) {
   return `${count} 个单词`;
 }
 
-function formatLastRunAt(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return new Intl.DateTimeFormat("zh-CN", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-}
-
 function needsAutoFilterResync(collection: CollectionSummary) {
   if (!collection.autoFilterEnabled || !collection.autoFilterCriteria.trim()) {
     return false;
@@ -64,9 +55,7 @@ function getAutoFilterStatusLabel(collection: CollectionSummary) {
   }
 
   if (
-    collection.autoFilterSyncStatus !== "pending" &&
-    collection.autoFilterSyncStatus !== "running" &&
-    collection.autoFilterSyncStatus !== "failed" &&
+    !shouldSuppressAutoFilterResyncHint(collection.autoFilterSyncStatus) &&
     needsAutoFilterResync(collection)
   ) {
     return {
@@ -95,12 +84,10 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
     return null;
   }
 
-  const lastRunAt = formatLastRunAt(collection.autoFilterLastRunAt);
+  const lastRunAt = formatMediumDateTimeOrOriginal(collection.autoFilterLastRunAt);
 
   if (
-    collection.autoFilterSyncStatus !== "pending" &&
-    collection.autoFilterSyncStatus !== "running" &&
-    collection.autoFilterSyncStatus !== "failed" &&
+    !shouldSuppressAutoFilterResyncHint(collection.autoFilterSyncStatus) &&
     needsAutoFilterResync(collection)
   ) {
     return collection.autoFilterLastSyncedRuleVersion == null
@@ -126,9 +113,7 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
 
 function isImportantAutoFilterHint(collection: CollectionSummary) {
   return (
-    collection.autoFilterSyncStatus === "pending" ||
-    collection.autoFilterSyncStatus === "running" ||
-    collection.autoFilterSyncStatus === "failed" ||
+    isImportantAutoFilterStatus(collection.autoFilterSyncStatus) ||
     needsAutoFilterResync(collection)
   );
 }
@@ -266,9 +251,9 @@ export function CollectionPanel({
             const shouldShowAutoFilterHint = isImportantAutoFilterHint(collection);
             const showsResyncButton =
               collection.autoFilterEnabled && collection.autoFilterCriteria.trim().length > 0;
-            const isAutoFilterBusy =
-              collection.autoFilterSyncStatus === "pending" ||
-              collection.autoFilterSyncStatus === "running";
+            const isAutoFilterBusy = isAutoFilterSyncActive(
+              collection.autoFilterSyncStatus
+            );
 
             return (
               <div

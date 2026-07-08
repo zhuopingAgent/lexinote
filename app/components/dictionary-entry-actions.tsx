@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getErrorMessage } from "@/app/lib/api-client";
 import type { CollectionSummary, DictionaryEntry } from "@/shared/types/api";
 
 type DictionaryEntryActionsProps = {
@@ -55,11 +56,7 @@ export function DictionaryEntryActions({
       try {
         await onEnsureCollectionsLoaded();
       } catch (loadError) {
-        setNotice(
-          loadError instanceof Error
-            ? loadError.message
-            : "加载 collection 失败，请稍后再试。"
-        );
+        setNotice(getErrorMessage(loadError, "加载 collection 失败，请稍后再试。"));
         return;
       } finally {
         setIsPreparingCollections(false);
@@ -86,9 +83,7 @@ export function DictionaryEntryActions({
       );
       setIsPickerOpen(false);
     } catch (actionError) {
-      setNotice(
-        actionError instanceof Error ? actionError.message : "添加失败，请稍后再试。"
-      );
+      setNotice(getErrorMessage(actionError, "添加失败，请稍后再试。"));
     } finally {
       setBusyCollectionId(null);
     }

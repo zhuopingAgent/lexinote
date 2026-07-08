@@ -9,25 +9,8 @@ import {
 } from "@/app/components/grammar/display-labels";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
-import { readJson } from "@/app/lib/api-client";
-
-function formatDate(value: string | null) {
-  if (!value) {
-    return "待安排";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "待安排";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
+import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { formatShortDateTime } from "@/app/lib/date";
 
 export function ReviewClient() {
   const [items, setItems] = useState<GrammarReviewItem[]>([]);
@@ -48,9 +31,7 @@ export function ReviewClient() {
         setItems(result.items);
       } catch (loadError) {
         if (!controller.signal.aborted) {
-          setError(
-            loadError instanceof Error ? loadError.message : "复习记录加载失败，请稍后再试。"
-          );
+          setError(getErrorMessage(loadError, "复习记录加载失败，请稍后再试。"));
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -142,7 +123,7 @@ export function ReviewClient() {
                   </p>
                 </div>
                 <div className="shrink-0 text-sm leading-6 text-white/38">
-                  下次：{formatDate(item.nextReviewAt)}
+                  下次：{formatShortDateTime(item.nextReviewAt, "待安排")}
                 </div>
               </div>
 

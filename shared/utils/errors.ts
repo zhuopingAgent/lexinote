@@ -21,6 +21,10 @@ export const AI_QUOTA_EXHAUSTED_CODE = "AI_QUOTA_EXHAUSTED";
 export const AI_QUOTA_EXHAUSTED_MESSAGE =
   "AI API 账户余额或额度已用完，请充值或更新账单后再试。";
 
+export function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export class AiQuotaExhaustedError extends AppError {
   constructor(message = AI_QUOTA_EXHAUSTED_MESSAGE) {
     super(message, 402, AI_QUOTA_EXHAUSTED_CODE, true);

@@ -10,7 +10,7 @@ import type {
 } from "@/shared/types/api";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
 import { GrammarSearch } from "@/app/components/grammar/grammar-search";
-import { readJson } from "@/app/lib/api-client";
+import { getErrorMessage, readJson } from "@/app/lib/api-client";
 
 export function GrammarLearningShell() {
   const [query, setQuery] = useState("");
@@ -41,9 +41,7 @@ export function GrammarLearningShell() {
         setCategories(taxonomy.categories);
       } catch (error) {
         if (!controller.signal.aborted) {
-          setTaxonomyError(
-            error instanceof Error ? error.message : "分类加载失败，请稍后再试。"
-          );
+          setTaxonomyError(getErrorMessage(error, "分类加载失败，请稍后再试。"));
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -90,9 +88,7 @@ export function GrammarLearningShell() {
           }
         } catch (error) {
           if (!controller.signal.aborted && searchGenerationRef.current === generation) {
-            setSearchError(
-              error instanceof Error ? error.message : "搜索失败，请稍后再试。"
-            );
+            setSearchError(getErrorMessage(error, "搜索失败，请稍后再试。"));
           }
         } finally {
           if (!controller.signal.aborted && searchGenerationRef.current === generation) {

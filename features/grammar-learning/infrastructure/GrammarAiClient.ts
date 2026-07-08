@@ -8,24 +8,16 @@ import type {
   PracticeReferenceAnswer,
 } from "@/shared/types/api";
 import {
+  extractAiGatewayResponseText,
+  type AiGatewayResponse,
   buildAiGatewayTextRequestConfig,
   resolveAiGatewayRequest,
   resolveAiModel,
 } from "@/shared/ai/gateway";
-import { throwIfOpenAiQuotaExhausted } from "@/shared/utils/ai-api-errors";
-import { AiQuotaExhaustedError } from "@/shared/utils/errors";
-
-type OpenAiTextItem = {
-  type?: string;
-  text?: string;
-};
-
-type OpenAiResponse = {
-  output_text?: string;
-  output?: Array<{
-    content?: OpenAiTextItem[];
-  }>;
-};
+import {
+  rethrowAiQuotaError,
+  throwIfOpenAiQuotaExhausted,
+} from "@/shared/utils/ai-api-errors";
 
 type RawPracticeOutput = {
   task_zh?: unknown;
@@ -62,22 +54,6 @@ export type EvaluatedSentence = AIFeedbackResult & {
 
 const PRACTICE_MAX_OUTPUT_TOKENS = 620;
 const FEEDBACK_MAX_OUTPUT_TOKENS = 760;
-
-function extractResponseText(data: OpenAiResponse): string {
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text.trim();
-  }
-
-  return (
-    data.output
-      ?.flatMap((message) => message.content ?? [])
-      .filter((item) => item.type === "output_text" && typeof item.text === "string")
-      .map((item) => item.text?.trim() ?? "")
-      .filter(Boolean)
-      .join("\n")
-      .trim() ?? ""
-  );
-}
 
 function extractJsonObject(text: string): unknown | null {
   const match = text.match(/\{[\s\S]*\}/);
@@ -304,12 +280,6 @@ const PRACTICE_LEVEL_LABELS: Record<PracticeLevel, string> = {
   4: "语体转换",
   5: "易混语法对比",
 };
-
-function rethrowAiQuotaError(error: unknown) {
-  if (error instanceof AiQuotaExhaustedError) {
-    throw error;
-  }
-}
 
 function resolvePracticeLevelLabel(level: PracticeLevel) {
   return `${level} ${PRACTICE_LEVEL_LABELS[level]}`;
@@ -571,8 +541,10 @@ export class GrammarAiClient {
         return fallback;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
-      const parsed = parsePracticeOutput(extractJsonObject(extractResponseText(data)));
+      const data = (await response.json()) as AiGatewayResponse;
+      const parsed = parsePracticeOutput(
+        extractJsonObject(extractAiGatewayResponseText(data))
+      );
 
       return parsed
         ? {
@@ -631,8 +603,10 @@ export class GrammarAiClient {
         return fallback;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
-      const parsed = parseFeedbackOutput(extractJsonObject(extractResponseText(data)));
+      const data = (await response.json()) as AiGatewayResponse;
+      const parsed = parseFeedbackOutput(
+        extractJsonObject(extractAiGatewayResponseText(data))
+      );
 
       return parsed
         ? {

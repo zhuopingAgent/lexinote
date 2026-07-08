@@ -19,8 +19,11 @@ import { WordCardSkeleton } from "@/app/components/word-card-skeleton";
 import { useCollections } from "@/app/hooks/use-collections";
 import { useLookupFlow } from "@/app/hooks/use-lookup-flow";
 import { useOverviewWords } from "@/app/hooks/use-overview-words";
-import type { AppView } from "@/app/lib/app-view";
-import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
+import { parseAppView, type AppView } from "@/app/lib/app-view";
+import {
+  buildLookupStatusBadges,
+  getLookupEntryCollectionState,
+} from "@/app/lib/lookup-view";
 
 const SIDEBAR_ITEMS = [
   { label: "辞書", icon: BookIcon, view: "dictionary" as AppView },
@@ -41,45 +44,7 @@ const TOP_NAV_ITEMS = [
 
 function getRequestedView() {
   const requestedView = new URLSearchParams(window.location.search).get("view");
-  return requestedView === "dictionary" ||
-    requestedView === "overview" ||
-    requestedView === "history" ||
-    requestedView === "collections"
-    ? requestedView
-    : "dictionary";
-}
-
-function buildLookupStatusBadges(result: WordLookupResponse | null) {
-  if (!result) {
-    return [];
-  }
-
-  const metadata = result.metadata;
-  const badges = [result.source === "dictionary" ? "本地词库" : "AI 生成"];
-
-  if (metadata?.resolutionType === "local_base_form") {
-    badges.push("本地原形还原");
-  } else if (metadata?.resolutionType === "ai_base_form") {
-    badges.push("AI 原形还原");
-  } else if (metadata?.resolutionType === "ai_generated") {
-    badges.push("AI 补全词条");
-  }
-
-  if (metadata?.isContextual) {
-    badges.push("按语境处理");
-  }
-
-  if (metadata?.persistenceStatus === "saved") {
-    badges.push("已保存");
-  } else if (metadata?.persistenceStatus === "not_saved") {
-    badges.push("未保存");
-  } else if (metadata?.persistenceStatus === "not_persistable") {
-    badges.push("暂不可保存");
-  }
-
-  badges.push(metadata?.exampleStatus === "missing" ? "例句待生成" : "例句已就绪");
-
-  return badges;
+  return parseAppView(requestedView);
 }
 
 export default function Home() {
@@ -215,40 +180,6 @@ export default function Home() {
                 ? `已完成 ${result.word} 的查询，并按原形 ${result.lookupWord} 检索。`
                 : `已完成 ${result.word} 的查询。`
             : "输入一个日语词即可开始查询。";
-
-  function getLookupEntryCollectionState(entry: DictionaryEntry) {
-    if (!result) {
-      return {
-        canAddToCollection: false,
-        addDisabledReason: "当前没有可添加的查询结果。",
-      };
-    }
-
-    const isPrimaryEntry =
-      entry.word === result.entry.word &&
-      entry.pronunciation === result.entry.pronunciation;
-    const persistenceStatus = result.metadata?.persistenceStatus;
-
-    if (isPrimaryEntry && persistenceStatus === "not_saved") {
-      return {
-        canAddToCollection: false,
-        addDisabledReason: "当前语境结果尚未保存，暂不能加入 collection。",
-      };
-    }
-
-    if (isPrimaryEntry && persistenceStatus === "not_persistable") {
-      return {
-        canAddToCollection: false,
-        addDisabledReason: "当前结果还不是可保存词条，暂不能加入 collection。",
-      };
-    }
-
-    return {
-      canAddToCollection:
-        result.source === "dictionary" || persistenceStatus === "saved",
-      addDisabledReason: "请先保存或生成完整词条后再加入 collection。",
-    };
-  }
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
@@ -497,7 +428,7 @@ export default function Home() {
                             {wordCardsData.map((wordCard, index) => {
                               const entry = resultEntries[index];
                               const collectionState = entry
-                                ? getLookupEntryCollectionState(entry)
+                                ? getLookupEntryCollectionState(entry, result)
                                 : {
                                     canAddToCollection: false,
                                     addDisabledReason: "当前词条信息不完整。",
@@ -554,11 +485,11 @@ export default function Home() {
                                 entry={resultEntries[0]}
                                 isPrimary
                                 canAddToCollection={
-                                  getLookupEntryCollectionState(resultEntries[0])
+                                  getLookupEntryCollectionState(resultEntries[0], result)
                                     .canAddToCollection
                                 }
                                 addDisabledReason={
-                                  getLookupEntryCollectionState(resultEntries[0])
+                                  getLookupEntryCollectionState(resultEntries[0], result)
                                     .addDisabledReason
                                 }
                                 collections={collections}

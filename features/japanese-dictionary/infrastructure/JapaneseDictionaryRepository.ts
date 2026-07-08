@@ -9,6 +9,10 @@ import {
   SELECT_DICTIONARY_ENTRY_BY_WORD_SQL,
   UPSERT_DICTIONARY_ENTRY_SQL,
 } from "@/shared/db/sql/dictionary.sql";
+import {
+  MAX_WORD_PAGE_SIZE,
+  WORD_PAGE_SIZE,
+} from "@/shared/constants/pagination";
 import { query } from "@/shared/db/query";
 import type {
   DictionaryEntry,
@@ -240,7 +244,10 @@ export class JapaneseDictionaryRepository {
     limit?: number;
   }): Promise<{ words: DictionaryOverviewItem[]; nextCursor: string | null }> {
     const normalizedQuery = options?.query?.trim() ?? "";
-    const normalizedLimit = Math.min(Math.max(options?.limit ?? 24, 1), 100);
+    const normalizedLimit = Math.min(
+      Math.max(options?.limit ?? WORD_PAGE_SIZE, 1),
+      MAX_WORD_PAGE_SIZE
+    );
     const decodedCursor = decodeCursor(options?.cursor);
     const values: unknown[] = [];
     const conditions: string[] = [];

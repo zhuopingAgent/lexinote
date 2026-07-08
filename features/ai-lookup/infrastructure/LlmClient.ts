@@ -12,23 +12,15 @@ import type {
   DictionaryExample,
 } from "@/shared/types/api";
 import {
+  extractAiGatewayResponseText,
+  type AiGatewayResponse,
   buildAiGatewayTextRequestConfig,
   resolveAiGatewayRequest,
 } from "@/shared/ai/gateway";
-import { throwIfOpenAiQuotaExhausted } from "@/shared/utils/ai-api-errors";
-import { AiQuotaExhaustedError } from "@/shared/utils/errors";
-
-type OpenAiTextItem = {
-  type?: string;
-  text?: string;
-};
-
-type OpenAiResponse = {
-  output_text?: string;
-  output?: Array<{
-    content?: OpenAiTextItem[];
-  }>;
-};
+import {
+  rethrowAiQuotaError,
+  throwIfOpenAiQuotaExhausted,
+} from "@/shared/utils/ai-api-errors";
 
 type RawLookupOutput = {
   pronunciation?: unknown;
@@ -303,22 +295,6 @@ function parseReconciledLookupOutput(
   }
 }
 
-function extractResponseText(data: OpenAiResponse): string {
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text.trim();
-  }
-
-  return (
-    data.output
-      ?.flatMap((message) => message.content ?? [])
-      .filter((item) => item.type === "output_text" && typeof item.text === "string")
-      .map((item) => item.text?.trim() ?? "")
-      .filter(Boolean)
-      .join("\n")
-      .trim() ?? ""
-  );
-}
-
 function parseLookupOutput(
   word: string,
   text: string,
@@ -352,12 +328,6 @@ function parseLookupOutput(
     };
   } catch {
     return null;
-  }
-}
-
-function rethrowAiQuotaError(error: unknown) {
-  if (error instanceof AiQuotaExhaustedError) {
-    throw error;
   }
 }
 
@@ -397,8 +367,8 @@ export class LlmClient {
         return null;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
-      return parseLookupWord(extractResponseText(data));
+      const data = (await response.json()) as AiGatewayResponse;
+      return parseLookupWord(extractAiGatewayResponseText(data));
     } catch (error) {
       rethrowAiQuotaError(error);
       return null;
@@ -443,8 +413,11 @@ export class LlmClient {
         return fallback;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
-      return parseLookupOutput(word, extractResponseText(data), baseEntry) ?? fallback;
+      const data = (await response.json()) as AiGatewayResponse;
+      return (
+        parseLookupOutput(word, extractAiGatewayResponseText(data), baseEntry) ??
+        fallback
+      );
     } catch (error) {
       rethrowAiQuotaError(error);
       return fallback;
@@ -497,10 +470,10 @@ export class LlmClient {
         return null;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
+      const data = (await response.json()) as AiGatewayResponse;
       return parseReconciledLookupOutput(
         word,
-        extractResponseText(data),
+        extractAiGatewayResponseText(data),
         genericEntry,
         contextualEntry
       );
@@ -550,8 +523,8 @@ export class LlmClient {
         return fallbackMatches;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
-      const matches = parseCollectionMatchOutput(extractResponseText(data));
+      const data = (await response.json()) as AiGatewayResponse;
+      const matches = parseCollectionMatchOutput(extractAiGatewayResponseText(data));
       return Array.from(new Set([...matches, ...fallbackMatches]));
     } catch (error) {
       rethrowAiQuotaError(error);
@@ -599,8 +572,8 @@ export class LlmClient {
         return fallbackMatches;
       }
 
-      const data = (await response.json()) as OpenAiResponse;
-      const matches = parseWordMatchOutput(extractResponseText(data));
+      const data = (await response.json()) as AiGatewayResponse;
+      const matches = parseWordMatchOutput(extractAiGatewayResponseText(data));
       return Array.from(new Set([...matches, ...fallbackMatches]));
     } catch (error) {
       rethrowAiQuotaError(error);

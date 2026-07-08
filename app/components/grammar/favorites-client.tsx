@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { GrammarFavoritesResponse, GrammarPointSummary } from "@/shared/types/api";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
-import { readJson } from "@/app/lib/api-client";
+import { getErrorMessage, readJson } from "@/app/lib/api-client";
 
 export function FavoritesClient() {
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
@@ -25,9 +25,7 @@ export function FavoritesClient() {
         setItems(result.items);
       } catch (loadError) {
         if (!controller.signal.aborted) {
-          setError(
-            loadError instanceof Error ? loadError.message : "收藏加载失败，请稍后再试。"
-          );
+          setError(getErrorMessage(loadError, "收藏加载失败，请稍后再试。"));
         }
       } finally {
         if (!controller.signal.aborted) {

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getGrammarLearningService } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
+import { readJsonBody } from "@/app/api/request";
 import type { FavoriteGrammarRequest } from "@/shared/types/api";
-import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";
 
@@ -23,13 +23,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    let body: Partial<FavoriteGrammarRequest>;
-
-    try {
-      body = (await request.json()) as Partial<FavoriteGrammarRequest>;
-    } catch {
-      throw new ValidationError("request body must be valid JSON");
-    }
+    const body = await readJsonBody<FavoriteGrammarRequest>(request);
 
     await grammarLearningService.addFavorite(body);
     return NextResponse.json({ ok: true });
