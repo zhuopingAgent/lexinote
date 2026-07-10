@@ -176,7 +176,7 @@ describe("grammar API routes", () => {
     const { GET } = await import("@/app/api/grammar/route");
     const response = await GET(
       new Request(
-        "http://localhost/api/grammar?query=%E3%81%86%E3%81%A1%E3%81%AB&group=expressive_functions&category=time_and_sequence&limit=12"
+        "http://localhost/api/grammar?query=%E3%81%86%E3%81%A1%E3%81%AB&group=expressive_functions&category=time_and_sequence&limit=12&offset=36"
       )
     );
 
@@ -196,6 +196,7 @@ describe("grammar API routes", () => {
       dimensionSlug: undefined,
       stageSlug: undefined,
       limit: "12",
+      offset: "36",
       userId: undefined,
     });
   });

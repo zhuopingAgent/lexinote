@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { GrammarPointSummary } from "@/shared/types/grammar";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
-import { TagBadge } from "@/app/components/grammar/tag-badge";
 
 type GrammarCardProps = {
   grammarPoint: GrammarPointSummary;
@@ -11,18 +10,18 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
   const titleId = `grammar-card-title-${grammarPoint.id}`;
 
   return (
-    <article className="flex min-h-[238px] flex-col rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)]">
+    <article className="flex min-h-[220px] flex-col rounded-lg border border-border bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link
             id={titleId}
             href={`/grammar/${grammarPoint.id}`}
-            className="block min-h-10 min-w-10 max-w-full rounded-[8px] py-1 text-[26px] leading-tight font-medium text-white/82 transition hover:text-white"
+            className="block min-h-10 min-w-10 max-w-full rounded-md py-1 text-2xl leading-tight font-semibold text-foreground transition hover:text-accent-strong"
           >
             {grammarPoint.grammarPoint}
           </Link>
           {grammarPoint.reading ? (
-            <p className="mt-1 break-words text-sm leading-6 text-white/42">
+            <p className="mt-1 break-words text-sm leading-6 text-muted">
               {grammarPoint.reading}
             </p>
           ) : null}
@@ -30,66 +29,47 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
         <PracticalityBadge practicality={grammarPoint.practicality} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <p className="mt-3 text-xs leading-5 text-muted">
         {grammarPoint.primaryCategory ? (
           <>
-            <TagBadge tag={grammarPoint.primaryCategory.dimensionNameZh} />
-            <TagBadge tag={grammarPoint.primaryCategory.nameZh} />
+            {grammarPoint.primaryCategory.nameZh}
+            {grammarPoint.subCategory ? ` · ${grammarPoint.subCategory}` : ""}
           </>
         ) : grammarPoint.migrationTarget ? (
           <>
-            <TagBadge
-              tag={
-                grammarPoint.migrationTarget.kind === "comparison_set"
-                  ? "对比学习"
-                  : "错误诊断"
-              }
-            />
-            <TagBadge tag={grammarPoint.migrationTarget.nameZh} />
+            {grammarPoint.migrationTarget.kind === "comparison_set"
+              ? "对比学习"
+              : "错误诊断"}
+            {` · ${grammarPoint.migrationTarget.nameZh}`}
           </>
         ) : null}
-        {grammarPoint.subCategory ? <TagBadge tag={grammarPoint.subCategory} /> : null}
-      </div>
+      </p>
 
-      <p className="mt-4 line-clamp-3 text-sm leading-6 text-white/62">
+      <p className="mt-3 line-clamp-2 text-sm leading-6 text-foreground/75">
         {grammarPoint.coreMeaning}
       </p>
 
       {grammarPoint.structure ? (
-        <p className="mt-3 rounded-[12px] border border-white/8 bg-[#15151599] px-3 py-2 font-mono text-xs leading-5 text-white/54">
+        <p className="mt-3 border-l-2 border-accent/50 pl-3 font-mono text-xs leading-5 text-muted">
           {grammarPoint.structure}
         </p>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {grammarPoint.sceneTags.slice(0, 2).map((tag) => (
-          <TagBadge key={`scene-${tag.nameEn}`} tag={tag} tone="scene" />
-        ))}
-        {grammarPoint.registerTags.slice(0, 2).map((tag) => (
-          <TagBadge key={`register-${tag.nameEn}`} tag={tag} tone="register" />
-        ))}
-      </div>
-
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5">
-        <span className="text-xs text-white/35">
-          {grammarPoint.isFavorite ? "已收藏" : "语法卡片"}
-        </span>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/grammar/${grammarPoint.id}`}
-            aria-describedby={titleId}
-            className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 px-4 text-sm font-medium text-white/62 transition hover:border-white/22 hover:text-white/78"
-          >
-            查看详情
-          </Link>
-          <Link
-            href={`/practice?grammarId=${grammarPoint.id}`}
-            aria-describedby={titleId}
-            className="inline-flex h-10 items-center justify-center rounded-full bg-accent px-4 text-sm font-semibold text-black transition hover:bg-accent-strong"
-          >
-            开始练习
-          </Link>
-        </div>
+      <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+        <Link
+          href={`/grammar/${grammarPoint.id}`}
+          aria-describedby={titleId}
+          className="inline-flex h-9 items-center justify-center rounded-md px-2 text-sm font-medium text-muted transition hover:bg-surface-strong hover:text-foreground"
+        >
+          查看说明
+        </Link>
+        <Link
+          href={`/practice?grammarId=${grammarPoint.id}`}
+          aria-describedby={titleId}
+          className="inline-flex h-9 items-center justify-center rounded-md bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong"
+        >
+          开始练习
+        </Link>
       </div>
     </article>
   );

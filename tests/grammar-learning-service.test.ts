@@ -388,6 +388,7 @@ describe("GrammarLearningService", () => {
       groupSlug: "expressive_functions",
       stageSlug: "functional_patterns",
       limit: 12,
+      offset: 36,
     });
 
     expect(repository.searchGrammarPoints).toHaveBeenCalledWith({
@@ -396,6 +397,7 @@ describe("GrammarLearningService", () => {
       dimensionSlug: "expression_function",
       stageSlug: "functional_patterns",
       limit: 12,
+      offset: 36,
       userId: DEFAULT_USER_ID,
     });
   });

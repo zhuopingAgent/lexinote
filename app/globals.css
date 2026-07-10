@@ -271,7 +271,8 @@ body {
   accent-color: var(--line-color);
 }
 
-.theme-toggle__label--short {
+.theme-toggle__label--short,
+.theme-toggle__label--tiny {
   display: none;
 }
 
@@ -537,5 +538,29 @@ body {
 
   .theme-toggle__label--short {
     display: inline;
+  }
+}
+
+@media (max-width: 359px) {
+  .app-header__inner,
+  .app-header__nav {
+    gap: 0.35rem !important;
+  }
+
+  .app-brand {
+    min-width: 2.5rem !important;
+  }
+
+  .theme-toggle__option {
+    min-width: 2.25rem !important;
+    padding: 0 0.3rem !important;
+  }
+
+  .theme-toggle__label--short {
+    display: none !important;
+  }
+
+  .theme-toggle__label--tiny {
+    display: inline !important;
   }
 }

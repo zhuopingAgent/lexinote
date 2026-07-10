@@ -113,6 +113,21 @@ function normalizeLimit(value: unknown) {
   return Math.min(Math.max(parsed, 1), 80);
 }
 
+function normalizeOffset(value: unknown) {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number.parseInt(value, 10)
+        : 0;
+
+  if (!Number.isInteger(parsed)) {
+    return 0;
+  }
+
+  return Math.min(Math.max(parsed, 0), 10_000);
+}
+
 function hasMistake(feedback: PracticeSubmitResponse) {
   return (
     !feedback.isCorrect ||
@@ -175,6 +190,7 @@ export class GrammarLearningService {
     dimensionSlug?: string;
     stageSlug?: string;
     limit?: unknown;
+    offset?: unknown;
     userId?: string;
   }): Promise<GrammarSearchResponse> {
     const userId = normalizeUserId(options?.userId);
@@ -191,6 +207,7 @@ export class GrammarLearningService {
       dimensionSlug,
       stageSlug: options?.stageSlug,
       limit: normalizeLimit(options?.limit),
+      offset: normalizeOffset(options?.offset),
       userId,
     });
 

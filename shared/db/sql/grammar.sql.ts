@@ -404,7 +404,8 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
     ptd.display_order ASC NULLS LAST,
     ptn.display_order ASC NULLS LAST,
     gp.grammar_point ASC
-  LIMIT $3;
+  LIMIT $3
+  OFFSET $8;
 `;
 
 export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
