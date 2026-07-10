@@ -10,6 +10,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - For local development and database inspection, prefer CLI tools by default and use MCP only when it is specifically needed.
 - When the user asks a question in Chinese, first provide an English version of the question before answering in Chinese.
 - When pushing code to `origin`, automatically create a PR and merge it into `main` when repository permissions, branch protection, and checks allow it.
+- After completing a requested repo modification, default to committing the finished change, pushing a branch to `origin`, opening a PR to `main`, and merging it once repository permissions, branch protection, and checks allow it, unless the user asks not to commit, push, or merge.
 
 ## Start Here
 
