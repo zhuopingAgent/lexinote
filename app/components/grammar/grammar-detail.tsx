@@ -80,7 +80,12 @@ export function GrammarDetail({
               {grammarPoint.jlptLevel ? <TagBadge tag={grammarPoint.jlptLevel} /> : null}
               {grammarPoint.curriculum ? (
                 <TagBadge
-                  tag={`${grammarPoint.curriculum.stage.nameZh} · 第 ${grammarPoint.curriculum.recommendedOrder} 项`}
+                  tag={grammarPoint.curriculum.stage.nameZh}
+                />
+              ) : null}
+              {grammarPoint.curriculum?.module ? (
+                <TagBadge
+                  tag={`${grammarPoint.curriculum.module.nameZh} · 第 ${grammarPoint.curriculum.moduleOrder ?? grammarPoint.curriculum.recommendedOrder} 项`}
                 />
               ) : null}
             </div>

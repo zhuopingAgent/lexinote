@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       groupSlug: url.searchParams.get("group") ?? undefined,
       dimensionSlug: url.searchParams.get("dimension") ?? undefined,
       stageSlug: url.searchParams.get("stage") ?? undefined,
+      moduleSlug: url.searchParams.get("module") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
       offset: url.searchParams.get("offset") ?? undefined,
       userId: url.searchParams.get("userId") ?? undefined,

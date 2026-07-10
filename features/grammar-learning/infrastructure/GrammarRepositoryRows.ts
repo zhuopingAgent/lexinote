@@ -89,6 +89,18 @@ export type LearningStageRow = {
   status: string;
 };
 
+export type LearningModuleRow = {
+  id: string;
+  stage_id: string;
+  stage_slug: string;
+  stage_name_zh: string;
+  slug: string;
+  name_zh: string;
+  description: string;
+  display_order: number | string;
+  status: string;
+};
+
 export type TaxonomyNodeRow = {
   id: string;
   slug: string;

@@ -7,8 +7,11 @@ import type {
   GrammarSearchResponse,
   GrammarTaxonomyResponse,
   KnowledgeDimension,
+  LearningModule,
+  LearningStage,
   TaxonomyNode,
 } from "@/shared/types/grammar";
+import { CurriculumPathNavigation } from "@/app/components/grammar/curriculum-path-navigation";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
 import { GrammarPathNavigation } from "@/app/components/grammar/grammar-path-navigation";
 import { GrammarProgressOverview } from "@/app/components/grammar/grammar-progress-overview";
@@ -18,15 +21,22 @@ import { getErrorMessage, readJson } from "@/app/lib/api-client";
 const GRAMMAR_PAGE_SIZE = 36;
 const GRAMMAR_FETCH_LIMIT = GRAMMAR_PAGE_SIZE + 1;
 
+type GrammarBrowseMode = "knowledge" | "curriculum";
+
 export function GrammarLearningShell() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const [browseMode, setBrowseMode] = useState<GrammarBrowseMode>("knowledge");
   const [dimensionSlug, setDimensionSlug] = useState("expression_function");
   const [categorySlug, setCategorySlug] = useState("");
+  const [stageSlug, setStageSlug] = useState("foundations");
+  const [moduleSlug, setModuleSlug] = useState("");
   const [knowledgeDimensions, setKnowledgeDimensions] = useState<
     KnowledgeDimension[]
   >([]);
   const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([]);
+  const [learningStages, setLearningStages] = useState<LearningStage[]>([]);
+  const [learningModules, setLearningModules] = useState<LearningModule[]>([]);
   const [progress, setProgress] = useState<GrammarProgressResponse | null>(null);
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
@@ -54,6 +64,8 @@ export function GrammarLearningShell() {
         }).then((response) => readJson<GrammarTaxonomyResponse>(response));
         setKnowledgeDimensions(taxonomy.knowledgeDimensions ?? []);
         setTaxonomyNodes(taxonomy.taxonomyNodes ?? []);
+        setLearningStages(taxonomy.learningStages ?? []);
+        setLearningModules(taxonomy.learningModules ?? []);
       } catch (error) {
         if (!controller.signal.aborted) {
           setTaxonomyError(getErrorMessage(error, "分类加载失败，请稍后再试。"));
@@ -121,11 +133,17 @@ export function GrammarLearningShell() {
         if (submittedQuery.trim()) {
           params.set("query", submittedQuery.trim());
         }
-        if (categorySlug) {
+        if (browseMode === "knowledge" && categorySlug) {
           params.set("category", categorySlug);
         }
-        if (dimensionSlug) {
+        if (browseMode === "knowledge" && dimensionSlug) {
           params.set("dimension", dimensionSlug);
+        }
+        if (browseMode === "curriculum" && stageSlug) {
+          params.set("stage", stageSlug);
+        }
+        if (browseMode === "curriculum" && moduleSlug) {
+          params.set("module", moduleSlug);
         }
         params.set("limit", String(GRAMMAR_FETCH_LIMIT));
 
@@ -157,7 +175,7 @@ export function GrammarLearningShell() {
       controller.abort();
       loadMoreControllerRef.current?.abort();
     };
-  }, [submittedQuery, categorySlug, dimensionSlug]);
+  }, [submittedQuery, browseMode, categorySlug, dimensionSlug, moduleSlug, stageSlug]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -174,6 +192,8 @@ export function GrammarLearningShell() {
     setSubmittedQuery("");
     setDimensionSlug("expression_function");
     setCategorySlug("");
+    setStageSlug("foundations");
+    setModuleSlug("");
   }
 
   function clearQuery() {
@@ -184,6 +204,17 @@ export function GrammarLearningShell() {
   function handleDimensionChange(nextDimensionSlug: string) {
     setDimensionSlug(nextDimensionSlug);
     setCategorySlug("");
+  }
+
+  function handleStageChange(nextStageSlug: string) {
+    setStageSlug(nextStageSlug);
+    setModuleSlug("");
+  }
+
+  function handleBrowseModeChange(nextMode: GrammarBrowseMode) {
+    setBrowseMode(nextMode);
+    setCategorySlug("");
+    setModuleSlug("");
   }
 
   async function loadMore() {
@@ -202,11 +233,17 @@ export function GrammarLearningShell() {
     if (submittedQuery.trim()) {
       params.set("query", submittedQuery.trim());
     }
-    if (categorySlug) {
+    if (browseMode === "knowledge" && categorySlug) {
       params.set("category", categorySlug);
     }
-    if (dimensionSlug) {
+    if (browseMode === "knowledge" && dimensionSlug) {
       params.set("dimension", dimensionSlug);
+    }
+    if (browseMode === "curriculum" && stageSlug) {
+      params.set("stage", stageSlug);
+    }
+    if (browseMode === "curriculum" && moduleSlug) {
+      params.set("module", moduleSlug);
     }
     params.set("limit", String(GRAMMAR_FETCH_LIMIT));
     params.set("offset", String(items.length));
@@ -250,6 +287,19 @@ export function GrammarLearningShell() {
   const selectedCategory = taxonomyNodes.find(
     (category) => category.slug === categorySlug
   );
+  const selectedStage = learningStages.find(
+    (stage) => stage.slug === stageSlug
+  );
+  const stageModules = learningModules.filter(
+    (module) => module.stageSlug === stageSlug
+  );
+  const selectedModule = learningModules.find(
+    (module) => module.slug === moduleSlug
+  );
+  const selectedPath =
+    browseMode === "knowledge" ? selectedDimension : selectedStage;
+  const selectedSubcategory =
+    browseMode === "knowledge" ? selectedCategory : selectedModule;
 
   return (
     <div className="mx-auto w-full max-w-[1180px]">
@@ -258,6 +308,33 @@ export function GrammarLearningShell() {
         isLoading={isProgressLoading}
         error={progressError}
       />
+
+      <div className="mt-5 inline-flex h-10 items-center rounded-lg border border-border bg-surface p-1">
+        <button
+          type="button"
+          aria-pressed={browseMode === "knowledge"}
+          onClick={() => handleBrowseModeChange("knowledge")}
+          className={
+            browseMode === "knowledge"
+              ? "inline-flex h-8 items-center rounded-md bg-surface-strong px-3 text-sm font-semibold text-foreground"
+              : "inline-flex h-8 items-center rounded-md px-3 text-sm font-medium text-muted transition hover:text-foreground"
+          }
+        >
+          知识分类
+        </button>
+        <button
+          type="button"
+          aria-pressed={browseMode === "curriculum"}
+          onClick={() => handleBrowseModeChange("curriculum")}
+          className={
+            browseMode === "curriculum"
+              ? "inline-flex h-8 items-center rounded-md bg-surface-strong px-3 text-sm font-semibold text-foreground"
+              : "inline-flex h-8 items-center rounded-md px-3 text-sm font-medium text-muted transition hover:text-foreground"
+          }
+        >
+          课程顺序
+        </button>
+      </div>
 
       <div className="mt-6">
         <GrammarSearch
@@ -280,28 +357,40 @@ export function GrammarLearningShell() {
       ) : null}
 
       <div className="mt-7 grid min-w-0 gap-7 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
-        <GrammarPathNavigation
-          dimensions={knowledgeDimensions}
-          progressGroups={progress?.groupProgress ?? []}
-          selectedSlug={dimensionSlug}
-          isLoading={isTaxonomyLoading}
-          onSelect={handleDimensionChange}
-        />
+        {browseMode === "knowledge" ? (
+          <GrammarPathNavigation
+            dimensions={knowledgeDimensions}
+            progressGroups={progress?.groupProgress ?? []}
+            selectedSlug={dimensionSlug}
+            isLoading={isTaxonomyLoading}
+            onSelect={handleDimensionChange}
+          />
+        ) : (
+          <CurriculumPathNavigation
+            stages={learningStages}
+            modules={learningModules}
+            selectedSlug={stageSlug}
+            isLoading={isTaxonomyLoading}
+            onSelect={handleStageChange}
+          />
+        )}
 
         <section className="min-w-0" aria-labelledby="grammar-results-heading">
           <div className="border-b border-border pb-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-muted">当前路径</p>
+                <p className="text-xs font-medium text-muted">
+                  {browseMode === "knowledge" ? "当前知识维度" : "当前课程阶段"}
+                </p>
                 <h2
                   id="grammar-results-heading"
                   className="mt-1 text-xl leading-7 font-semibold text-foreground"
                 >
-                  {selectedDimension?.nameZh ?? "文法列表"}
+                  {selectedPath?.nameZh ?? "文法列表"}
                 </h2>
-                {selectedDimension ? (
+                {selectedPath ? (
                   <p className="mt-1 max-w-[680px] text-sm leading-6 text-muted">
-                    {selectedDimension.description}
+                    {selectedPath.description}
                   </p>
                 ) : null}
               </div>
@@ -318,45 +407,73 @@ export function GrammarLearningShell() {
               </div>
             ) : (
               <div
-                aria-label="语法分类"
+                aria-label={browseMode === "knowledge" ? "语法分类" : "课程模块"}
                 className="mt-4 flex gap-2 overflow-x-auto pb-2"
               >
                 <button
                   type="button"
-                  aria-pressed={!categorySlug}
-                  onClick={() => setCategorySlug("")}
+                  aria-pressed={
+                    browseMode === "knowledge" ? !categorySlug : !moduleSlug
+                  }
+                  onClick={() =>
+                    browseMode === "knowledge"
+                      ? setCategorySlug("")
+                      : setModuleSlug("")
+                  }
                   className={
-                    categorySlug
+                    browseMode === "knowledge"
+                      ? categorySlug
+                        ? "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-border bg-surface px-3 text-xs font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
+                        : "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-accent/35 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
+                      : moduleSlug
                       ? "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-border bg-surface px-3 text-xs font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
                       : "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-accent/35 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
                   }
                 >
                   全部
                 </button>
-                {categoryButtonCategories.map((category) => (
-                  <button
-                    key={category.slug}
-                    type="button"
-                    aria-pressed={categorySlug === category.slug}
-                    onClick={() => setCategorySlug(category.slug)}
-                    className={
-                      categorySlug === category.slug
-                        ? "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-accent/35 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
-                        : "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-border bg-surface px-3 text-xs font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
-                    }
-                  >
-                    {category.nameZh}
-                  </button>
-                ))}
+                {browseMode === "knowledge"
+                  ? categoryButtonCategories.map((category) => (
+                      <button
+                        key={category.slug}
+                        type="button"
+                        aria-pressed={categorySlug === category.slug}
+                        onClick={() => setCategorySlug(category.slug)}
+                        className={
+                          categorySlug === category.slug
+                            ? "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-accent/35 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
+                            : "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-border bg-surface px-3 text-xs font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
+                        }
+                      >
+                        {category.nameZh}
+                      </button>
+                    ))
+                  : stageModules.map((module) => (
+                      <button
+                        key={module.slug}
+                        type="button"
+                        aria-pressed={moduleSlug === module.slug}
+                        onClick={() => setModuleSlug(module.slug)}
+                        className={
+                          moduleSlug === module.slug
+                            ? "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-accent/35 bg-accent-soft px-3 text-xs font-semibold text-accent-strong"
+                            : "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-md border border-border bg-surface px-3 text-xs font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
+                        }
+                      >
+                        {module.nameZh}
+                      </button>
+                    ))}
               </div>
             )}
 
-            {selectedCategory ? (
+            {selectedSubcategory ? (
               <div className="mt-3 border-l-2 border-accent pl-3">
                 <p className="text-sm leading-6 text-foreground">
-                  {selectedCategory.description}
+                  {selectedSubcategory.description}
                 </p>
-                {selectedCategory.exampleExpressions.length > 0 ? (
+                {browseMode === "knowledge" &&
+                selectedCategory &&
+                selectedCategory.exampleExpressions.length > 0 ? (
                   <p className="mt-1 text-xs leading-5 text-muted">
                     示例：{selectedCategory.exampleExpressions.join("、")}
                   </p>

@@ -152,10 +152,24 @@ export type LearningStage = {
   status: TaxonomyStatus;
 };
 
+export type LearningModule = {
+  id: string;
+  stageId: string;
+  stageSlug: string;
+  stageNameZh: string;
+  slug: string;
+  nameZh: string;
+  description: string;
+  displayOrder: number;
+  status: TaxonomyStatus;
+};
+
 export type GrammarCurriculumPlacement = {
   stage: LearningStage;
+  module: LearningModule | null;
   level: number;
   recommendedOrder: number;
+  moduleOrder: number | null;
 };
 
 export type GrammarFormSibling = {
@@ -316,6 +330,7 @@ export type GrammarTaxonomyResponse = {
   knowledgeDimensions: KnowledgeDimension[];
   taxonomyNodes: TaxonomyNode[];
   learningStages: LearningStage[];
+  learningModules: LearningModule[];
   comparisonSets: ComparisonSet[];
   errorTypes: GrammarErrorType[];
   categoryGroups: GrammarCategoryGroup[];

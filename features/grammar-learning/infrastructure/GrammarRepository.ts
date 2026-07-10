@@ -15,6 +15,7 @@ import {
   SELECT_GRAMMAR_PROGRESS_SQL,
   SELECT_GRAMMAR_POINT_DETAIL_SQL,
   SELECT_KNOWLEDGE_DIMENSIONS_SQL,
+  SELECT_LEARNING_MODULES_SQL,
   SELECT_LEARNING_STAGES_SQL,
   SELECT_REGISTER_TAGS_SQL,
   SELECT_REVIEW_AGGREGATIONS_SQL,
@@ -41,6 +42,7 @@ import type {
   GrammarReviewItem,
   GrammarTag,
   KnowledgeDimension,
+  LearningModule,
   LearningStage,
   SimilarGrammarRelation,
   TaxonomyNode,
@@ -71,6 +73,7 @@ import type {
   GrammarSummaryRow,
   InsertIdRow,
   KnowledgeDimensionRow,
+  LearningModuleRow,
   LearningStageRow,
   ProgressGroupRow,
   ReviewAggregationsRow,
@@ -103,6 +106,22 @@ export class GrammarRepository {
 
     return rows.map((row) => ({
       id: row.id,
+      slug: row.slug,
+      nameZh: row.name_zh,
+      description: row.description,
+      displayOrder: toInteger(row.display_order),
+      status: parseTaxonomyStatus(row.status),
+    }));
+  }
+
+  async listLearningModules(): Promise<LearningModule[]> {
+    const rows = await query<LearningModuleRow>(SELECT_LEARNING_MODULES_SQL);
+
+    return rows.map((row) => ({
+      id: row.id,
+      stageId: row.stage_id,
+      stageSlug: row.stage_slug,
+      stageNameZh: row.stage_name_zh,
       slug: row.slug,
       nameZh: row.name_zh,
       description: row.description,
@@ -234,6 +253,7 @@ export class GrammarRepository {
     categorySlug?: string;
     dimensionSlug?: string;
     stageSlug?: string;
+    moduleSlug?: string;
     limit?: number;
     offset?: number;
     userId?: string;
@@ -244,6 +264,7 @@ export class GrammarRepository {
     const categorySlug = options?.categorySlug?.trim() ?? "";
     const dimensionSlug = options?.dimensionSlug?.trim() ?? "";
     const stageSlug = options?.stageSlug?.trim() ?? "";
+    const moduleSlug = options?.moduleSlug?.trim() ?? "";
     const rows = await query<GrammarSummaryRow>(SEARCH_GRAMMAR_POINTS_SQL, [
       normalizedQuery,
       `%${normalizedQuery}%`,
@@ -253,6 +274,7 @@ export class GrammarRepository {
       dimensionSlug,
       stageSlug,
       normalizedOffset,
+      moduleSlug,
     ]);
 
     return rows.map((row) => mapSummaryRow(row));

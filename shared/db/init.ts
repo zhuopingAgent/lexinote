@@ -3,24 +3,32 @@ import path from "node:path";
 import { getPool } from "@/shared/db/pool";
 
 let initPromise: Promise<void> | null = null;
-let schemaSqlPromise: Promise<string> | null = null;
+let databaseSqlPromise: Promise<[string, string]> | null = null;
 
-async function loadSchemaSql() {
-  if (!schemaSqlPromise) {
+async function loadDatabaseSql() {
+  if (!databaseSqlPromise) {
     const schemaPath = path.join(process.cwd(), "shared/db/sql/schema.sql");
-    schemaSqlPromise = readFile(schemaPath, "utf8").catch((error) => {
-      schemaSqlPromise = null;
+    const grammarContentPath = path.join(
+      process.cwd(),
+      "shared/db/sql/grammar-content.sql"
+    );
+    databaseSqlPromise = Promise.all([
+      readFile(schemaPath, "utf8"),
+      readFile(grammarContentPath, "utf8"),
+    ]).catch((error) => {
+      databaseSqlPromise = null;
       throw error;
     });
   }
 
-  return schemaSqlPromise;
+  return databaseSqlPromise;
 }
 
 async function initializeDatabase() {
   const pool = await getPool();
-  const schemaSql = await loadSchemaSql();
+  const [schemaSql, grammarContentSql] = await loadDatabaseSql();
   await pool.query(schemaSql);
+  await pool.query(grammarContentSql);
 }
 
 export async function ensureDatabaseReady() {

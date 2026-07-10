@@ -59,6 +59,8 @@
 - Treat `shared/db/sql/schema.sql` as the schema source of truth until a migration tool is introduced.
 - Apply schema changes intentionally before deploying code that depends on them:
   `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/db/sql/schema.sql`
+- Apply expanded grammar content after the schema:
+  `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/db/sql/grammar-content.sql`
 - Apply seed data when needed:
   `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f shared/db/sql/seed.sql`
 - Do not run schema or seed SQL against Production from a generic `.env.local` shell without first confirming the target host. Use the Vercel-pulled environment file or print only the database host/name before running SQL.
@@ -81,8 +83,9 @@
 - Lookup responses include result metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness; the dictionary UI uses this for status tags.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 - Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
-- Grammar learning tables, 7 knowledge dimensions, 46 knowledge taxonomy nodes, 153 active learning units, 9 structured comparison sets, 10 stable error types, 5 learning stages, and 11 migrated legacy compatibility records are created and seeded by `shared/db/sql/schema.sql`.
-- Grammar seed migrations are key-based and repeatable. E2E global setup applies the schema twice and verifies stable record counts, active-unit content completeness, comparison member integrity, legacy feedback migration, curriculum coverage, prerequisite acyclicity, polysemous senses, and taxonomy integrity before loading fixtures.
+- Grammar learning tables, 7 knowledge dimensions, 46 knowledge taxonomy nodes, 153 core learning units, 9 core comparison sets, 10 stable error types, 5 learning stages, and 11 migrated legacy compatibility records are created by `shared/db/sql/schema.sql`.
+- `shared/db/sql/grammar-content.sql` expands the curriculum to 339 active learning units, 27 structured comparison sets, and 19 non-empty learning modules. `shared/db/sql/seed.sql` applies both SQL files for local setup.
+- Grammar seed migrations are key-based and repeatable. E2E global setup applies both grammar SQL files twice and verifies stable record counts, three examples for every expanded unit, active-unit content completeness, comparison member integrity, legacy feedback migration, module and curriculum coverage, prerequisite acyclicity/order, polysemous senses, and taxonomy integrity before loading fixtures.
 - Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
 - Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.
 
@@ -130,7 +133,7 @@
 - Check that the test database name ends with `_e2e` or `_test`.
 - Check that local PostgreSQL is running and reachable from that connection string.
 - Run `npx playwright install chromium` once if the Playwright browser binaries are missing.
-- `e2e/global-setup.mjs` applies `schema.sql`, truncates the E2E tables, and then loads `e2e/fixtures.sql` before the test starts.
+- `e2e/global-setup.mjs` applies `schema.sql` and `grammar-content.sql`, validates the grammar domain, truncates the E2E fixture tables, and then loads `e2e/fixtures.sql` before the test starts.
 - `npm run test:e2e` starts a production-style server on `127.0.0.1:3100` via `npm run build && npm run start`, so it should not share a running `next dev` process or assume port `3000`.
 - The Playwright server clears app-level Basic Auth and 2FA secrets so local deployment-protection settings do not block product-flow tests.
 
@@ -155,7 +158,7 @@
 ## Agent Notes
 
 - Prefer reading `docs/ai/ARCHITECTURE.md` before making structural changes.
-- Treat `shared/db/sql/schema.sql` as the single schema source of truth.
+- Treat `shared/db/sql/schema.sql` as the schema source of truth and `shared/db/sql/grammar-content.sql` as the expanded grammar curriculum source of truth.
 - Keep route handlers thin and push logic into services under `features/`.
 - Keep grammar-learning logic in `features/grammar-learning/`, with prompts under `features/grammar-learning/prompts/`.
 - For future study features, use `features/vocabulary-core/` for shared word-entry access instead of reaching directly into lookup orchestration.

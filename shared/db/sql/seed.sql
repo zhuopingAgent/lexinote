@@ -1,4 +1,5 @@
 \i shared/db/sql/schema.sql
+\i shared/db/sql/grammar-content.sql
 
 INSERT INTO japanese_dictionary_entries (word, pronunciation, meaning_zh, part_of_speech)
 VALUES

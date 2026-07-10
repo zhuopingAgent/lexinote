@@ -27,6 +27,7 @@ export function buildSentenceFeedbackPrompt(input: {
 目标语法点：${input.grammarPoint.grammarPoint}
 大类：${input.grammarPoint.categoryGroupNameZh ?? "未提供"}
 分类：${input.grammarPoint.categoryNameZh ?? "未提供"}
+课程模块：${input.grammarPoint.curriculum?.module?.nameZh ?? "未提供"}
 核心意思：${input.grammarPoint.coreMeaning}
 结构化接续：${structuredConnections || input.grammarPoint.structure || "未提供"}
 相关易混对比：

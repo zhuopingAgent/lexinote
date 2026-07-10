@@ -96,6 +96,8 @@ export function buildPracticeGenerationPrompt(input: {
 读法：${input.grammarPoint.reading ?? "未提供"}
 大类：${input.grammarPoint.categoryGroupNameZh ?? "未提供"}
 分类：${input.grammarPoint.categoryNameZh ?? "未提供"}
+课程阶段：${input.grammarPoint.curriculum?.stage.nameZh ?? "未提供"}
+课程模块：${input.grammarPoint.curriculum?.module?.nameZh ?? "未提供"}
 核心意思：${input.grammarPoint.coreMeaning}
 结构：${input.grammarPoint.structure ?? "未提供"}
 结构化接续：

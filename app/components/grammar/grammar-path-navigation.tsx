@@ -35,7 +35,7 @@ export function GrammarPathNavigation({
   return (
     <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-foreground">学习路径</h2>
+        <h2 className="text-sm font-semibold text-foreground">知识维度</h2>
         {!isLoading && dimensions.length > 0 ? (
           <span className="text-xs text-muted">{dimensions.length} 个维度</span>
         ) : null}

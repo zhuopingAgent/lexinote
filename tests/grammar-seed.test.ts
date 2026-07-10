@@ -31,6 +31,29 @@ function readSchemaSql() {
   return readFileSync(path.join(process.cwd(), "shared/db/sql/schema.sql"), "utf8");
 }
 
+function readGrammarContentSql() {
+  return readFileSync(
+    path.join(process.cwd(), "shared/db/sql/grammar-content.sql"),
+    "utf8"
+  );
+}
+
+function readGrammarContentRecords() {
+  const sql = readGrammarContentSql();
+  const records: Array<Record<string, unknown>> = [];
+
+  for (const match of sql.matchAll(
+    /\$grammar_[a-z_]+\$\s*(\[[\s\S]*?\])\s*\$grammar_[a-z_]+\$::jsonb/g
+  )) {
+    const block = JSON.parse(match[1]) as Array<Record<string, unknown>>;
+    if (block[0] && typeof block[0].seed_key === "string") {
+      records.push(...block);
+    }
+  }
+
+  return records;
+}
+
 function extractBlock(sql: string, startMarker: string, endMarker: string) {
   const start = sql.indexOf(startMarker);
   const end = sql.indexOf(endMarker, start);
@@ -193,15 +216,74 @@ describe("grammar domain seed", () => {
 
   it("seeds configurable learning stages and cycle-safe prerequisites", () => {
     const sql = readSchemaSql();
+    const stageBlock = extractBlock(
+      sql,
+      "INSERT INTO learning_stages",
+      "ON CONFLICT (slug) DO UPDATE SET"
+    );
 
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS learning_stages");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS learning_modules");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS grammar_point_curriculum");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS grammar_point_prerequisites");
     expect(sql).toContain("grammar prerequisite cycle detected");
     expect(sql).toContain("('gp_te_iru', 'gp_te_form', 'required')");
     expect(sql).toContain("('gp_ta_bakari', 'gp_ta_form', 'required')");
     expect(sql).toContain("('gp_te_moraemasu_ka', 'gp_te_morau', 'required')");
-    expect(sql.match(/\('(?:foundations|conjugation|functional_patterns|voice_aspect_benefit|natural_advanced_use)'/g)).toHaveLength(5);
+    expect(
+      stageBlock.match(
+        /\('(?:foundations|conjugation|functional_patterns|voice_aspect_benefit|natural_advanced_use)'/g
+      )
+    ).toHaveLength(5);
+    expect(sql).toContain("('natural_advanced_use', 'media_formal'");
+    expect(sql).toContain("('natural_advanced_use', 'advanced_natural'");
+  });
+
+  it("seeds complete practical-Japanese expansion content", () => {
+    const records = readGrammarContentRecords();
+    const seedKeys = records.map((record) => record.seed_key);
+
+    expect(records).toHaveLength(186);
+    expect(new Set(seedKeys)).toHaveLength(186);
+    expect(seedKeys).toEqual(
+      expect.arrayContaining([
+        "gp_ext_e_particle",
+        "gp_ext_volitional_form",
+        "gp_ext_o_go_ninaru",
+        "gp_ext_teru_contraction",
+        "gp_ext_de_yoroshii_deshouka",
+        "gp_ext_to_sareru",
+        "gp_ext_hazu_da",
+        "gp_ext_ni_tsurete",
+        "gp_ext_dokoroka",
+      ])
+    );
+
+    for (const record of records) {
+      expect(String(record.core_meaning ?? ""), String(record.seed_key)).not.toBe("");
+      expect(String(record.structure ?? ""), String(record.seed_key)).not.toBe("");
+      expect(String(record.usage_notes ?? ""), String(record.seed_key)).not.toBe("");
+      expect(record.common_mistakes, String(record.seed_key)).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+      expect(record.examples, String(record.seed_key)).toEqual([
+        expect.objectContaining({ jp: expect.any(String), zh: expect.any(String) }),
+        expect.objectContaining({ jp: expect.any(String), zh: expect.any(String) }),
+        expect.objectContaining({ jp: expect.any(String), zh: expect.any(String) }),
+      ]);
+    }
+  });
+
+  it("adds normalized comparison cards for the expanded content", () => {
+    const sql = readGrammarContentSql();
+
+    expect(sql).toContain('"slug":"ni_vs_e_direction"');
+    expect(sql).toContain('"slug":"aida_vs_aida_ni"');
+    expect(sql).toContain('"slug":"hazu_vs_wake"');
+    expect(sql).toContain('"slug":"dake_bakari_dokoroka"');
+    expect(sql).toContain('"slug":"kanemasu_vs_koto_ga_dekimasen"');
+    expect(sql).toContain("INSERT INTO comparison_set_members");
+    expect(sql).toContain("WITH ORDINALITY AS member(seed_key, ordinality)");
   });
 
   it("keeps all legacy seed records and their examples for ID compatibility", () => {

@@ -429,15 +429,59 @@ CREATE TABLE IF NOT EXISTS learning_stages (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS learning_modules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  learning_stage_id UUID NOT NULL REFERENCES learning_stages(id),
+  slug TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL CHECK (display_order > 0),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (learning_stage_id, display_order),
+  UNIQUE (id, learning_stage_id)
+);
+
 CREATE TABLE IF NOT EXISTS grammar_point_curriculum (
   grammar_point_id UUID PRIMARY KEY REFERENCES grammar_points(id) ON DELETE CASCADE,
   learning_stage_id UUID NOT NULL REFERENCES learning_stages(id),
+  learning_module_id UUID,
   level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 5),
   recommended_order INTEGER NOT NULL CHECK (recommended_order > 0),
+  module_order INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (learning_stage_id, recommended_order)
 );
+
+ALTER TABLE grammar_point_curriculum
+  ADD COLUMN IF NOT EXISTS learning_module_id UUID,
+  ADD COLUMN IF NOT EXISTS module_order INTEGER;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'grammar_point_curriculum_module_stage_fkey'
+  ) THEN
+    ALTER TABLE grammar_point_curriculum
+      ADD CONSTRAINT grammar_point_curriculum_module_stage_fkey
+      FOREIGN KEY (learning_module_id, learning_stage_id)
+      REFERENCES learning_modules(id, learning_stage_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'grammar_point_curriculum_module_order_check'
+  ) THEN
+    ALTER TABLE grammar_point_curriculum
+      ADD CONSTRAINT grammar_point_curriculum_module_order_check
+      CHECK (module_order IS NULL OR module_order > 0);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS comparison_sets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -642,6 +686,13 @@ CREATE INDEX IF NOT EXISTS idx_grammar_point_prerequisites_reverse
 
 CREATE INDEX IF NOT EXISTS idx_grammar_point_curriculum_stage_order
   ON grammar_point_curriculum (learning_stage_id, recommended_order);
+
+CREATE INDEX IF NOT EXISTS idx_learning_modules_stage_order
+  ON learning_modules (learning_stage_id, display_order);
+
+CREATE UNIQUE INDEX IF NOT EXISTS grammar_point_curriculum_module_order_key
+  ON grammar_point_curriculum (learning_module_id, module_order)
+  WHERE learning_module_id IS NOT NULL AND module_order IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_comparison_set_members_point
   ON comparison_set_members (grammar_point_id, comparison_set_id);
@@ -913,6 +964,53 @@ ON CONFLICT (slug) DO UPDATE SET
   status = EXCLUDED.status,
   updated_at = NOW();
 
+WITH module_seed(stage_slug, slug, name_zh, description, display_order) AS (
+  VALUES
+    ('foundations', 'sentence_core', '基础句型与句子骨架', '判断、存在、主题、谓语和基础语序。', 1),
+    ('foundations', 'core_particles', '核心助词', '动作对象、地点、方向、起点、终点和话题关系。', 2),
+    ('foundations', 'reference_quantity', '指示、数量与范围', '指示体系、数量词、助数词、频率和期限。', 3),
+    ('conjugation', 'verb_forms', '动词活用', '辞书形、礼貌形、连接形、意向、命令和条件活用。', 1),
+    ('conjugation', 'adjective_noun_forms', '形容词与名词活用', '形容词和名词句的肯定、否定与过去形式。', 2),
+    ('conjugation', 'tense_negation', '时态与否定', '非过去、过去、否定和过去否定。', 3),
+    ('conjugation', 'clause_building', '修饰、连接与名词化', '名词修饰从句、从句连接和名词化。', 4),
+    ('functional_patterns', 'time_cause_condition', '时间、原因与条件', '时间顺序、期间、原因、假设和让步。', 1),
+    ('functional_patterns', 'purpose_request_obligation', '目的、请求与义务', '计划、目的、请求、许可、建议和必要性。', 2),
+    ('functional_patterns', 'comparison_inference', '比较、推测与立场', '比较、程度、判断、信息来源和说话人立场。', 3),
+    ('functional_patterns', 'quotation_information', '引用与信息组织', '引用、转述、话题展开和信息焦点。', 4),
+    ('voice_aspect_benefit', 'aspect_experience', '时体、经验与完成', '进行、结果状态、经验、准备和完成。', 1),
+    ('voice_aspect_benefit', 'voice_ability', '可能、被动与使役', '能力、可能、被动、使役和使役被动。', 2),
+    ('voice_aspect_benefit', 'giving_receiving', '授受与受益', '授受方向、受益关系和请求中的授受表达。', 3),
+    ('natural_advanced_use', 'social_conversation', '社交口语与自然会话', '口语缩约、句末语气、回应和话轮组织。', 1),
+    ('natural_advanced_use', 'workplace_service', '工作、商务与服务', '敬语、商务沟通、客服说明和正式请求。', 2),
+    ('natural_advanced_use', 'media_formal', '媒体与正式书面语', '新闻转述、长句结构、正式连接和数据表达。', 3),
+    ('natural_advanced_use', 'advanced_natural', '高级自然表达', '高级情态、让步、时体、范围和关联构式。', 4),
+    ('natural_advanced_use', 'collocations_scenarios', '搭配与场景表达', '高频搭配、固定表达和场景化表达块。', 5)
+)
+INSERT INTO learning_modules (
+  learning_stage_id,
+  slug,
+  name_zh,
+  description,
+  display_order,
+  status
+)
+SELECT
+  learning_stages.id,
+  module_seed.slug,
+  module_seed.name_zh,
+  module_seed.description,
+  module_seed.display_order,
+  'active'
+FROM module_seed
+JOIN learning_stages ON learning_stages.slug = module_seed.stage_slug
+ON CONFLICT (slug) DO UPDATE SET
+  learning_stage_id = EXCLUDED.learning_stage_id,
+  name_zh = EXCLUDED.name_zh,
+  description = EXCLUDED.description,
+  display_order = EXCLUDED.display_order,
+  status = EXCLUDED.status,
+  updated_at = NOW();
+
 WITH dimension_map(legacy_group_slug, dimension_slug) AS (
   VALUES
     ('expressive_functions', 'expression_function'),
@@ -1134,6 +1232,7 @@ SET status = 'deprecated',
     updated_at = NOW()
 WHERE is_mvp = TRUE
   AND seed_key IS NOT NULL
+  AND seed_key NOT LIKE 'gp_ext_%'
   AND seed_key NOT IN (SELECT seed_key FROM active_grammar_seed);
 
 INSERT INTO scene_tags (name_en, name_zh, description, priority)
@@ -2870,13 +2969,13 @@ WITH example_seed(seed_key, jp, zh, scene_name_en, register_name_en, difficulty,
   ('gp_ta_form', '昨日、映画を見ました。', '昨天看了电影。', 'daily_life', 'polite', 1, 5, '〜た形 的自然例句。'),
   ('gp_ta_form', '駅に着いたら電話します。', '到了车站就打电话。', 'daily_life', 'polite', 2, 5, '〜た形 的自然例句。'),
   ('gp_nai_form', '今日はお酒を飲みません。', '今天不喝酒。', 'daily_life', 'polite', 1, 5, '〜ない形 的自然例句。'),
-  ('gp_nai_form', '忘れないようにメモします。', '为了不忘而记笔记。', 'daily_life', 'polite', 2, 5, '〜ない形 的自然例句。'),
+  ('gp_nai_form', '明日は学校へ行かない。', '明天不去学校。', 'daily_life', 'casual', 2, 5, '〜ない形 的自然例句。'),
   ('gp_nakatta_form', '昨日は勉強しませんでした。', '昨天没有学习。', 'daily_life', 'polite', 1, 5, '〜なかった 的自然例句。'),
   ('gp_nakatta_form', '子どものころ、野菜が好きではなかったです。', '小时候不喜欢蔬菜。', 'daily_life', 'polite', 2, 5, '〜なかった 的自然例句。'),
   ('gp_masen_deshita', '昨日は学校へ行きませんでした。', '昨天没有去学校。', 'daily_life', 'polite', 1, 5, '〜ませんでした 的自然例句。'),
   ('gp_masen_deshita', 'メールを確認しませんでした。', '没有确认邮件。', 'daily_life', 'polite', 2, 5, '〜ませんでした 的自然例句。'),
   ('gp_te_iru', '今、資料を読んでいます。', '现在正在读资料。', 'daily_life', 'polite', 1, 5, '〜ている 的自然例句。'),
-  ('gp_te_iru', '窓が開いています。', '窗户开着。', 'daily_life', 'polite', 2, 5, '〜ている 的自然例句。'),
+  ('gp_te_iru', '今、店員が窓を開けています。', '现在店员正在开窗。', 'daily_life', 'polite', 2, 5, '〜ている（进行） 的自然例句。'),
   ('gp_te_ita', '昨日の夜、雨が降っていました。', '昨晚正在下雨。', 'daily_life', 'polite', 1, 5, '〜ていた 的自然例句。'),
   ('gp_te_ita', 'その時、駅で友だちを待っていました。', '那时正在车站等朋友。', 'daily_life', 'polite', 2, 5, '〜ていた 的自然例句。'),
   ('gp_te_aru', '資料は机の上に置いてあります。', '资料已经放在桌上了。', 'daily_life', 'polite', 1, 5, '〜てある 的自然例句。'),
