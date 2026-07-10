@@ -174,7 +174,7 @@
 
 ### Runtime Flow
 
-1. `/grammar` fetches grammar taxonomy and `GET /api/grammar` search results.
+1. `/grammar` fetches grammar taxonomy and paginated `GET /api/grammar` search results. Query, dimension, and taxonomy-node changes reset pagination and invalidate stale initial or load-more requests.
 2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]` by UUID or stable `sense_key`, render structured connections, same-form senses, prerequisites, curriculum placement, examples, tags, mistakes, and similar grammar, then log view history against the canonical UUID.
 3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`. Comparison practice uses structured decision rules attached through normalized comparison members.
 4. Practice generation uses Vercel AI Gateway when `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available and deterministic fallback output otherwise.
@@ -192,6 +192,7 @@
 - `comparison_set_members` is the canonical relation between a comparison card and grammar senses. `comparison_sets` stores decision rules, connection/register differences, interchangeable boundaries, minimal pairs, and learner mistakes.
 - `ai_feedback_issues` normalizes one or more feedback issues against stable `error_types`; legacy feedback columns remain readable. Review aggregation uses the latest feedback per concrete sense and groups it by sense, error type, scenario, and register without traversing taxonomy tags.
 - Keep migrated comparison/error grammar-point IDs readable from detail, favorites, practice, and review flows; normal grammar search only lists active learning units.
+- Keep grammar search ordering stable for offset pagination, and preserve abort/generation guards when filters reset or more results are appended.
 - The local MVP defaults to user id `00000000-0000-0000-0000-000000000001` when no auth user id exists.
 - Keep grammar AI prompts under `features/grammar-learning/prompts/`.
 - Keep AI Gateway orchestration in `GrammarAiClient`, response validation in
@@ -217,14 +218,15 @@
 ### Runtime Flow
 
 1. `npm run test:e2e` runs Playwright against a production-style local server on `127.0.0.1:3100`.
-2. `playwright.config.ts` starts the app with `npm run build && npm run start`.
+2. `playwright.config.ts` starts the app with `npm run build && npm run start`, points it at the E2E database, and clears deployment Basic Auth and 2FA secrets.
 3. `e2e/global-setup.mjs` validates `E2E_DATABASE_URL`, applies `schema.sql`, truncates core tables, and loads `e2e/fixtures.sql`.
-4. The desktop regression suite covers lookup, history, overview, collections, duplicate prevention, and AI auto-filtering.
+4. The desktop regression suite covers lookup, history, overview, collections, duplicate prevention, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
 5. The mobile suite verifies navigation and no horizontal overflow on a narrow viewport.
 
 ### Important Rules
 
 - E2E assumes a local PostgreSQL test database ending in `_e2e` or `_test`.
+- Live AI E2E is opt-in through `E2E_RUN_LIVE_AI=1`; the default suite clears Gateway credentials to avoid accidental usage cost.
 - E2E fixtures are intentionally deterministic; update them if product assumptions change.
 - If Playwright browsers are missing, install them once with `npx playwright install chromium`.
 - When changing user-visible flows, prefer updating E2E in the same PR so later agents inherit a reliable regression path.

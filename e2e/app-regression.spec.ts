@@ -16,6 +16,10 @@ import {
 } from "./helpers";
 
 function hasAiGatewayCredentials() {
+  if (process.env.E2E_RUN_LIVE_AI !== "1") {
+    return false;
+  }
+
   return Boolean(
     process.env.AI_GATEWAY_API_KEY?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()
   );

@@ -20,6 +20,7 @@
 
 - `DATABASE_URL` is required for the lookup flow.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
+- `E2E_RUN_LIVE_AI=1` opts the Playwright server into using locally configured Gateway credentials for the live AI auto-filter case. The default E2E run clears Gateway credentials and skips that cost-bearing case.
 - `AI_GATEWAY_API_KEY` is optional for local development. Vercel deployments can use `VERCEL_OIDC_TOKEN` instead. If neither Gateway credential is available, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
 - Common Japanese inflections and adjective forms can still resolve locally without AI Gateway credentials when the conservative local base-form fallback hits an existing persisted entry.
 - Grammar practice generation and sentence feedback also work without AI Gateway credentials by using deterministic local fallback output.
@@ -131,6 +132,7 @@
 - Run `npx playwright install chromium` once if the Playwright browser binaries are missing.
 - `e2e/global-setup.mjs` applies `schema.sql`, truncates the E2E tables, and then loads `e2e/fixtures.sql` before the test starts.
 - `npm run test:e2e` starts a production-style server on `127.0.0.1:3100` via `npm run build && npm run start`, so it should not share a running `next dev` process or assume port `3000`.
+- The Playwright server clears app-level Basic Auth and 2FA secrets so local deployment-protection settings do not block product-flow tests.
 
 ## MCP Setup
 

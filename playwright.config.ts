@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
+const runLiveAi = process.env.E2E_RUN_LIVE_AI === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -20,8 +21,16 @@ export default defineConfig({
     env: {
       ...process.env,
       DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
-      AI_GATEWAY_API_KEY: "",
-      VERCEL_OIDC_TOKEN: "",
+      AI_GATEWAY_API_KEY: runLiveAi
+        ? process.env.AI_GATEWAY_API_KEY ?? ""
+        : "",
+      VERCEL_OIDC_TOKEN: runLiveAi
+        ? process.env.VERCEL_OIDC_TOKEN ?? ""
+        : "",
+      APP_BASIC_AUTH_PASSWORD: "",
+      APP_TWO_FACTOR_TOTP_SECRET: "",
+      APP_TWO_FACTOR_COOKIE_SECRET: "",
+      APP_TWO_FACTOR_SETUP_TOKEN: "",
     },
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
