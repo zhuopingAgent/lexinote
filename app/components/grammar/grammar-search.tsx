@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import type { KnowledgeDimension, TaxonomyNode } from "@/shared/types/api";
+import type { KnowledgeDimension, TaxonomyNode } from "@/shared/types/grammar";
 import { SearchIcon } from "@/app/components/icons";
 
 type GrammarSearchProps = {

@@ -13,7 +13,7 @@ import type {
   PracticeLevel,
   PracticeSubmitResponse,
   SentencePracticeInput,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 
 const UUID_PATTERN =

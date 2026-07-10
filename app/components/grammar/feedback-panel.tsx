@@ -1,4 +1,4 @@
-import type { AIFeedbackResult } from "@/shared/types/api";
+import type { AIFeedbackResult } from "@/shared/types/grammar";
 import {
   displayFeedbackSeverityLabel,
   displayMistakeTypeLabel,

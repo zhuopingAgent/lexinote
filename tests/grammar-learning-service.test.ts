@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import { GrammarAiClient } from "@/features/grammar-learning/infrastructure/GrammarAiClient";
-import type { GrammarPointDetail } from "@/shared/types/api";
+import type { GrammarPointDetail } from "@/shared/types/grammar";
 import { AI_QUOTA_EXHAUSTED_CODE } from "@/shared/utils/errors";
 
 const GRAMMAR_POINT_ID = "11111111-1111-4111-8111-111111111111";

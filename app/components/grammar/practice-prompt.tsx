@@ -1,4 +1,4 @@
-import type { PracticeGenerateResponse } from "@/shared/types/api";
+import type { PracticeGenerateResponse } from "@/shared/types/grammar";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 
 type PracticePromptProps = {

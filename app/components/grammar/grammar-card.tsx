@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { GrammarPointSummary } from "@/shared/types/api";
+import type { GrammarPointSummary } from "@/shared/types/grammar";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 

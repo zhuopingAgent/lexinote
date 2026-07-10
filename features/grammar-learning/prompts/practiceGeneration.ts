@@ -1,4 +1,4 @@
-import type { GrammarPointDetail, PracticeLevel } from "@/shared/types/api";
+import type { GrammarPointDetail, PracticeLevel } from "@/shared/types/grammar";
 
 export type PracticeVariation = {
   seed: string;

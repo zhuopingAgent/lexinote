@@ -1,4 +1,4 @@
-import type { Practicality, SpokenOrWritten } from "@/shared/types/api";
+import type { Practicality, SpokenOrWritten } from "@/shared/types/grammar";
 
 const PRACTICALITY_LABELS: Record<Practicality, string> = {
   S: "高频实用",

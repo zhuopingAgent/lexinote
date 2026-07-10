@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GrammarDetailResponse, GrammarPointDetail } from "@/shared/types/api";
+import type { GrammarDetailResponse, GrammarPointDetail } from "@/shared/types/grammar";
 import { GrammarDetail } from "@/app/components/grammar/grammar-detail";
 import { getErrorMessage, readJson } from "@/app/lib/api-client";
 

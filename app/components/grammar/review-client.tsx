@@ -6,7 +6,7 @@ import type {
   GrammarReviewAggregations,
   GrammarReviewItem,
   GrammarReviewResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 import {
   displayFeedbackSeverityLabel,
   displayMistakeTypeLabel,

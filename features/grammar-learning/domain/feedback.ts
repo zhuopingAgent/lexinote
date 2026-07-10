@@ -1,7 +1,7 @@
 import type {
   FeedbackIssueSeverity,
   GrammarErrorCode,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 
 export const GRAMMAR_ERROR_CODES: readonly GrammarErrorCode[] = [
   "conjugation_error",

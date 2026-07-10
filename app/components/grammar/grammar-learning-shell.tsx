@@ -8,7 +8,7 @@ import type {
   GrammarTaxonomyResponse,
   KnowledgeDimension,
   TaxonomyNode,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
 import { GrammarProgressOverview } from "@/app/components/grammar/grammar-progress-overview";
 import { GrammarSearch } from "@/app/components/grammar/grammar-search";
@@ -79,7 +79,7 @@ export function GrammarLearningShell() {
       } catch (error) {
         if (!controller.signal.aborted) {
           setProgressError(
-            error instanceof Error ? error.message : "学习进度加载失败，请稍后再试。"
+            getErrorMessage(error, "学习进度加载失败，请稍后再试。")
           );
         }
       } finally {

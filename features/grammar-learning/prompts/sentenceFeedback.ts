@@ -1,4 +1,4 @@
-import type { GrammarPointDetail } from "@/shared/types/api";
+import type { GrammarPointDetail } from "@/shared/types/grammar";
 
 export function buildSentenceFeedbackPrompt(input: {
   grammarPoint: GrammarPointDetail;

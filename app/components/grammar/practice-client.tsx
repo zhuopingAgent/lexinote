@@ -11,7 +11,7 @@ import type {
   PracticeGenerateResponse,
   PracticeLevel,
   PracticeSubmitResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 import { FeedbackPanel } from "@/app/components/grammar/feedback-panel";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { PracticePrompt } from "@/app/components/grammar/practice-prompt";

@@ -1,4 +1,4 @@
-import type { GrammarTag } from "@/shared/types/api";
+import type { GrammarTag } from "@/shared/types/grammar";
 
 type TagBadgeProps = {
   tag: GrammarTag | string;
