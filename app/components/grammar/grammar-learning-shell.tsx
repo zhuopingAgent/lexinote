@@ -5,10 +5,12 @@ import type {
   GrammarCategory,
   GrammarCategoryGroup,
   GrammarPointSummary,
+  GrammarProgressResponse,
   GrammarSearchResponse,
   GrammarTaxonomyResponse,
 } from "@/shared/types/api";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
+import { GrammarProgressOverview } from "@/app/components/grammar/grammar-progress-overview";
 import { GrammarSearch } from "@/app/components/grammar/grammar-search";
 import { getErrorMessage, readJson } from "@/app/lib/api-client";
 
@@ -19,10 +21,13 @@ export function GrammarLearningShell() {
   const [categorySlug, setCategorySlug] = useState("");
   const [categoryGroups, setCategoryGroups] = useState<GrammarCategoryGroup[]>([]);
   const [categories, setCategories] = useState<GrammarCategory[]>([]);
+  const [progress, setProgress] = useState<GrammarProgressResponse | null>(null);
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isTaxonomyLoading, setIsTaxonomyLoading] = useState(true);
+  const [isProgressLoading, setIsProgressLoading] = useState(true);
   const [isSearchLoading, setIsSearchLoading] = useState(true);
   const searchGenerationRef = useRef(0);
 
@@ -51,6 +56,38 @@ export function GrammarLearningShell() {
     }
 
     void loadTaxonomy();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadProgress() {
+      setIsProgressLoading(true);
+      setProgressError(null);
+
+      try {
+        const result = await fetch("/api/grammar/progress", {
+          signal: controller.signal,
+        }).then((response) => readJson<GrammarProgressResponse>(response));
+        setProgress(result);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setProgressError(
+            error instanceof Error ? error.message : "学习进度加载失败，请稍后再试。"
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsProgressLoading(false);
+        }
+      }
+    }
+
+    void loadProgress();
 
     return () => {
       controller.abort();
@@ -132,9 +169,21 @@ export function GrammarLearningShell() {
   const categoryButtonCategories = categories.filter(
     (category) => category.groupSlug === categoryButtonGroupSlug
   );
+  const selectedCategoryName =
+    categories.find((category) => category.slug === categorySlug)?.nameZh ?? null;
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
+      <GrammarProgressOverview
+        progress={progress}
+        selectedGroupSlug={groupSlug}
+        selectedCategoryName={selectedCategoryName}
+        resultCount={items.length}
+        isLoading={isProgressLoading}
+        error={progressError}
+        onGroupSelect={handleGroupChange}
+      />
+
       <GrammarSearch
         categoryGroups={categoryGroups}
         categories={categoryButtonCategories}

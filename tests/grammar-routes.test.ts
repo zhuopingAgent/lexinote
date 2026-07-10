@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getTaxonomyMock = vi.fn();
 const searchGrammarPointsMock = vi.fn();
 const getGrammarPointDetailMock = vi.fn();
+const getProgressMock = vi.fn();
 
 vi.mock("@/features/grammar-learning/application/GrammarLearningService", () => ({
   GrammarLearningService: class {
     getTaxonomy = getTaxonomyMock;
     searchGrammarPoints = searchGrammarPointsMock;
     getGrammarPointDetail = getGrammarPointDetailMock;
+    getProgress = getProgressMock;
   },
 }));
 
@@ -27,6 +29,7 @@ describe("grammar API routes", () => {
     getTaxonomyMock.mockReset();
     searchGrammarPointsMock.mockReset();
     getGrammarPointDetailMock.mockReset();
+    getProgressMock.mockReset();
   });
 
   it("returns the 9-major-group taxonomy with Chinese labels and examples", async () => {
@@ -158,6 +161,56 @@ describe("grammar API routes", () => {
       limit: "12",
       userId: undefined,
     });
+  });
+
+  it("returns grammar learning progress grouped by major category", async () => {
+    getProgressMock.mockResolvedValue({
+      totalGrammarPoints: 155,
+      startedCount: 12,
+      masteredCount: 4,
+      reviewCount: 3,
+      favoriteCount: 8,
+      groupProgress: [
+        {
+          id: "11111111-1111-4111-8111-000000000001",
+          slug: "expressive_functions",
+          nameZh: "表达功能",
+          nameEn: "Expressive functions",
+          description: "按交际目的学习表达。",
+          priority: 1,
+          totalCount: 90,
+          startedCount: 8,
+          masteredCount: 3,
+          reviewCount: 2,
+          favoriteCount: 5,
+        },
+      ],
+    });
+
+    const { GET } = await import("@/app/api/grammar/progress/route");
+    const response = await GET(
+      new Request("http://localhost/api/grammar/progress?userId=00000000-0000-0000-0000-000000000001")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      totalGrammarPoints: 155,
+      startedCount: 12,
+      masteredCount: 4,
+      reviewCount: 3,
+      favoriteCount: 8,
+      groupProgress: [
+        expect.objectContaining({
+          slug: "expressive_functions",
+          nameZh: "表达功能",
+          totalCount: 90,
+          startedCount: 8,
+        }),
+      ],
+    });
+    expect(getProgressMock).toHaveBeenCalledWith(
+      "00000000-0000-0000-0000-000000000001"
+    );
   });
 
   it("returns grammar detail with examples, mistakes, and similar grammar", async () => {

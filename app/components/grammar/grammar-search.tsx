@@ -44,27 +44,15 @@ export function GrammarSearch({
   }
 
   return (
-    <section className="rounded-[22px] border border-white/10 bg-[#1e1e1eb3] p-[clamp(18px,2.6vw,26px)]">
+    <section className="mt-5 rounded-[22px] border border-white/10 bg-[#1e1e1eb3] p-[clamp(18px,2.6vw,26px)]">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-2xl leading-tight font-semibold text-white/78">文法</p>
-          <p className="mt-1 text-sm leading-6 text-white/42">
-            搜索语法、按功能分类筛选，并从真实场景开始练习。
+          <p className="text-xl leading-tight font-semibold text-white/78">
+            查找与筛选
           </p>
-        </div>
-        <div className="flex gap-2">
-          <a
-            href="/favorites"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/55 transition hover:border-white/20 hover:text-white/72"
-          >
-            收藏
-          </a>
-          <a
-            href="/review"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/55 transition hover:border-white/20 hover:text-white/72"
-          >
-            复习
-          </a>
+          <p className="mt-1 text-sm leading-6 text-white/42">
+            输入表达、中文意思或接续结构，快速定位要学的语法点。
+          </p>
         </div>
       </div>
 
@@ -220,7 +208,7 @@ export function GrammarSearch({
       ) : null}
 
       {selectedCategory ? (
-        <div className="mt-4 hidden rounded-[14px] border border-white/8 bg-[#15151599] px-4 py-3 md:block">
+        <div className="mt-4 rounded-[14px] border border-white/8 bg-[#15151599] px-4 py-3">
           <p className="text-sm leading-6 text-white/58">
             {selectedCategory.description}
           </p>
