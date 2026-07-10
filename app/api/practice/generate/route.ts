@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getGrammarLearningService } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
 import { readJsonBody } from "@/app/api/request";
-import type { PracticeGenerateRequest } from "@/shared/types/api";
+import type { PracticeGenerateRequest } from "@/shared/types/grammar";
 
 export const runtime = "nodejs";
 

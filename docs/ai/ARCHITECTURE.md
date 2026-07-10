@@ -38,9 +38,12 @@
   - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
   - `features/collections/`: collection CRUD, collection-word workflows, and auto-filter job processing
 - `shared/`: cross-cutting code
+  - `shared/ai/`: AI Gateway model roles, request construction, quota handling,
+    and response text extraction shared by feature clients
   - `shared/auth/`: Basic Auth-adjacent two-factor helpers, TOTP verification, and signed 2FA session cookies
   - `shared/db/`: centralized PostgreSQL access and SQL
-  - `shared/types/`: request/response DTOs
+  - `shared/types/`: domain DTOs split across `grammar.ts`, `dictionary.ts`, and
+    `collections.ts`; `api.ts` remains the compatibility barrel
   - `shared/utils/`: app-level errors
 - `types/`: local ambient typings
 - Root configs: `next.config.ts`, `tsconfig.json`, `eslint.config.mjs`, `postcss.config.mjs`
@@ -191,6 +194,10 @@
 - Keep migrated comparison/error grammar-point IDs readable from detail, favorites, practice, and review flows; normal grammar search only lists active learning units.
 - The local MVP defaults to user id `00000000-0000-0000-0000-000000000001` when no auth user id exists.
 - Keep grammar AI prompts under `features/grammar-learning/prompts/`.
+- Keep AI Gateway orchestration in `GrammarAiClient`, response validation in
+  `GrammarAiOutput`, and deterministic local behavior in `GrammarFallback`.
+- Keep SQL execution in `GrammarRepository`, database row contracts in
+  `GrammarRepositoryRows`, and row/JSON conversion in `GrammarRepositoryMapper`.
 - Grammar practice and feedback must remain usable without AI Gateway credentials; fallback behavior is part of the local development contract.
 - Scenario and register tags are first-class data, not free-form display-only labels.
 - Sentence feedback should distinguish grammatical correctness, naturalness, register fit, and scene fit.

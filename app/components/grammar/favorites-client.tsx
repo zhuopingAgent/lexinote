@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { GrammarFavoritesResponse, GrammarPointSummary } from "@/shared/types/api";
+import type { GrammarFavoritesResponse, GrammarPointSummary } from "@/shared/types/grammar";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
 import { getErrorMessage, readJson } from "@/app/lib/api-client";
 

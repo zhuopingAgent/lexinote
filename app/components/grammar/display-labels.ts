@@ -1,7 +1,7 @@
 import type {
   FeedbackIssueSeverity,
   GrammarPointType,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 
 const REGISTER_TAG_LABELS: Record<string, string> = {
   casual: "朋友口语",

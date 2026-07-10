@@ -40,6 +40,8 @@
 
 - Prefer alias imports with `@/` when paths get long.
 - Group imports in this order: external packages, internal modules, relative files.
+- Import DTOs from the owning domain module under `shared/types/`; keep
+  `shared/types/api.ts` as a compatibility barrel for mixed or legacy consumers.
 
 ## Quality Bar
 

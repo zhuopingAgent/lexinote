@@ -8,19 +8,15 @@ import { buildJaWordLookupPrompt } from "@/features/ai-lookup/prompts/jaWordLook
 import type {
   AutoFilterDictionaryEntry,
   CollectionAutoFilterRule,
+} from "@/shared/types/collections";
+import type {
   DictionaryEntry,
   DictionaryExample,
-} from "@/shared/types/api";
+} from "@/shared/types/dictionary";
 import {
-  extractAiGatewayResponseText,
-  type AiGatewayResponse,
-  buildAiGatewayTextRequestConfig,
+  requestAiGatewayText,
   resolveAiGatewayRequest,
 } from "@/shared/ai/gateway";
-import {
-  rethrowAiQuotaError,
-  throwIfOpenAiQuotaExhausted,
-} from "@/shared/utils/ai-api-errors";
 
 type RawLookupOutput = {
   pronunciation?: unknown;
@@ -79,7 +75,6 @@ function buildFallbackEntry(
     examples: [],
   };
 }
-
 function sanitizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -341,38 +336,15 @@ export class LlmClient {
       return null;
     }
 
-    try {
-      const response = await fetch(aiGatewayRequest.url, {
-        method: "POST",
-        headers: aiGatewayRequest.headers,
-        body: JSON.stringify({
-          ...buildAiGatewayTextRequestConfig("cheap", BASE_FORM_MAX_OUTPUT_TOKENS),
-          input: [
-            {
-              role: "system",
-              content:
-                "你是日语词形归一助手。请把用户输入转换成最适合查词的日语词典形或基本形，只返回要求的 JSON。",
-            },
-            {
-              role: "user",
-              content: buildJaWordBaseFormPrompt(word, context),
-            },
-          ],
-        }),
-      });
+    const responseText = await requestAiGatewayText(aiGatewayRequest, {
+      role: "cheap",
+      maxOutputTokens: BASE_FORM_MAX_OUTPUT_TOKENS,
+      systemPrompt:
+        "你是日语词形归一助手。请把用户输入转换成最适合查词的日语词典形或基本形，只返回要求的 JSON。",
+      userPrompt: buildJaWordBaseFormPrompt(word, context),
+    });
 
-      await throwIfOpenAiQuotaExhausted(response);
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = (await response.json()) as AiGatewayResponse;
-      return parseLookupWord(extractAiGatewayResponseText(data));
-    } catch (error) {
-      rethrowAiQuotaError(error);
-      return null;
-    }
+    return responseText ? parseLookupWord(responseText) : null;
   }
 
   async completeWordEntry(
@@ -387,41 +359,17 @@ export class LlmClient {
       return fallback;
     }
 
-    try {
-      const response = await fetch(aiGatewayRequest.url, {
-        method: "POST",
-        headers: aiGatewayRequest.headers,
-        body: JSON.stringify({
-          ...buildAiGatewayTextRequestConfig("defaultTeacher", MAX_OUTPUT_TOKENS),
-          input: [
-            {
-              role: "system",
-              content:
-                "你是日语词条整理助手。请为中文母语者整理一个日语词的基础词条信息和例句。输出中文，准确、自然，只返回所需字段。",
-            },
-            {
-              role: "user",
-              content: buildJaWordLookupPrompt(word, baseEntry, context),
-            },
-          ],
-        }),
-      });
+    const responseText = await requestAiGatewayText(aiGatewayRequest, {
+      role: "defaultTeacher",
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      systemPrompt:
+        "你是日语词条整理助手。请为中文母语者整理一个日语词的基础词条信息和例句。输出中文，准确、自然，只返回所需字段。",
+      userPrompt: buildJaWordLookupPrompt(word, baseEntry, context),
+    });
 
-      await throwIfOpenAiQuotaExhausted(response);
-
-      if (!response.ok) {
-        return fallback;
-      }
-
-      const data = (await response.json()) as AiGatewayResponse;
-      return (
-        parseLookupOutput(word, extractAiGatewayResponseText(data), baseEntry) ??
-        fallback
-      );
-    } catch (error) {
-      rethrowAiQuotaError(error);
-      return fallback;
-    }
+    return responseText
+      ? parseLookupOutput(word, responseText, baseEntry) ?? fallback
+      : fallback;
   }
 
   async reconcileWordEntry(
@@ -436,51 +384,27 @@ export class LlmClient {
       return null;
     }
 
-    try {
-      const response = await fetch(aiGatewayRequest.url, {
-        method: "POST",
-        headers: aiGatewayRequest.headers,
-        body: JSON.stringify({
-          ...buildAiGatewayTextRequestConfig(
-            "premiumTeacher",
-            RECONCILE_MAX_OUTPUT_TOKENS
-          ),
-          input: [
-            {
-              role: "system",
-              content:
-                "你是日语词条校准助手。请比较通用词条和语境词条，只在差异已经足以影响默认查词结果时，才输出可持久化的综合词条 JSON。",
-            },
-            {
-              role: "user",
-              content: buildJaWordReconcilePrompt(
-                word,
-                genericEntry,
-                contextualEntry,
-                context
-              ),
-            },
-          ],
-        }),
-      });
-
-      await throwIfOpenAiQuotaExhausted(response);
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = (await response.json()) as AiGatewayResponse;
-      return parseReconciledLookupOutput(
+    const responseText = await requestAiGatewayText(aiGatewayRequest, {
+      role: "premiumTeacher",
+      maxOutputTokens: RECONCILE_MAX_OUTPUT_TOKENS,
+      systemPrompt:
+        "你是日语词条校准助手。请比较通用词条和语境词条，只在差异已经足以影响默认查词结果时，才输出可持久化的综合词条 JSON。",
+      userPrompt: buildJaWordReconcilePrompt(
         word,
-        extractAiGatewayResponseText(data),
         genericEntry,
-        contextualEntry
-      );
-    } catch (error) {
-      rethrowAiQuotaError(error);
-      return null;
-    }
+        contextualEntry,
+        context
+      ),
+    });
+
+    return responseText
+      ? parseReconciledLookupOutput(
+          word,
+          responseText,
+          genericEntry,
+          contextualEntry
+        )
+      : null;
   }
 
   async matchEntryToCollections(
@@ -494,42 +418,20 @@ export class LlmClient {
       return [];
     }
 
-    try {
-      const response = await fetch(aiGatewayRequest.url, {
-        method: "POST",
-        headers: aiGatewayRequest.headers,
-        body: JSON.stringify({
-          ...buildAiGatewayTextRequestConfig(
-            "cheap",
-            COLLECTION_FILTER_MAX_OUTPUT_TOKENS
-          ),
-          input: [
-            {
-              role: "system",
-              content:
-                "你是日语词条自动归类助手。请根据 collection 的筛选条件，谨慎判断这个词条应该加入哪些 collection，只返回所需 JSON。",
-            },
-            {
-              role: "user",
-              content: buildEntryCollectionAutoFilterPrompt(entry, collections),
-            },
-          ],
-        }),
-      });
+    const responseText = await requestAiGatewayText(aiGatewayRequest, {
+      role: "cheap",
+      maxOutputTokens: COLLECTION_FILTER_MAX_OUTPUT_TOKENS,
+      systemPrompt:
+        "你是日语词条自动归类助手。请根据 collection 的筛选条件，谨慎判断这个词条应该加入哪些 collection，只返回所需 JSON。",
+      userPrompt: buildEntryCollectionAutoFilterPrompt(entry, collections),
+    });
 
-      await throwIfOpenAiQuotaExhausted(response);
-
-      if (!response.ok) {
-        return fallbackMatches;
-      }
-
-      const data = (await response.json()) as AiGatewayResponse;
-      const matches = parseCollectionMatchOutput(extractAiGatewayResponseText(data));
-      return Array.from(new Set([...matches, ...fallbackMatches]));
-    } catch (error) {
-      rethrowAiQuotaError(error);
+    if (!responseText) {
       return fallbackMatches;
     }
+
+    const matches = parseCollectionMatchOutput(responseText);
+    return Array.from(new Set([...matches, ...fallbackMatches]));
   }
 
   async matchEntriesToCollection(
@@ -543,41 +445,19 @@ export class LlmClient {
       return [];
     }
 
-    try {
-      const response = await fetch(aiGatewayRequest.url, {
-        method: "POST",
-        headers: aiGatewayRequest.headers,
-        body: JSON.stringify({
-          ...buildAiGatewayTextRequestConfig(
-            "defaultTeacher",
-            COLLECTION_BACKFILL_MAX_OUTPUT_TOKENS
-          ),
-          input: [
-            {
-              role: "system",
-              content:
-                "你是日语词条自动归类助手。请根据 collection 的筛选条件，从候选词条中保守地挑出真正应该加入的项目，只返回所需 JSON。",
-            },
-            {
-              role: "user",
-              content: buildCollectionBackfillPrompt(collection, entries),
-            },
-          ],
-        }),
-      });
+    const responseText = await requestAiGatewayText(aiGatewayRequest, {
+      role: "defaultTeacher",
+      maxOutputTokens: COLLECTION_BACKFILL_MAX_OUTPUT_TOKENS,
+      systemPrompt:
+        "你是日语词条自动归类助手。请根据 collection 的筛选条件，从候选词条中保守地挑出真正应该加入的项目，只返回所需 JSON。",
+      userPrompt: buildCollectionBackfillPrompt(collection, entries),
+    });
 
-      await throwIfOpenAiQuotaExhausted(response);
-
-      if (!response.ok) {
-        return fallbackMatches;
-      }
-
-      const data = (await response.json()) as AiGatewayResponse;
-      const matches = parseWordMatchOutput(extractAiGatewayResponseText(data));
-      return Array.from(new Set([...matches, ...fallbackMatches]));
-    } catch (error) {
-      rethrowAiQuotaError(error);
+    if (!responseText) {
       return fallbackMatches;
     }
+
+    const matches = parseWordMatchOutput(responseText);
+    return Array.from(new Set([...matches, ...fallbackMatches]));
   }
 }

@@ -6,7 +6,7 @@ import type {
   ComparisonSet,
   GrammarPointDetail,
   GrammarTaxonomyTag,
-} from "@/shared/types/api";
+} from "@/shared/types/grammar";
 import { displayGrammarPointTypeLabel } from "@/app/components/grammar/display-labels";
 import {
   PracticalityBadge,

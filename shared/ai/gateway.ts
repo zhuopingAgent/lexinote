@@ -1,3 +1,8 @@
+import {
+  rethrowAiQuotaError,
+  throwIfOpenAiQuotaExhausted,
+} from "@/shared/utils/ai-api-errors";
+
 export const AI_MODELS = {
   cheap: "openai/gpt-5-nano",
   defaultTeacher: "openai/gpt-4.1-mini",
@@ -9,6 +14,13 @@ export const AI_MODELS = {
 export type AiModelRole = keyof typeof AI_MODELS;
 export type AiTextModelRole = Exclude<AiModelRole, "speech">;
 export type AiReasoningEffort = "minimal" | "low" | "medium" | "high";
+
+type AiGatewayTextPrompt = {
+  role: AiTextModelRole;
+  maxOutputTokens: number;
+  systemPrompt: string;
+  userPrompt: string;
+};
 
 type AiGatewayTextRequestConfig = {
   model: string;
@@ -113,6 +125,43 @@ export function resolveAiGatewayRequest() {
       Authorization: `Bearer ${apiKey}`,
     },
   };
+}
+
+export async function requestAiGatewayText(
+  request: NonNullable<ReturnType<typeof resolveAiGatewayRequest>>,
+  prompt: AiGatewayTextPrompt
+): Promise<string | null> {
+  try {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: JSON.stringify({
+        ...buildAiGatewayTextRequestConfig(prompt.role, prompt.maxOutputTokens),
+        input: [
+          {
+            role: "system",
+            content: prompt.systemPrompt,
+          },
+          {
+            role: "user",
+            content: prompt.userPrompt,
+          },
+        ],
+      }),
+    });
+
+    await throwIfOpenAiQuotaExhausted(response);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as AiGatewayResponse;
+    return extractAiGatewayResponseText(data);
+  } catch (error) {
+    rethrowAiQuotaError(error);
+    return null;
+  }
 }
 
 export function extractAiGatewayResponseText(data: AiGatewayResponse): string {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { GrammarProgressGroup, GrammarProgressResponse } from "@/shared/types/api";
+import type { GrammarProgressGroup, GrammarProgressResponse } from "@/shared/types/grammar";
 
 type GrammarProgressOverviewProps = {
   progress: GrammarProgressResponse | null;
