@@ -40,6 +40,15 @@ function formatSimilarGrammar(grammarPoint: GrammarPointDetail) {
     .join("\n");
 }
 
+function formatConnections(grammarPoint: GrammarPointDetail) {
+  return grammarPoint.connections
+    .map(
+      (connection, index) =>
+        `${index + 1}. ${connection.baseType} / ${connection.requiredForm}：${connection.pattern}${connection.notes ? `（${connection.notes}）` : ""}`
+    )
+    .join("\n");
+}
+
 export function buildPracticeGenerationPrompt(input: {
   grammarPoint: GrammarPointDetail;
   sceneTag?: string;
@@ -53,6 +62,8 @@ export function buildPracticeGenerationPrompt(input: {
   const register = input.registerTagLabel ?? input.registerTag ?? "一般礼貌";
   const examples = formatExamples(input.grammarPoint) || "无";
   const similarGrammar = formatSimilarGrammar(input.grammarPoint) || "无";
+  const structuredConnections =
+    formatConnections(input.grammarPoint) || "无结构化接续记录";
   const variation = input.variation
     ? `本次变化编号：${input.variation.seed}
 听话对象倾向：${input.variation.listenerFocus}
@@ -70,6 +81,8 @@ export function buildPracticeGenerationPrompt(input: {
 分类：${input.grammarPoint.categoryNameZh ?? "未提供"}
 核心意思：${input.grammarPoint.coreMeaning}
 结构：${input.grammarPoint.structure ?? "未提供"}
+结构化接续：
+${structuredConnections}
 使用场景：${scene}
 目标语体：${register}
 练习等级：${input.level}（${PRACTICE_LEVEL_GUIDES[input.level]}）

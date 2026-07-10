@@ -36,6 +36,19 @@ export const SELECT_TAXONOMY_NODES_SQL = `
   ORDER BY td.display_order ASC, tn.display_order ASC, tn.name_zh ASC;
 `;
 
+export const SELECT_LEARNING_STAGES_SQL = `
+  SELECT
+    id::text,
+    slug,
+    name_zh,
+    description,
+    display_order,
+    status
+  FROM learning_stages
+  WHERE status = 'active'
+  ORDER BY display_order ASC;
+`;
+
 export const SELECT_COMPARISON_SETS_SQL = `
   SELECT
     cs.id::text,
@@ -161,6 +174,21 @@ const GRAMMAR_POINT_SELECT_FIELDS = `
   gp.practicality,
   gp.spoken_or_written,
   CASE
+    WHEN ls.id IS NULL THEN NULL
+    ELSE jsonb_build_object(
+      'stage', jsonb_build_object(
+        'id', ls.id::text,
+        'slug', ls.slug,
+        'nameZh', ls.name_zh,
+        'description', ls.description,
+        'displayOrder', ls.display_order,
+        'status', ls.status
+      ),
+      'level', gpc.level,
+      'recommendedOrder', gpc.recommended_order
+    )
+  END AS curriculum,
+  CASE
     WHEN ptn.id IS NULL THEN NULL
     ELSE jsonb_build_object(
       'id', ptn.id::text,
@@ -198,6 +226,8 @@ const GRAMMAR_POINT_SELECT_JOINS = `
   LEFT JOIN grammar_categories compat_gc
     ON compat_gc.id = COALESCE(ptn.legacy_category_id, gp.category_id)
   LEFT JOIN grammar_category_groups compat_group ON compat_group.id = compat_gc.group_id
+  LEFT JOIN grammar_point_curriculum gpc ON gpc.grammar_point_id = gp.id
+  LEFT JOIN learning_stages ls ON ls.id = gpc.learning_stage_id
   LEFT JOIN comparison_sets cs ON cs.legacy_grammar_point_id = gp.id
   LEFT JOIN error_types et ON et.legacy_grammar_point_id = gp.id
   LEFT JOIN LATERAL (
@@ -272,6 +302,7 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
       OR gp.core_meaning ILIKE $2
       OR gp.natural_translation ILIKE $2
       OR gp.structure ILIKE $2
+      OR gp.usage_notes ILIKE $2
       OR compat_gc.name_zh ILIKE $2
       OR ptd.name_zh ILIKE $2
       OR gp.sub_category ILIKE $2
@@ -298,6 +329,10 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
           AND filter_dimension.slug = $6::text
       )
     )
+    AND (
+      $7::text = ''
+      OR ls.slug = $7::text
+    )
   ORDER BY
     CASE
       WHEN $1::text = '' THEN 10
@@ -307,6 +342,8 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
       WHEN gp.core_meaning ILIKE $2 THEN 3
       ELSE 4
     END,
+    ls.display_order ASC NULLS LAST,
+    gpc.recommended_order ASC NULLS LAST,
     CASE gp.practicality
       WHEN 'S' THEN 1
       WHEN 'A' THEN 2
@@ -323,9 +360,13 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
 export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
   SELECT
     ${GRAMMAR_POINT_SELECT_FIELDS},
+    gp.usage_notes,
     gp.notes,
     gp.jlpt_level,
     gp.common_mistakes,
+    COALESCE(connections.items, '[]'::jsonb) AS connections,
+    COALESCE(prerequisites.items, '[]'::jsonb) AS prerequisites,
+    COALESCE(form_siblings.items, '[]'::jsonb) AS form_siblings,
     EXISTS (
       SELECT 1
       FROM favorites
@@ -334,7 +375,64 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
     ) AS is_favorite
   FROM grammar_points gp
   ${GRAMMAR_POINT_SELECT_JOINS}
-  WHERE gp.id = $1::uuid;
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'baseType', connection.base_type,
+        'requiredForm', connection.required_form,
+        'pattern', connection.pattern,
+        'notes', connection.notes,
+        'sortOrder', connection.sort_order
+      )
+      ORDER BY connection.sort_order ASC
+    ) AS items
+    FROM grammar_point_connections connection
+    WHERE connection.grammar_point_id = gp.id
+  ) connections ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'grammarPointId', prerequisite_point.id::text,
+        'grammarPoint', prerequisite_point.grammar_point,
+        'canonicalForm', prerequisite_point.canonical_form,
+        'senseKey', prerequisite_point.sense_key,
+        'relationType', relation.relation_type
+      )
+      ORDER BY
+        CASE relation.relation_type WHEN 'required' THEN 1 ELSE 2 END,
+        prerequisite_point.grammar_point ASC
+    ) AS items
+    FROM grammar_point_prerequisites relation
+    JOIN grammar_points prerequisite_point
+      ON prerequisite_point.id = relation.prerequisite_grammar_point_id
+    WHERE relation.grammar_point_id = gp.id
+      AND prerequisite_point.status = 'active'
+  ) prerequisites ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'id', sibling.id::text,
+        'grammarPoint', sibling.grammar_point,
+        'canonicalForm', sibling.canonical_form,
+        'senseKey', sibling.sense_key,
+        'coreMeaning', sibling.core_meaning,
+        'status', sibling.status
+      )
+      ORDER BY sibling_curriculum.recommended_order ASC NULLS LAST,
+        sibling.grammar_point ASC
+    ) AS items
+    FROM grammar_points sibling
+    LEFT JOIN grammar_point_curriculum sibling_curriculum
+      ON sibling_curriculum.grammar_point_id = sibling.id
+    WHERE gp.form_group_slug IS NOT NULL
+      AND sibling.form_group_slug = gp.form_group_slug
+      AND sibling.id <> gp.id
+      AND sibling.status = 'active'
+  ) form_siblings ON TRUE
+  WHERE gp.id::text = $1::text
+     OR gp.sense_key = $1::text
+  ORDER BY CASE WHEN gp.id::text = $1::text THEN 0 ELSE 1 END
+  LIMIT 1;
 `;
 
 export const SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL = `

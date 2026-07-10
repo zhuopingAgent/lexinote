@@ -52,6 +52,25 @@ function normalizeGrammarPointId(grammarPointId: unknown) {
   return normalized;
 }
 
+function normalizeGrammarPointReference(grammarPointReference: unknown) {
+  if (
+    typeof grammarPointReference !== "string" ||
+    !grammarPointReference.trim()
+  ) {
+    throw new ValidationError("grammarPointId is required");
+  }
+
+  const normalized = grammarPointReference.trim();
+  if (
+    !UUID_PATTERN.test(normalized) &&
+    !/^[a-z0-9][a-z0-9_.:-]{1,127}$/i.test(normalized)
+  ) {
+    throw new ValidationError("grammarPointId must be a valid UUID or sense key");
+  }
+
+  return normalized;
+}
+
 function normalizeOptionalTag(value: unknown, fieldName: string) {
   if (value === undefined || value === null) {
     return undefined;
@@ -115,6 +134,7 @@ export class GrammarLearningService {
     const [
       knowledgeDimensions,
       taxonomyNodes,
+      learningStages,
       comparisonSets,
       errorTypes,
       categoryGroups,
@@ -124,6 +144,7 @@ export class GrammarLearningService {
     ] = await Promise.all([
       this.repository.listKnowledgeDimensions(),
       this.repository.listTaxonomyNodes(),
+      this.repository.listLearningStages(),
       this.repository.listComparisonSets(),
       this.repository.listErrorTypes(),
       this.repository.listCategoryGroups(),
@@ -135,6 +156,7 @@ export class GrammarLearningService {
     return {
       knowledgeDimensions,
       taxonomyNodes,
+      learningStages,
       comparisonSets,
       errorTypes,
       categoryGroups,
@@ -149,6 +171,7 @@ export class GrammarLearningService {
     categorySlug?: string;
     groupSlug?: string;
     dimensionSlug?: string;
+    stageSlug?: string;
     limit?: unknown;
     userId?: string;
   }): Promise<GrammarSearchResponse> {
@@ -164,6 +187,7 @@ export class GrammarLearningService {
       query: options?.query,
       categorySlug: options?.categorySlug,
       dimensionSlug,
+      stageSlug: options?.stageSlug,
       limit: normalizeLimit(options?.limit),
       userId,
     });
@@ -175,10 +199,11 @@ export class GrammarLearningService {
     grammarPointId: string,
     userId?: string
   ): Promise<GrammarDetailResponse> {
-    const normalizedGrammarPointId = normalizeGrammarPointId(grammarPointId);
+    const normalizedGrammarPointReference =
+      normalizeGrammarPointReference(grammarPointId);
     const normalizedUserId = normalizeUserId(userId);
     const grammarPoint = await this.repository.findGrammarPointById(
-      normalizedGrammarPointId,
+      normalizedGrammarPointReference,
       normalizedUserId
     );
 
@@ -188,7 +213,7 @@ export class GrammarLearningService {
 
     await this.repository.logLearningHistory({
       userId: normalizedUserId,
-      grammarPointId: normalizedGrammarPointId,
+      grammarPointId: grammarPoint.id,
       activityType: "view_grammar",
     });
 

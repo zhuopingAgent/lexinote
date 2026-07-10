@@ -438,9 +438,11 @@ function buildFallbackPractice(input: {
       `练习等级：${levelLabel}`,
       `变化要求：${variation.listenerFocus}`,
       `核心意思：${input.grammarPoint.coreMeaning}`,
-      input.grammarPoint.structure
-        ? `接续结构：${input.grammarPoint.structure}`
-        : "先确认前后接续是否自然。",
+      input.grammarPoint.connections[0]
+        ? `接续结构：${input.grammarPoint.connections[0].pattern}`
+        : input.grammarPoint.structure
+          ? `接续结构：${input.grammarPoint.structure}`
+          : "先确认前后接续是否自然。",
     ],
     source: "fallback",
   };

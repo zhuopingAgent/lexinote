@@ -348,6 +348,7 @@ CREATE TABLE IF NOT EXISTS grammar_points (
   core_meaning TEXT NOT NULL,
   natural_translation TEXT,
   structure TEXT,
+  usage_notes TEXT,
   practicality TEXT NOT NULL CHECK (practicality IN ('S', 'A', 'B', 'C', 'D')),
   spoken_or_written TEXT NOT NULL CHECK (spoken_or_written IN ('spoken', 'written', 'both')) DEFAULT 'both',
   notes TEXT,
@@ -372,6 +373,7 @@ ALTER TABLE grammar_points
   ADD COLUMN IF NOT EXISTS core_meaning TEXT,
   ADD COLUMN IF NOT EXISTS natural_translation TEXT,
   ADD COLUMN IF NOT EXISTS structure TEXT,
+  ADD COLUMN IF NOT EXISTS usage_notes TEXT,
   ADD COLUMN IF NOT EXISTS practicality TEXT,
   ADD COLUMN IF NOT EXISTS spoken_or_written TEXT NOT NULL DEFAULT 'both',
   ADD COLUMN IF NOT EXISTS notes TEXT,
@@ -391,6 +393,50 @@ CREATE TABLE IF NOT EXISTS grammar_point_taxonomy_tags (
   taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (grammar_point_id, taxonomy_node_id)
+);
+
+CREATE TABLE IF NOT EXISTS grammar_point_connections (
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  base_type TEXT NOT NULL CHECK (
+    base_type IN ('verb', 'i_adjective', 'na_adjective', 'noun', 'clause')
+  ),
+  required_form TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (grammar_point_id, sort_order)
+);
+
+CREATE TABLE IF NOT EXISTS grammar_point_prerequisites (
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  prerequisite_grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  relation_type TEXT NOT NULL CHECK (relation_type IN ('required', 'recommended')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (grammar_point_id, prerequisite_grammar_point_id),
+  CHECK (grammar_point_id <> prerequisite_grammar_point_id)
+);
+
+CREATE TABLE IF NOT EXISTS learning_stages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS grammar_point_curriculum (
+  grammar_point_id UUID PRIMARY KEY REFERENCES grammar_points(id) ON DELETE CASCADE,
+  learning_stage_id UUID NOT NULL REFERENCES learning_stages(id),
+  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 5),
+  recommended_order INTEGER NOT NULL CHECK (recommended_order > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (learning_stage_id, recommended_order)
 );
 
 CREATE TABLE IF NOT EXISTS comparison_sets (
@@ -541,6 +587,15 @@ CREATE INDEX IF NOT EXISTS idx_grammar_points_primary_taxonomy
 CREATE INDEX IF NOT EXISTS idx_grammar_point_taxonomy_tags_node
   ON grammar_point_taxonomy_tags (taxonomy_node_id, grammar_point_id);
 
+CREATE INDEX IF NOT EXISTS idx_grammar_points_form_group
+  ON grammar_points (form_group_slug, status, sense_key);
+
+CREATE INDEX IF NOT EXISTS idx_grammar_point_prerequisites_reverse
+  ON grammar_point_prerequisites (prerequisite_grammar_point_id, grammar_point_id);
+
+CREATE INDEX IF NOT EXISTS idx_grammar_point_curriculum_stage_order
+  ON grammar_point_curriculum (learning_stage_id, recommended_order);
+
 CREATE INDEX IF NOT EXISTS idx_comparison_set_members_point
   ON comparison_set_members (grammar_point_id, comparison_set_id);
 
@@ -561,6 +616,44 @@ CREATE INDEX IF NOT EXISTS idx_review_records_due
 
 CREATE INDEX IF NOT EXISTS idx_learning_history_user_created
   ON learning_history (user_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION prevent_grammar_prerequisite_cycle()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND (
+    NEW.grammar_point_id <> OLD.grammar_point_id
+    OR NEW.prerequisite_grammar_point_id <> OLD.prerequisite_grammar_point_id
+  ) THEN
+    RAISE EXCEPTION 'prerequisite endpoints are immutable; delete and recreate the relation';
+  END IF;
+
+  IF EXISTS (
+    WITH RECURSIVE prerequisite_path(grammar_point_id) AS (
+      SELECT NEW.prerequisite_grammar_point_id
+      UNION
+      SELECT relations.prerequisite_grammar_point_id
+      FROM grammar_point_prerequisites AS relations
+      JOIN prerequisite_path AS path
+        ON relations.grammar_point_id = path.grammar_point_id
+    )
+    SELECT 1
+    FROM prerequisite_path
+    WHERE grammar_point_id = NEW.grammar_point_id
+  ) THEN
+    RAISE EXCEPTION 'grammar prerequisite cycle detected';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS grammar_point_prerequisites_prevent_cycle
+  ON grammar_point_prerequisites;
+
+CREATE TRIGGER grammar_point_prerequisites_prevent_cycle
+BEFORE INSERT OR UPDATE ON grammar_point_prerequisites
+FOR EACH ROW
+EXECUTE FUNCTION prevent_grammar_prerequisite_cycle();
 
 INSERT INTO users (id, email, display_name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'local@lexinote.local', 'Local Learner')
@@ -743,6 +836,26 @@ ON CONFLICT (slug) DO UPDATE SET
   legacy_group_id = EXCLUDED.legacy_group_id,
   updated_at = NOW();
 
+INSERT INTO learning_stages (
+  slug,
+  name_zh,
+  description,
+  display_order,
+  status
+)
+VALUES
+  ('foundations', '阶段 1：句子基础', '基础句型、存在句与核心助词。', 1, 'active'),
+  ('conjugation', '阶段 2：形态活用', '动词、形容词与名词的基础活用。', 2, 'active'),
+  ('functional_patterns', '阶段 3：功能表达', '时间、原因、条件、目的与请求表达。', 3, 'active'),
+  ('voice_aspect_benefit', '阶段 4：时体与语态', '时体、授受、可能、被动与使役。', 4, 'active'),
+  ('natural_advanced_use', '阶段 5：自然综合表达', '语体、敬语、篇章、搭配与自然表达。', 5, 'active')
+ON CONFLICT (slug) DO UPDATE SET
+  name_zh = EXCLUDED.name_zh,
+  description = EXCLUDED.description,
+  display_order = EXCLUDED.display_order,
+  status = EXCLUDED.status,
+  updated_at = NOW();
+
 WITH dimension_map(legacy_group_slug, dimension_slug) AS (
   VALUES
     ('expressive_functions', 'expression_function'),
@@ -817,6 +930,8 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_tara'),
   ('gp_ba'),
   ('gp_to_condition'),
+  ('gp_to_quotation'),
+  ('gp_to_case_particle'),
   ('gp_nara'),
   ('gp_baai'),
   ('gp_tame_ni'),
@@ -835,6 +950,7 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_te_itadaku'),
   ('gp_sasete_morau'),
   ('gp_sou_da'),
+  ('gp_sou_da_hearsay'),
   ('gp_rashii'),
   ('gp_you_da'),
   ('gp_mitai_da'),
@@ -861,6 +977,8 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_yoyaku_wo_toru'),
   ('gp_dekiru'),
   ('gp_rareru_potential'),
+  ('gp_rareru_honorific'),
+  ('gp_rareru_spontaneous'),
   ('gp_yasui'),
   ('gp_nikui'),
   ('gp_zurai'),
@@ -877,6 +995,7 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_to_iu'),
   ('gp_to_omou'),
   ('gp_tte'),
+  ('gp_tte_topic'),
   ('gp_ni_tsuite'),
   ('gp_ni_yoru_to'),
   ('gp_te_itadakemasu_ka'),
@@ -895,6 +1014,8 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_nakatta_form'),
   ('gp_masen_deshita'),
   ('gp_te_iru'),
+  ('gp_te_iru_result_state'),
+  ('gp_te_iru_habitual'),
   ('gp_te_ita'),
   ('gp_te_aru'),
   ('gp_te_shimau'),
@@ -919,6 +1040,7 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_koso_particle'),
   ('gp_sae_particle'),
   ('gp_bakari'),
+  ('gp_you_ni_instruction'),
   ('gp_ni_taishite'),
   ('gp_toshite_particle'),
   ('gp_plain_style'),
@@ -1173,6 +1295,7 @@ INSERT INTO grammar_points (
   core_meaning,
   natural_translation,
   structure,
+  usage_notes,
   practicality,
   spoken_or_written,
   notes,
@@ -1202,6 +1325,7 @@ SELECT
   grammar_seed.core_meaning,
   grammar_seed.natural_translation,
   grammar_seed.structure,
+  grammar_seed.notes,
   grammar_seed.practicality,
   grammar_seed.spoken_or_written,
   grammar_seed.notes,
@@ -1226,6 +1350,7 @@ ON CONFLICT (seed_key) DO UPDATE SET
   core_meaning = EXCLUDED.core_meaning,
   natural_translation = EXCLUDED.natural_translation,
   structure = EXCLUDED.structure,
+  usage_notes = EXCLUDED.usage_notes,
   practicality = EXCLUDED.practicality,
   spoken_or_written = EXCLUDED.spoken_or_written,
   notes = EXCLUDED.notes,
@@ -1330,10 +1455,164 @@ JOIN grammar_category_groups AS cgrp ON cgrp.id = gc.group_id
 LEFT JOIN taxonomy_nodes AS tn ON tn.legacy_category_id = gc.id
 WHERE gp.category_id = gc.id;
 
+WITH sense_seed(
+  seed_key,
+  grammar_point,
+  reading,
+  canonical_form,
+  sense_key,
+  form_group_slug,
+  point_type,
+  taxonomy_node_slug,
+  sub_category,
+  core_meaning,
+  natural_translation,
+  structure,
+  usage_notes,
+  practicality,
+  spoken_or_written,
+  jlpt_level,
+  common_mistakes
+) AS (
+  VALUES
+    ('gp_sou_da_hearsay', '〜そうだ（传闻）', '〜そうだ', '〜そうだ', 'gp_sou_da_hearsay', 'sou_da', 'grammar_pattern', 'inference_judgment_sources', '传闻', '转述从别人或媒体获得的信息，不表示说话人眼前的观察。', '听说…… / 据说……', '普通形 + そうだ；名词/な形容词 + だそうだ', '用于明确转述信息来源；和样态「そうだ」的接续完全不同。', 'A', 'both', 'N4', '["不要把形容词词干直接接在传闻「そうだ」前；传闻要保留普通形。"]'::jsonb),
+    ('gp_rareru_honorific', '〜られる（尊敬）', '〜られる', '〜られる', 'gp_rareru_honorific', 'rareru', 'grammar_pattern', 'honorifics_and_politeness', '尊敬', '用「られる」抬高对方或第三者的动作。', '您…… / 对方……', '动词未然形 + れる/られる', '主语必须是需要表示尊敬的人；部分动词更常使用专用尊敬语。', 'B', 'both', 'N4', '["不要用尊敬「られる」描述自己的动作。"]'::jsonb),
+    ('gp_rareru_spontaneous', '〜られる（自发）', '〜られる', '〜られる', 'gp_rareru_spontaneous', 'rareru', 'grammar_pattern', 'inference_judgment_sources', '自发', '表示某种感情、回忆或判断不由自主地浮现。', '不由得…… / 自然而然地……', '表示心理活动的动词未然形 + れる/られる', '常见于「思われる」「感じられる」「思い出される」等书面或较正式表达。', 'B', 'written', 'N3', '["自发用法不等于能力或被动，要结合心理活动和非意志语境判断。"]'::jsonb),
+    ('gp_to_quotation', '〜と（引用）', '〜と', '〜と', 'gp_to_quotation', 'to', 'particle', 'quotation_reporting_topic', '引用', '标记说话、思考、判断等内容。', '说…… / 认为……', '普通形 + と + 言う/思う/聞く', '引用内容通常保持普通形；礼貌程度主要由句末谓语承担。', 'S', 'both', 'N5', '["不要把引用内容和句末谓语都机械地改成礼貌体。"]'::jsonb),
+    ('gp_to_case_particle', 'と（格助词）', 'と', '〜と', 'gp_to_case_particle', 'to', 'particle', 'case_particles', '共同 / 对象', '标记共同参与者、相互动作对象或列举结果。', '和…… / 跟……', '名词 + と + 动词', '用于「友達と行く」「先生と相談する」等共同或相互关系。', 'S', 'both', 'N5', '["单向动作的对象不一定用と，例如「先生に質問する」。"]'::jsonb),
+    ('gp_tte_topic', '〜って（话题提示）', '〜って', '〜って', 'gp_tte_topic', 'tte', 'particle', 'quotation_reporting_topic', '口语话题', '在口语中提示接下来要说明或评价的话题。', '说到…… / ……这个', '名词/短语 + って', '是口语话题提示，正式场合通常改用「は」或「というのは」。', 'A', 'spoken', 'N4', '["正式写作或商务说明中不要随意使用话题提示「って」。"]'::jsonb),
+    ('gp_te_iru_result_state', '〜ている（结果状态）', '〜ている', '〜ている', 'gp_te_iru_result_state', 'te_iru', 'grammar_pattern', 'progressive_state_experience_completion', '结果状态', '表示变化完成后留下的结果状态。', '处于已经……的状态', '瞬间变化动词て形 + いる', '和正在进行不同，重点是动作完成后的当前状态，如「結婚している」。', 'S', 'both', 'N4', '["不要把所有「ている」都理解成中文“正在”。"]'::jsonb),
+    ('gp_te_iru_habitual', '〜ている（习惯）', '〜ている', '〜ている', 'gp_te_iru_habitual', 'te_iru', 'grammar_pattern', 'progressive_state_experience_completion', '习惯状态', '表示反复进行的习惯、职业或长期活动。', '一直…… / 平时……', '反复性动词て形 + いる', '常和「毎日」「週に三回」「会社で」等习惯或持续背景搭配。', 'S', 'both', 'N4', '["有频率或职业背景时，不要只按眼前正在进行来理解。"]'::jsonb),
+    ('gp_you_ni_instruction', '〜ように（要求／指示）', '〜ように', '〜ように', 'gp_you_ni_instruction', 'you_ni', 'grammar_pattern', 'requests_permission_advice', '间接要求', '转述或柔和表达要求、指示和提醒。', '要求…… / 请注意……', '动词辞书形/ない形 + ように + 言う/頼む/してください', '常用于间接指示、公告和提醒；不表示说话人的目的。', 'A', 'both', 'N4', '["不要把要求用法和表示目标状态的目的「ように」混为一谈。"]'::jsonb)
+)
+INSERT INTO grammar_points (
+  seed_key,
+  grammar_point,
+  point_type,
+  canonical_form,
+  sense_key,
+  form_group_slug,
+  primary_taxonomy_node_id,
+  status,
+  reading,
+  category_id,
+  sub_category,
+  core_meaning,
+  natural_translation,
+  structure,
+  usage_notes,
+  practicality,
+  spoken_or_written,
+  notes,
+  jlpt_level,
+  common_mistakes,
+  is_mvp
+)
+SELECT
+  sense_seed.seed_key,
+  sense_seed.grammar_point,
+  sense_seed.point_type,
+  sense_seed.canonical_form,
+  sense_seed.sense_key,
+  sense_seed.form_group_slug,
+  taxonomy_nodes.id,
+  'active',
+  sense_seed.reading,
+  taxonomy_nodes.legacy_category_id,
+  sense_seed.sub_category,
+  sense_seed.core_meaning,
+  sense_seed.natural_translation,
+  sense_seed.structure,
+  sense_seed.usage_notes,
+  sense_seed.practicality,
+  sense_seed.spoken_or_written,
+  sense_seed.usage_notes,
+  sense_seed.jlpt_level,
+  sense_seed.common_mistakes,
+  TRUE
+FROM sense_seed
+JOIN taxonomy_nodes ON taxonomy_nodes.slug = sense_seed.taxonomy_node_slug
+ON CONFLICT (seed_key) DO UPDATE SET
+  grammar_point = EXCLUDED.grammar_point,
+  point_type = EXCLUDED.point_type,
+  canonical_form = EXCLUDED.canonical_form,
+  sense_key = EXCLUDED.sense_key,
+  form_group_slug = EXCLUDED.form_group_slug,
+  primary_taxonomy_node_id = EXCLUDED.primary_taxonomy_node_id,
+  status = EXCLUDED.status,
+  reading = EXCLUDED.reading,
+  category_id = EXCLUDED.category_id,
+  sub_category = EXCLUDED.sub_category,
+  core_meaning = EXCLUDED.core_meaning,
+  natural_translation = EXCLUDED.natural_translation,
+  structure = EXCLUDED.structure,
+  usage_notes = EXCLUDED.usage_notes,
+  practicality = EXCLUDED.practicality,
+  spoken_or_written = EXCLUDED.spoken_or_written,
+  notes = EXCLUDED.notes,
+  jlpt_level = EXCLUDED.jlpt_level,
+  common_mistakes = EXCLUDED.common_mistakes,
+  is_mvp = EXCLUDED.is_mvp,
+  updated_at = NOW();
+
+WITH sense_normalization(
+  seed_key,
+  grammar_point,
+  canonical_form,
+  form_group_slug,
+  taxonomy_node_slug,
+  sub_category,
+  core_meaning,
+  natural_translation,
+  structure,
+  usage_notes,
+  point_type
+) AS (
+  VALUES
+    ('gp_sou_da', '〜そうだ（样态）', '〜そうだ', 'sou_da', 'inference_judgment_sources', '样态', '根据眼前外观或迹象判断即将发生的事或呈现的性质。', '看起来…… / 好像要……', '动词ます形去ます/い形容词去い/な形容词词干 + そうだ', '只表示观察到的样态，不转述听来的信息；「いい」「ない」变为「よさそう」「なさそう」。', 'grammar_pattern'),
+    ('gp_rareru_potential', '〜られる（可能）', '〜られる', 'rareru', 'ability_potential_difficulty', '可能', '表示一段动词能够进行某动作。', '能…… / 可以……', '一段动词去る + られる', '口语中有时出现去「ら」形式，但正式学习和书面表达优先完整形式。', 'conjugation'),
+    ('gp_passive_form', '〜られる（被动）', '〜られる', 'rareru', 'derived_forms_potential_passive_causative', '被动', '表示主语受到他人动作，也可带受影响或受害感。', '被……', '五段动词あ段 + れる；一段动词去る + られる', '一段动词的被动与可能同形，需要根据施事者、助词和语境判断。', 'conjugation'),
+    ('gp_to_condition', '〜と（条件）', '〜と', 'to', 'conditions_and_hypotheses', '恒常条件', '表示前项成立后自然、必然或反复出现后项。', '一……就…… / 如果……就……', '动词辞书形/ない形 + と', '后项通常是自然结果、操作结果或习惯，不适合直接接说话人的命令和意志。', 'grammar_pattern'),
+    ('gp_ga', 'が（主格）', 'が', 'ga', 'particles_and_relations', '主格 / 焦点', '标记主语、新信息或句中焦点。', '……（主语/焦点）', '名词 + が + 谓语', '用于回答「谁/什么」、引入新信息，以及能力、喜好等谓语的对象。', 'particle'),
+    ('gp_ga_contrast', '〜が（转折）', 'が', 'ga', 'contrast_concession_comparison', '转折连接', '连接前后两个分句，表示转折或柔和铺垫。', '虽然……但是…… / 不过……', '普通形/丁宁形 + が + 后句', '句末「〜んですが」也可用于柔和引出请求，不等于主格助词「が」。', 'grammar_pattern'),
+    ('gp_tte', '〜って（引用）', '〜って', 'tte', 'quotation_reporting_topic', '口语引用', '在口语中引用说话、想法或名称。', '说…… / 听说……', '普通形/名词 + って + 言う/聞く/思う', '是引用「と」或「という」的口语形式，不用于正式书面表达。', 'particle'),
+    ('gp_te_iru', '〜ている（进行）', '〜ている', 'te_iru', 'progressive_state_experience_completion', '进行', '表示说话时或某一时间点正在进行的动作。', '正在……', '持续性动作动词て形 + いる', '适合具有持续过程的动作；瞬间变化动词常表示结果状态。', 'grammar_pattern'),
+    ('gp_you_ni_purpose', '〜ように（目的）', '〜ように', 'you_ni', 'purpose_and_plans', '目标状态', '表示希望实现某种状态，常用于结果不完全由意志控制的目的。', '为了能…… / 为了不……', '可能形/ない形/非意志动词普通形 + ように', '目标不可直接控制时比「ために」自然，如能力、避免、看得见或听得见。', 'grammar_pattern'),
+    ('gp_bakari', '〜ばかり（限定／偏多）', '〜ばかり', 'bakari', 'comparison_degree_scope', '限定 / 偏多', '表示范围偏向同一事物或反复做同类动作。', '净是…… / 光……', '名词/动词て形 + ばかり', '表示偏多或净是某事；表示刚完成必须使用独立用法「〜たばかり」。', 'particle'),
+    ('gp_ta_bakari', '〜たばかり（刚完成）', '〜たばかり', 'bakari', 'progressive_state_experience_completion', '刚完成', '表示说话人主观上认为某动作刚完成不久。', '刚刚……', '动词た形 + ばかり', '时间长短由说话人的主观判断决定，不与限定「〜ばかり」共用接续。', 'grammar_pattern'),
+    ('gp_tame', '〜ため（原因）', '〜ため', 'tame', 'reasons_and_explanations', '正式原因', '较正式、客观地说明原因及其结果。', '由于…… / 因为……', '普通形 + ため；名词/な形容词 + の/な + ため', '常见于书面说明、公告和正式报告；本条目不承担目的用法。', 'grammar_pattern'),
+    ('gp_tame_ni', '〜ために（目的）', '〜ために', 'tame', 'purpose_and_plans', '意志目的', '表示主体为实现可控制的目标而采取行动。', '为了……', '意志动词辞书形/名词 + の + ために', '前后主体通常一致，目标应当可以由主体主动控制。', 'grammar_pattern'),
+    ('gp_te_moraemasu_ka', '〜てもらえますか', '〜てもらえますか', 'te_morau', 'requests_permission_advice', '礼貌请求', '礼貌地询问对方能否为自己做某事。', '可以请您……吗？', '动词て形 + もらえますか', '一般礼貌请求；对医生、老师或客户需要更郑重时可用「〜ていただけますか」。', 'grammar_pattern'),
+    ('gp_te_itadakemasu_ka', '〜ていただけますか', '〜ていただけますか', 'te_itadaku', 'requests_permission_advice', '郑重请求', '以谦让授受形式郑重请求对方做某事。', '能否请您……？', '动词て形 + いただけますか', '主分类是请求表达，同时具备授受和敬语功能，适合商务、客户或需要更高礼貌度的场景。', 'grammar_pattern'),
+    ('gp_ninaru_change', '〜になる', '〜になる', 'ni_naru', 'change_start_continuation_end', '状态变化', '表示事物自然变成某种状态或结果。', '变成……', '名词/な形容词 + に；い形容词去い + く + なる', '主分类是变化表达，也可作为基础句型复习。', 'grammar_pattern'),
+    ('gp_nisuru_change', '〜にする', '〜にする', 'ni_suru', 'change_start_continuation_end', '人为变化', '表示人为选择或使事物变成某种状态。', '决定为…… / 使……变成……', '名词/な形容词 + に；い形容词去い + く + する', '主分类是变化表达，也可作为基础句型复习。', 'grammar_pattern')
+)
+UPDATE grammar_points AS gp
+SET
+  grammar_point = sense_normalization.grammar_point,
+  canonical_form = sense_normalization.canonical_form,
+  sense_key = sense_normalization.seed_key,
+  form_group_slug = sense_normalization.form_group_slug,
+  primary_taxonomy_node_id = taxonomy_nodes.id,
+  category_id = taxonomy_nodes.legacy_category_id,
+  sub_category = sense_normalization.sub_category,
+  core_meaning = sense_normalization.core_meaning,
+  natural_translation = sense_normalization.natural_translation,
+  structure = sense_normalization.structure,
+  usage_notes = sense_normalization.usage_notes,
+  notes = sense_normalization.usage_notes,
+  point_type = sense_normalization.point_type,
+  status = 'active',
+  updated_at = NOW()
+FROM sense_normalization
+JOIN taxonomy_nodes ON taxonomy_nodes.slug = sense_normalization.taxonomy_node_slug
+WHERE gp.seed_key = sense_normalization.seed_key;
+
 UPDATE grammar_points
 SET
   canonical_form = grammar_point,
   sense_key = COALESCE(NULLIF(seed_key, ''), 'legacy:' || id::text),
+  usage_notes = COALESCE(NULLIF(usage_notes, ''), notes, core_meaning),
   status = CASE
     WHEN primary_taxonomy_node_id IS NULL THEN 'deprecated'
     ELSE status
@@ -1341,6 +1620,7 @@ SET
   updated_at = NOW()
 WHERE canonical_form IS NULL
    OR sense_key IS NULL
+   OR usage_notes IS NULL
    OR (status = 'active' AND primary_taxonomy_node_id IS NULL);
 
 ALTER TABLE grammar_points
@@ -1438,12 +1718,21 @@ WITH secondary_tag_seed(seed_key, taxonomy_node_slug) AS (
     ('gp_shika_nai', 'adverbial_particles'),
     ('gp_sae_particle', 'adverbial_particles'),
     ('gp_bakari', 'adverbial_particles'),
+    ('gp_tte_topic', 'topic_contrast_particles'),
     ('gp_kana', 'sentence_final_particles'),
     ('gp_yo_ne', 'sentence_final_particles'),
     ('gp_ni_tsuite', 'compound_particles'),
     ('gp_ni_yoru_to', 'compound_particles'),
     ('gp_ni_taishite', 'compound_particles'),
     ('gp_toshite_particle', 'compound_particles'),
+    ('gp_te_moraemasu_ka', 'giving_receiving_benefit'),
+    ('gp_te_itadakemasu_ka', 'giving_receiving_benefit'),
+    ('gp_te_itadakemasu_ka', 'honorifics_and_politeness'),
+    ('gp_te_itadakemasu_ka', 'honorific_humble_language'),
+    ('gp_ninaru_change', 'basic_sentence_patterns'),
+    ('gp_nisuru_change', 'basic_sentence_patterns'),
+    ('gp_rareru_honorific', 'derived_forms_potential_passive_causative'),
+    ('gp_rareru_spontaneous', 'derived_forms_potential_passive_causative'),
     ('gp_fuan_wo_idaku', 'noun_verb_collocations'),
     ('gp_gimon_wo_motsu', 'noun_verb_collocations'),
     ('gp_eikyo_wo_ukeru', 'noun_verb_collocations'),
@@ -1458,6 +1747,303 @@ JOIN taxonomy_nodes ON taxonomy_nodes.slug = secondary_tag_seed.taxonomy_node_sl
 WHERE grammar_points.status = 'active'
 ON CONFLICT DO NOTHING;
 
+DELETE FROM grammar_point_connections
+USING grammar_points
+WHERE grammar_point_connections.grammar_point_id = grammar_points.id
+  AND grammar_points.is_mvp = TRUE;
+
+WITH connection_seed(
+  seed_key,
+  base_type,
+  required_form,
+  pattern,
+  notes,
+  sort_order
+) AS (
+  VALUES
+    ('gp_sou_da', 'verb', 'masu_stem', 'Vます去ます + そうだ', '表示眼前迹象；「降りそうだ」。', 1),
+    ('gp_sou_da', 'i_adjective', 'stem_without_i', 'い形容词去い + そうだ', '「いい」使用「よさそう」；否定形使用「なさそう」。', 2),
+    ('gp_sou_da', 'na_adjective', 'stem', 'な形容词词干 + そうだ', '不加「だ」；「元気そうだ」。', 3),
+    ('gp_sou_da_hearsay', 'clause', 'plain_form', '普通形 + そうだ', '名词和な形容词使用「だそうだ」。', 1),
+    ('gp_rareru_potential', 'verb', 'ichidan_stem', '一段动词去る + られる', '表示能力或条件允许。', 1),
+    ('gp_passive_form', 'verb', 'mizenkei', '五段动词あ段 + れる；一段动词去る + られる', '结合施事者和助词判断被动。', 1),
+    ('gp_rareru_honorific', 'verb', 'mizenkei', '动词未然形 + れる/られる', '主语是需要抬高的对方或第三者。', 1),
+    ('gp_rareru_spontaneous', 'verb', 'mizenkei', '心理活动动词未然形 + れる/られる', '常见于思考、感受和回忆。', 1),
+    ('gp_to_condition', 'clause', 'plain_nonpast', '动词辞书形/ない形 + と', '后项通常为自然结果、操作结果或习惯。', 1),
+    ('gp_to_quotation', 'clause', 'plain_form', '普通形 + と + 言う/思う/聞く', '引用内容使用普通形。', 1),
+    ('gp_to_case_particle', 'noun', 'dictionary_form', '名词 + と + 动词', '标记共同参与者或相互动作对象。', 1),
+    ('gp_ga', 'noun', 'dictionary_form', '名词 + が + 谓语', '标记主语、新信息或焦点。', 1),
+    ('gp_ga_contrast', 'clause', 'plain_or_polite_form', '普通形/丁宁形 + が + 后句', '连接转折，也可柔和引出后文。', 1),
+    ('gp_tte', 'clause', 'plain_form', '普通形/名词 + って + 言う/聞く/思う', '口语引用，不用于正式书面表达。', 1),
+    ('gp_tte_topic', 'noun', 'dictionary_form', '名词/短语 + って', '口语提示话题，正式场合改用「は」等。', 1),
+    ('gp_te_iru', 'verb', 'te_form', '持续性动作动词て形 + いる', '表示动作正在进行。', 1),
+    ('gp_te_iru_result_state', 'verb', 'te_form', '瞬间变化动词て形 + いる', '表示变化后的结果状态。', 1),
+    ('gp_te_iru_habitual', 'verb', 'te_form', '反复性动词て形 + いる', '结合频率或职业背景表示习惯。', 1),
+    ('gp_you_ni_purpose', 'clause', 'potential_negative_or_nonvolitional', '可能形/ない形/非意志动词普通形 + ように', '表示不完全由主体直接控制的目标状态。', 1),
+    ('gp_you_ni_instruction', 'verb', 'dictionary_or_nai_form', '动词辞书形/ない形 + ように + 言う/頼む/してください', '表示间接要求、指示或提醒。', 1),
+    ('gp_bakari', 'noun', 'dictionary_form', '名词 + ばかり', '表示范围偏向同一事物。', 1),
+    ('gp_bakari', 'verb', 'te_form', '动词て形 + ばかりいる', '表示反复净做某事。', 2),
+    ('gp_ta_bakari', 'verb', 'ta_form', '动词た形 + ばかり', '表示主观上刚完成。', 1),
+    ('gp_tame', 'clause', 'plain_form', '普通形 + ため', '表示较正式、客观的原因。', 1),
+    ('gp_tame', 'noun', 'no_form', '名词 + の + ため', '名词原因使用「の」。', 2),
+    ('gp_tame_ni', 'verb', 'dictionary_form', '意志动词辞书形 + ために', '前后主体通常一致。', 1),
+    ('gp_tame_ni', 'noun', 'no_form', '名词 + の + ために', '表示为某个目标或利益。', 2),
+    ('gp_te_moraemasu_ka', 'verb', 'te_form', '动词て形 + もらえますか', '一般礼貌请求。', 1),
+    ('gp_te_itadakemasu_ka', 'verb', 'te_form', '动词て形 + いただけますか', '郑重请求，兼具授受与敬语功能。', 1),
+    ('gp_ninaru_change', 'noun', 'ni_form', '名词/な形容词 + に + なる', '表示自然变化或结果。', 1),
+    ('gp_ninaru_change', 'i_adjective', 'ku_form', 'い形容词去い + く + なる', '表示性质变化。', 2),
+    ('gp_nisuru_change', 'noun', 'ni_form', '名词/な形容词 + に + する', '表示人为选择或改变。', 1),
+    ('gp_nisuru_change', 'i_adjective', 'ku_form', 'い形容词去い + く + する', '表示人为改变性质。', 2)
+)
+INSERT INTO grammar_point_connections (
+  grammar_point_id,
+  base_type,
+  required_form,
+  pattern,
+  notes,
+  sort_order
+)
+SELECT
+  grammar_points.id,
+  connection_seed.base_type,
+  connection_seed.required_form,
+  connection_seed.pattern,
+  connection_seed.notes,
+  connection_seed.sort_order
+FROM connection_seed
+JOIN grammar_points ON grammar_points.seed_key = connection_seed.seed_key
+WHERE grammar_points.status = 'active'
+ON CONFLICT (grammar_point_id, sort_order) DO UPDATE SET
+  base_type = EXCLUDED.base_type,
+  required_form = EXCLUDED.required_form,
+  pattern = EXCLUDED.pattern,
+  notes = EXCLUDED.notes,
+  updated_at = NOW();
+
+INSERT INTO grammar_point_connections (
+  grammar_point_id,
+  base_type,
+  required_form,
+  pattern,
+  notes,
+  sort_order
+)
+SELECT
+  grammar_points.id,
+  CASE
+    WHEN grammar_points.point_type = 'conjugation' THEN 'verb'
+    WHEN grammar_points.point_type IN ('particle', 'collocation') THEN 'noun'
+    ELSE 'clause'
+  END,
+  'entry_defined',
+  COALESCE(NULLIF(grammar_points.structure, ''), grammar_points.grammar_point),
+  '结构化兼容记录；具体接续沿用已审核的条目说明。',
+  1
+FROM grammar_points
+WHERE grammar_points.status = 'active'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM grammar_point_connections
+    WHERE grammar_point_connections.grammar_point_id = grammar_points.id
+  )
+ON CONFLICT (grammar_point_id, sort_order) DO NOTHING;
+
+DELETE FROM grammar_point_prerequisites
+USING grammar_points
+WHERE grammar_point_prerequisites.grammar_point_id = grammar_points.id
+  AND grammar_points.is_mvp = TRUE;
+
+WITH prerequisite_seed(grammar_seed_key, prerequisite_seed_key, relation_type) AS (
+  VALUES
+    ('gp_te_iru', 'gp_te_form', 'required'),
+    ('gp_te_iru_result_state', 'gp_te_form', 'required'),
+    ('gp_te_iru_habitual', 'gp_te_form', 'required'),
+    ('gp_te_kara', 'gp_te_form', 'required'),
+    ('gp_te_kudasai', 'gp_te_form', 'required'),
+    ('gp_te_moraemasu_ka', 'gp_te_form', 'required'),
+    ('gp_te_itadakemasu_ka', 'gp_te_form', 'required'),
+    ('gp_te_ageru', 'gp_te_form', 'required'),
+    ('gp_te_kureru', 'gp_te_form', 'required'),
+    ('gp_te_morau', 'gp_te_form', 'required'),
+    ('gp_te_itadaku', 'gp_te_form', 'required'),
+    ('gp_te_moraemasu_ka', 'gp_te_morau', 'required'),
+    ('gp_te_itadakemasu_ka', 'gp_te_itadaku', 'required'),
+    ('gp_te_kudasai', 'gp_polite_style', 'recommended'),
+    ('gp_te_moraemasu_ka', 'gp_polite_style', 'required'),
+    ('gp_te_itadakemasu_ka', 'gp_polite_style', 'required'),
+    ('gp_te_mo_ii_desu_ka', 'gp_polite_style', 'recommended'),
+    ('gp_to_quotation', 'gp_plain_style', 'required'),
+    ('gp_to_iu', 'gp_plain_style', 'required'),
+    ('gp_to_omou', 'gp_plain_style', 'required'),
+    ('gp_tte', 'gp_plain_style', 'recommended'),
+    ('gp_sou_da_hearsay', 'gp_plain_style', 'required'),
+    ('gp_rashii', 'gp_plain_style', 'recommended'),
+    ('gp_you_da', 'gp_plain_style', 'recommended'),
+    ('gp_mitai_da', 'gp_plain_style', 'recommended'),
+    ('gp_kamoshirenai', 'gp_plain_style', 'recommended'),
+    ('gp_rentai_modifier', 'gp_plain_style', 'required'),
+    ('gp_noun_clause_modifier', 'gp_plain_style', 'required'),
+    ('gp_tara', 'gp_ta_form', 'required'),
+    ('gp_ta_koto_ga_aru', 'gp_ta_form', 'required'),
+    ('gp_ta_bakari', 'gp_ta_form', 'required'),
+    ('gp_nakereba_naranai', 'gp_nai_form', 'required'),
+    ('gp_naito_ikenai', 'gp_nai_form', 'required'),
+    ('gp_nakutemo_ii', 'gp_nai_form', 'required'),
+    ('gp_naide_kudasai', 'gp_nai_form', 'required'),
+    ('gp_sasete_itadaku', 'gp_humble_language', 'required'),
+    ('gp_te_orimasu', 'gp_humble_language', 'required'),
+    ('gp_de_gozaimasu', 'gp_honorific_language', 'recommended'),
+    ('gp_onegai_itashimasu', 'gp_humble_language', 'required'),
+    ('gp_sasete_itadaku', 'gp_honorific_language', 'recommended'),
+    ('gp_te_orimasu', 'gp_honorific_language', 'recommended'),
+    ('gp_de_gozaimasu', 'gp_humble_language', 'recommended'),
+    ('gp_onegai_itashimasu', 'gp_honorific_language', 'recommended')
+)
+INSERT INTO grammar_point_prerequisites (
+  grammar_point_id,
+  prerequisite_grammar_point_id,
+  relation_type
+)
+SELECT
+  grammar_points.id,
+  prerequisites.id,
+  prerequisite_seed.relation_type
+FROM prerequisite_seed
+JOIN grammar_points
+  ON grammar_points.seed_key = prerequisite_seed.grammar_seed_key
+JOIN grammar_points AS prerequisites
+  ON prerequisites.seed_key = prerequisite_seed.prerequisite_seed_key
+WHERE grammar_points.status = 'active'
+  AND prerequisites.status = 'active'
+ON CONFLICT (grammar_point_id, prerequisite_grammar_point_id) DO UPDATE SET
+  relation_type = EXCLUDED.relation_type;
+
+DELETE FROM grammar_point_curriculum
+USING grammar_points
+WHERE grammar_point_curriculum.grammar_point_id = grammar_points.id
+  AND grammar_points.is_mvp = TRUE;
+
+WITH RECURSIVE classified_points AS (
+  SELECT
+    grammar_points.id AS grammar_point_id,
+    CASE
+      WHEN grammar_points.seed_key IN (
+        'gp_a_wa_b_desu',
+        'gp_a_ga_arimasu',
+        'gp_a_ga_imasu',
+        'gp_a_ni_narimasu',
+        'gp_a_ni_shimasu',
+        'gp_wa',
+        'gp_ga',
+        'gp_wo',
+        'gp_ni',
+        'gp_de',
+        'gp_to_case_particle',
+        'gp_topic_subject_structure',
+        'gp_predicate_core'
+      ) THEN 'foundations'
+      WHEN grammar_points.seed_key IN ('gp_plain_style', 'gp_polite_style')
+        THEN 'conjugation'
+      WHEN taxonomy_nodes.slug IN (
+        'verb_conjugation_basics',
+        'adjective_noun_conjugation',
+        'tense_and_negation'
+      ) THEN 'conjugation'
+      WHEN taxonomy_nodes.slug IN (
+        'progressive_state_experience_completion',
+        'derived_forms_potential_passive_causative',
+        'giving_receiving_benefit',
+        'ability_potential_difficulty'
+      ) OR grammar_points.seed_key IN (
+        'gp_rareru_potential',
+        'gp_rareru_honorific',
+        'gp_rareru_spontaneous',
+        'gp_te_moraemasu_ka',
+        'gp_te_itadakemasu_ka'
+      ) THEN 'voice_aspect_benefit'
+      WHEN taxonomy_nodes.slug = 'honorifics_and_politeness'
+        THEN 'natural_advanced_use'
+      WHEN taxonomy_dimensions.slug IN (
+        'register_social',
+        'discourse_organization',
+        'collocation_construction'
+      ) OR grammar_points.point_type IN (
+        'collocation',
+        'register_concept',
+        'discourse_marker'
+      ) THEN 'natural_advanced_use'
+      WHEN taxonomy_dimensions.slug IN ('particle_system', 'sentence_structure')
+        THEN 'natural_advanced_use'
+      ELSE 'functional_patterns'
+    END AS stage_slug,
+    taxonomy_dimensions.display_order AS dimension_order,
+    taxonomy_nodes.display_order AS node_order,
+    CASE grammar_points.practicality
+      WHEN 'S' THEN 1
+      WHEN 'A' THEN 2
+      WHEN 'B' THEN 3
+      WHEN 'C' THEN 4
+      ELSE 5
+    END AS practicality_order,
+    grammar_points.seed_key
+  FROM grammar_points
+  JOIN taxonomy_nodes
+    ON taxonomy_nodes.id = grammar_points.primary_taxonomy_node_id
+  JOIN taxonomy_dimensions
+    ON taxonomy_dimensions.id = taxonomy_nodes.dimension_id
+  WHERE grammar_points.status = 'active'
+),
+dependency_depth(grammar_point_id, depth) AS (
+  SELECT classified_points.grammar_point_id, 0
+  FROM classified_points
+  UNION ALL
+  SELECT relation.grammar_point_id, dependency_depth.depth + 1
+  FROM dependency_depth
+  JOIN grammar_point_prerequisites relation
+    ON relation.prerequisite_grammar_point_id = dependency_depth.grammar_point_id
+  JOIN classified_points
+    ON classified_points.grammar_point_id = relation.grammar_point_id
+  WHERE dependency_depth.depth < 20
+),
+point_depths AS (
+  SELECT grammar_point_id, MAX(depth) AS dependency_depth
+  FROM dependency_depth
+  GROUP BY grammar_point_id
+),
+ordered_points AS (
+  SELECT
+    classified_points.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY classified_points.stage_slug
+      ORDER BY
+        point_depths.dependency_depth,
+        classified_points.dimension_order,
+        classified_points.node_order,
+        classified_points.practicality_order,
+        classified_points.seed_key
+    )::integer AS recommended_order
+  FROM classified_points
+  JOIN point_depths ON point_depths.grammar_point_id = classified_points.grammar_point_id
+)
+INSERT INTO grammar_point_curriculum (
+  grammar_point_id,
+  learning_stage_id,
+  level,
+  recommended_order
+)
+SELECT
+  ordered_points.grammar_point_id,
+  learning_stages.id,
+  learning_stages.display_order,
+  ordered_points.recommended_order
+FROM ordered_points
+JOIN learning_stages ON learning_stages.slug = ordered_points.stage_slug
+ON CONFLICT (grammar_point_id) DO UPDATE SET
+  learning_stage_id = EXCLUDED.learning_stage_id,
+  level = EXCLUDED.level,
+  recommended_order = EXCLUDED.recommended_order,
+  updated_at = NOW();
+
 WITH comparison_seed(slug, name_zh, summary, legacy_seed_key) AS (
   VALUES
     ('wa_vs_ga', 'は与が', '比较话题提示、主语标记与信息焦点。', 'gp_wa_vs_ga'),
@@ -1465,7 +2051,7 @@ WITH comparison_seed(slug, name_zh, summary, legacy_seed_key) AS (
     ('conditional_forms', 'たら、ば、と、なら', '比较四种常见条件表达的成立条件和语用限制。', 'gp_condition_contrast'),
     ('kara_vs_node', 'から与ので', '比较直接主观的原因说明与较柔和客观的说明。', 'gp_reason_contrast'),
     ('tame_ni_vs_you_ni', 'ために与ように', '比较可控目的与目标状态。', 'gp_purpose_contrast'),
-    ('sou_da_vs_rashii', 'そうだ与らしい', '比较眼前样态判断与间接信息来源。', 'gp_inference_contrast')
+    ('sou_da_vs_rashii', 'そうだ与らしい', '比较样态そうだ、传闻そうだ与间接推测らしい。', 'gp_inference_contrast')
 )
 INSERT INTO comparison_sets (
   slug,
@@ -1504,7 +2090,8 @@ WITH comparison_member_seed(comparison_slug, grammar_seed_key, sort_order) AS (
     ('tame_ni_vs_you_ni', 'gp_tame_ni', 1),
     ('tame_ni_vs_you_ni', 'gp_you_ni_purpose', 2),
     ('sou_da_vs_rashii', 'gp_sou_da', 1),
-    ('sou_da_vs_rashii', 'gp_rashii', 2)
+    ('sou_da_vs_rashii', 'gp_sou_da_hearsay', 2),
+    ('sou_da_vs_rashii', 'gp_rashii', 3)
 )
 INSERT INTO comparison_set_members (comparison_set_id, grammar_point_id, sort_order)
 SELECT comparison_sets.id, grammar_points.id, comparison_member_seed.sort_order
@@ -1751,6 +2338,24 @@ ON CONFLICT DO NOTHING;
 
 WITH example_seed(seed_key, jp, zh, scene_name_en, register_name_en, difficulty, naturalness_score, notes) AS (
   VALUES
+  ('gp_sou_da_hearsay', '天気予報によると、明日は雨が降るそうです。', '据天气预报说明天会下雨。', 'daily_life', 'polite', 1, 5, '传闻「そうだ」保留普通形。'),
+  ('gp_sou_da_hearsay', '田中さんは来月大阪へ転勤するそうです。', '听说田中下个月要调到大阪。', 'workplace', 'polite', 2, 5, '转述从别人那里获得的信息。'),
+  ('gp_rareru_honorific', '先生は来週、日本へ帰られます。', '老师下周回日本。', 'school', 'polite', 1, 5, '用「られる」尊敬地描述老师的动作。'),
+  ('gp_rareru_honorific', '社長が会議の内容を説明されました。', '社长说明了会议内容。', 'workplace', 'business', 2, 5, '主语是需要抬高的社长。'),
+  ('gp_rareru_spontaneous', 'この写真を見ると、故郷のことが思い出されます。', '看到这张照片就不由得想起故乡。', 'daily_life', 'polite', 1, 5, '回忆自然浮现的自发用法。'),
+  ('gp_rareru_spontaneous', 'この結果から、準備の大切さが感じられます。', '从这个结果可以自然感受到准备的重要性。', 'workplace', 'formal', 2, 5, '正式说明中常见的自发感受。'),
+  ('gp_to_quotation', '田中さんは明日休むと言いました。', '田中说他明天休息。', 'workplace', 'polite', 1, 5, '用「と」标记说话内容。'),
+  ('gp_to_quotation', 'この方法ならできると思います。', '我觉得用这个方法能做到。', 'daily_life', 'polite', 2, 5, '用「と」标记思考内容。'),
+  ('gp_to_case_particle', '週末、友達と映画を見ました。', '周末和朋友看了电影。', 'friend_chat', 'polite', 1, 5, '「と」标记共同参与者。'),
+  ('gp_to_case_particle', '医師と治療方針について相談しました。', '和医生商量了治疗方针。', 'hospital', 'polite', 2, 5, '相互商量的对象使用「と」。'),
+  ('gp_tte_topic', '山田さんって、どんな人ですか。', '说到山田，他是个怎样的人？', 'friend_chat', 'casual', 1, 5, '口语中用「って」提示人物话题。'),
+  ('gp_tte_topic', '日本の夏って、本当に暑いですね。', '日本的夏天真的很热啊。', 'friend_chat', 'casual', 2, 5, '口语中提示要评价的话题。'),
+  ('gp_te_iru_result_state', '窓が開いています。', '窗户开着。', 'daily_life', 'polite', 1, 5, '「開く」完成后留下打开状态。'),
+  ('gp_te_iru_result_state', '姉は結婚しています。', '姐姐已经结婚了。', 'family', 'polite', 2, 5, '表示结婚这一变化后的状态。'),
+  ('gp_te_iru_habitual', '健康のために毎朝走っています。', '为了健康，我每天早上跑步。', 'daily_life', 'polite', 1, 5, '频率词提示习惯用法。'),
+  ('gp_te_iru_habitual', '兄は東京の会社で働いています。', '哥哥在东京的一家公司工作。', 'workplace', 'polite', 2, 5, '表示长期职业状态。'),
+  ('gp_you_ni_instruction', '薬を忘れずに飲むように、医者に言われました。', '医生叮嘱我要记得吃药。', 'hospital', 'polite', 1, 5, '转述医生的要求。'),
+  ('gp_you_ni_instruction', '廊下では走らないようにしてください。', '请不要在走廊里跑。', 'school', 'polite', 2, 5, '柔和而明确地表达提醒。'),
   ('gp_a_wa_b_desu', '私は会社員です。', '我是公司职员。', 'daily_life', 'polite', 1, 5, 'AはBです 的自然例句。'),
   ('gp_a_wa_b_desu', 'これは日本語の辞書です。', '这是日语词典。', 'daily_life', 'polite', 2, 5, 'AはBです 的自然例句。'),
   ('gp_a_ga_arimasu', '机の上に資料があります。', '桌子上有资料。', 'daily_life', 'polite', 1, 5, 'Aがあります 的自然例句。'),
@@ -1786,7 +2391,7 @@ WITH example_seed(seed_key, jp, zh, scene_name_en, register_name_en, difficulty,
   ('gp_node', '体調が悪いので、早めに帰ります。', '因为身体不舒服，我早点回去。', 'daily_life', 'polite', 1, 5, '〜ので 的自然例句。'),
   ('gp_node', '電車が遅れたので、少し遅れます。', '因为电车晚点，会稍微迟到。', 'daily_life', 'polite', 2, 5, '〜ので 的自然例句。'),
   ('gp_tame', '台風のため、電車が止まりました。', '由于台风，电车停运了。', 'daily_life', 'written', 1, 5, '〜ため 的自然例句。'),
-  ('gp_tame', '安全確認のため、少々お待ちください。', '为了安全确认，请稍等。', 'daily_life', 'written', 2, 5, '〜ため 的自然例句。'),
+  ('gp_tame', '大雪のため、空港が閉鎖されました。', '由于大雪，机场关闭了。', 'transportation', 'written', 2, 5, '原因「〜ため」的正式书面例句。'),
   ('gp_okagede', '先生のおかげで合格できました。', '多亏老师，我合格了。', 'daily_life', 'polite', 1, 5, '〜おかげで 的自然例句。'),
   ('gp_okagede', '手伝ってくれたおかげで早く終わりました。', '多亏你帮忙，早点结束了。', 'daily_life', 'polite', 2, 5, '〜おかげで 的自然例句。'),
   ('gp_seide', '雨のせいで靴が濡れました。', '都怪下雨，鞋子湿了。', 'daily_life', 'polite', 1, 5, '〜せいで 的自然例句。'),
@@ -2081,7 +2686,8 @@ WITH similar_seed(seed_key, similar_seed_key, difference_summary, example_a, exa
   VALUES
   ('gp_te_moraemasu_ka', 'gp_te_itadakemasu_ka', '「〜てもらえますか」是一般礼貌请求；「〜ていただけますか」更郑重，适合医生、老师、客户或上司。', 'もう一度説明してもらえますか。', 'もう一度説明していただけますか。', '同样是请求，对象越正式越适合いただく。'),
   ('gp_te_morau', 'gp_te_kureru', '「〜てもらう」强调我方请别人做；「〜てくれる」强调对方主动为我方做。', '友だちに手伝ってもらいました。', '友だちが手伝ってくれました。', '主语和视角不同。'),
-  ('gp_tame', 'gp_tame_ni', '「〜ため」可表示原因或目的；「〜ために」更明确表示目的。', '台風のため電車が止まりました。', '合格するために勉強します。', '看后项是否是有意志的目的行为。'),
+  ('gp_tame', 'gp_tame_ni', '本条目的「〜ため」说明正式原因；「〜ために」表示主体可控制的意志目的。', '台風のため電車が止まりました。', '合格するために勉強します。', '两个义项使用不同接续和语义条件。'),
+  ('gp_sou_da', 'gp_sou_da_hearsay', '样态「〜そうだ」根据眼前迹象判断；传闻「〜そうだ」转述获得的信息，接续也不同。', '雨が降りそうです。', '明日は雨が降るそうです。', '样态接词干，传闻接普通形。'),
   ('gp_sou_da', 'gp_rashii', '样态「〜そうだ」根据眼前迹象判断；「〜らしい」多用于听说或间接信息。', '雨が降りそうです。', '明日は雨らしいです。', '注意接续和信息来源。'),
   ('gp_you_da', 'gp_mitai_da', '「〜ようだ」较书面或说明；「〜みたいだ」更口语自然。', '彼は忙しいようです。', '彼は忙しいみたいです。', '正式说明优先ようだ，会话可用みたいだ。'),
   ('gp_yori_comparison', 'gp_hodo', '「〜より」直接设定比较基准；「〜ほど」常用于程度或否定比较。', '大阪より東京のほうが人が多いです。', '昨日ほど寒くないです。', '一个比谁更，一个到什么程度。'),

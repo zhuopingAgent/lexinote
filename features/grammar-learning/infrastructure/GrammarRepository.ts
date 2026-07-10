@@ -14,6 +14,7 @@ import {
   SELECT_GRAMMAR_PROGRESS_SQL,
   SELECT_GRAMMAR_POINT_DETAIL_SQL,
   SELECT_KNOWLEDGE_DIMENSIONS_SQL,
+  SELECT_LEARNING_STAGES_SQL,
   SELECT_REGISTER_TAGS_SQL,
   SELECT_REVIEW_ITEMS_SQL,
   SELECT_SCENE_TAGS_SQL,
@@ -32,17 +33,22 @@ import type {
   GrammarErrorType,
   GrammarCategory,
   GrammarCategoryGroup,
+  GrammarConnection,
+  GrammarCurriculumPlacement,
   GrammarExample,
+  GrammarFormSibling,
   GrammarMigrationTarget,
   GrammarPointDetail,
   GrammarPointStatus,
   GrammarPointSummary,
   GrammarProgressGroup,
   GrammarPointType,
+  GrammarPrerequisite,
   GrammarReviewItem,
   GrammarTag,
   GrammarTaxonomyTag,
   KnowledgeDimension,
+  LearningStage,
   Practicality,
   ReviewStatus,
   SimilarGrammarRelation,
@@ -61,6 +67,7 @@ type GrammarSummaryRow = {
   status: string;
   primary_category: unknown;
   taxonomy_tags: unknown;
+  curriculum: unknown;
   migration_target: unknown;
   reading: string | null;
   category_id: string | null;
@@ -82,9 +89,13 @@ type GrammarSummaryRow = {
 };
 
 type GrammarDetailRow = GrammarSummaryRow & {
+  usage_notes: string | null;
   notes: string | null;
   jlpt_level: string | null;
   common_mistakes: unknown;
+  connections: unknown;
+  prerequisites: unknown;
+  form_siblings: unknown;
 };
 
 type GrammarCategoryRow = {
@@ -119,6 +130,15 @@ type KnowledgeDimensionRow = {
   slug: string;
   name_zh: string;
   name_en: string;
+  description: string;
+  display_order: number | string;
+  status: string;
+};
+
+type LearningStageRow = {
+  id: string;
+  slug: string;
+  name_zh: string;
   description: string;
   display_order: number | string;
   status: string;
@@ -437,6 +457,165 @@ function parseTaxonomyTags(value: unknown): GrammarTaxonomyTag[] {
     .filter((item): item is GrammarTaxonomyTag => item !== null);
 }
 
+function parseLearningStage(value: unknown): LearningStage | null {
+  const record = parseJsonObject(value);
+  if (!record) {
+    return null;
+  }
+
+  const id = typeof record.id === "string" ? record.id : "";
+  const slug = typeof record.slug === "string" ? record.slug : "";
+  const nameZh = typeof record.nameZh === "string" ? record.nameZh : "";
+  const description =
+    typeof record.description === "string" ? record.description : "";
+
+  if (!id || !slug || !nameZh) {
+    return null;
+  }
+
+  return {
+    id,
+    slug,
+    nameZh,
+    description,
+    displayOrder: toInteger(
+      typeof record.displayOrder === "number" ||
+        typeof record.displayOrder === "string"
+        ? record.displayOrder
+        : undefined
+    ),
+    status: parseTaxonomyStatus(
+      typeof record.status === "string" ? record.status : "active"
+    ),
+  };
+}
+
+function parseCurriculum(value: unknown): GrammarCurriculumPlacement | null {
+  const record = parseJsonObject(value);
+  const stage = record ? parseLearningStage(record.stage) : null;
+  if (!record || !stage) {
+    return null;
+  }
+
+  return {
+    stage,
+    level: toInteger(
+      typeof record.level === "number" || typeof record.level === "string"
+        ? record.level
+        : undefined
+    ),
+    recommendedOrder: toInteger(
+      typeof record.recommendedOrder === "number" ||
+        typeof record.recommendedOrder === "string"
+        ? record.recommendedOrder
+        : undefined
+    ),
+  };
+}
+
+function parseConnections(value: unknown): GrammarConnection[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const baseType = record.baseType;
+    const requiredForm =
+      typeof record.requiredForm === "string" ? record.requiredForm : "";
+    const pattern = typeof record.pattern === "string" ? record.pattern : "";
+    if (
+      (baseType !== "verb" &&
+        baseType !== "i_adjective" &&
+        baseType !== "na_adjective" &&
+        baseType !== "noun" &&
+        baseType !== "clause") ||
+      !requiredForm ||
+      !pattern
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        baseType,
+        requiredForm,
+        pattern,
+        notes: typeof record.notes === "string" ? record.notes : "",
+        sortOrder: toInteger(
+          typeof record.sortOrder === "number" ||
+            typeof record.sortOrder === "string"
+            ? record.sortOrder
+            : undefined
+        ),
+      },
+    ];
+  });
+}
+
+function parsePrerequisites(value: unknown): GrammarPrerequisite[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const grammarPointId =
+      typeof record.grammarPointId === "string" ? record.grammarPointId : "";
+    const grammarPoint =
+      typeof record.grammarPoint === "string" ? record.grammarPoint : "";
+    const canonicalForm =
+      typeof record.canonicalForm === "string" ? record.canonicalForm : "";
+    const senseKey = typeof record.senseKey === "string" ? record.senseKey : "";
+    const relationType = record.relationType;
+    if (
+      !grammarPointId ||
+      !grammarPoint ||
+      !canonicalForm ||
+      !senseKey ||
+      (relationType !== "required" && relationType !== "recommended")
+    ) {
+      return [];
+    }
+
+    return [{ grammarPointId, grammarPoint, canonicalForm, senseKey, relationType }];
+  });
+}
+
+function parseFormSiblings(value: unknown): GrammarFormSibling[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const id = typeof record.id === "string" ? record.id : "";
+    const grammarPoint =
+      typeof record.grammarPoint === "string" ? record.grammarPoint : "";
+    const canonicalForm =
+      typeof record.canonicalForm === "string" ? record.canonicalForm : "";
+    const senseKey = typeof record.senseKey === "string" ? record.senseKey : "";
+    const coreMeaning =
+      typeof record.coreMeaning === "string" ? record.coreMeaning : "";
+    if (!id || !grammarPoint || !canonicalForm || !senseKey || !coreMeaning) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        grammarPoint,
+        canonicalForm,
+        senseKey,
+        coreMeaning,
+        status: parseGrammarPointStatus(
+          typeof record.status === "string" ? record.status : "active"
+        ),
+      },
+    ];
+  });
+}
+
 function parseMigrationTarget(value: unknown): GrammarMigrationTarget | null {
   const record = parseJsonObject(value);
   if (!record) {
@@ -509,6 +688,7 @@ function mapSummaryRow(row: GrammarSummaryRow): GrammarPointSummary {
     status: parseGrammarPointStatus(row.status),
     primaryCategory: parseTaxonomyTag(row.primary_category),
     taxonomyTags: parseTaxonomyTags(row.taxonomy_tags),
+    curriculum: parseCurriculum(row.curriculum),
     migrationTarget: parseMigrationTarget(row.migration_target),
     reading: row.reading,
     categoryId: row.category_id,
@@ -541,6 +721,19 @@ export class GrammarRepository {
       slug: row.slug,
       nameZh: row.name_zh,
       nameEn: row.name_en,
+      description: row.description,
+      displayOrder: toInteger(row.display_order),
+      status: parseTaxonomyStatus(row.status),
+    }));
+  }
+
+  async listLearningStages(): Promise<LearningStage[]> {
+    const rows = await query<LearningStageRow>(SELECT_LEARNING_STAGES_SQL);
+
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      nameZh: row.name_zh,
       description: row.description,
       displayOrder: toInteger(row.display_order),
       status: parseTaxonomyStatus(row.status),
@@ -665,6 +858,7 @@ export class GrammarRepository {
     query?: string;
     categorySlug?: string;
     dimensionSlug?: string;
+    stageSlug?: string;
     limit?: number;
     userId?: string;
   }): Promise<GrammarPointSummary[]> {
@@ -672,6 +866,7 @@ export class GrammarRepository {
     const normalizedLimit = Math.min(Math.max(options?.limit ?? 24, 1), 80);
     const categorySlug = options?.categorySlug?.trim() ?? "";
     const dimensionSlug = options?.dimensionSlug?.trim() ?? "";
+    const stageSlug = options?.stageSlug?.trim() ?? "";
     const rows = await query<GrammarSummaryRow>(SEARCH_GRAMMAR_POINTS_SQL, [
       normalizedQuery,
       `%${normalizedQuery}%`,
@@ -679,17 +874,18 @@ export class GrammarRepository {
       options?.userId ?? DEFAULT_GRAMMAR_USER_ID,
       categorySlug,
       dimensionSlug,
+      stageSlug,
     ]);
 
     return rows.map((row) => mapSummaryRow(row));
   }
 
   async findGrammarPointById(
-    grammarPointId: string,
+    grammarPointReference: string,
     userId = DEFAULT_GRAMMAR_USER_ID
   ): Promise<GrammarPointDetail | null> {
     const rows = await query<GrammarDetailRow>(SELECT_GRAMMAR_POINT_DETAIL_SQL, [
-      grammarPointId,
+      grammarPointReference,
       userId,
     ]);
     const row = rows[0];
@@ -699,15 +895,19 @@ export class GrammarRepository {
     }
 
     const [examples, similarGrammar] = await Promise.all([
-      this.listExamples(grammarPointId),
-      this.listSimilarGrammar(grammarPointId),
+      this.listExamples(row.id),
+      this.listSimilarGrammar(row.id),
     ]);
 
     return {
       ...mapSummaryRow(row),
+      usage: row.usage_notes,
       notes: row.notes,
       jlptLevel: row.jlpt_level,
       commonMistakes: parseStringArray(row.common_mistakes),
+      connections: parseConnections(row.connections),
+      prerequisites: parsePrerequisites(row.prerequisites),
+      formSiblings: parseFormSiblings(row.form_siblings),
       examples,
       similarGrammar,
     };

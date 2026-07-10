@@ -45,18 +45,20 @@ export function GrammarDetailClient({
   }, [grammarPointId]);
 
   async function onFavoriteChange(isFavorite: boolean) {
+    const resolvedGrammarPointId = grammarPoint?.id ?? grammarPointId;
+
     if (isFavorite) {
       await fetch("/api/favorites", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ grammarPointId }),
+        body: JSON.stringify({ grammarPointId: resolvedGrammarPointId }),
       }).then((response) => readJson<{ ok: true }>(response));
       return;
     }
 
-    const params = new URLSearchParams({ grammarPointId });
+    const params = new URLSearchParams({ grammarPointId: resolvedGrammarPointId });
     const response = await fetch(`/api/favorites?${params.toString()}`, {
       method: "DELETE",
     });
@@ -95,6 +97,7 @@ export function GrammarDetailClient({
 
   return (
     <GrammarDetail
+      key={grammarPoint.id}
       grammarPoint={grammarPoint}
       onFavoriteChange={onFavoriteChange}
     />
