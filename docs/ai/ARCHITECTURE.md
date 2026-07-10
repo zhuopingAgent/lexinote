@@ -4,7 +4,7 @@
 
 - Next.js `16` (App Router)
 - React `19`
-- TypeScript `5`
+- TypeScript `7` for CLI type-checking, with TypeScript `6` installed as the tool API compatibility layer
 - node-postgres `pg`
 - local PostgreSQL
 - Tailwind CSS `4` via PostCSS
