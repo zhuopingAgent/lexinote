@@ -49,6 +49,22 @@ function formatConnections(grammarPoint: GrammarPointDetail) {
     .join("\n");
 }
 
+function formatComparisonSets(grammarPoint: GrammarPointDetail) {
+  return grammarPoint.comparisonSets
+    .slice(0, 3)
+    .map((comparisonSet, index) => {
+      const members = comparisonSet.members
+        .map((member) => member.grammarPoint)
+        .join("、");
+      const rules = comparisonSet.decisionRules
+        .slice(0, 3)
+        .map((rule) => rule.explanationZh)
+        .join("；");
+      return `${index + 1}. ${comparisonSet.nameZh}（${members}）：${rules}`;
+    })
+    .join("\n");
+}
+
 export function buildPracticeGenerationPrompt(input: {
   grammarPoint: GrammarPointDetail;
   sceneTag?: string;
@@ -64,6 +80,7 @@ export function buildPracticeGenerationPrompt(input: {
   const similarGrammar = formatSimilarGrammar(input.grammarPoint) || "无";
   const structuredConnections =
     formatConnections(input.grammarPoint) || "无结构化接续记录";
+  const comparisonSets = formatComparisonSets(input.grammarPoint) || "无";
   const variation = input.variation
     ? `本次变化编号：${input.variation.seed}
 听话对象倾向：${input.variation.listenerFocus}
@@ -91,6 +108,8 @@ ${structuredConnections}
 ${examples}
 相似语法：
 ${similarGrammar}
+结构化对比卡：
+${comparisonSets}
 
 本次变化要求：
 ${variation}

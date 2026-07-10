@@ -444,11 +444,29 @@ CREATE TABLE IF NOT EXISTS comparison_sets (
   slug TEXT NOT NULL UNIQUE,
   name_zh TEXT NOT NULL,
   summary TEXT NOT NULL DEFAULT '',
+  common_meaning TEXT NOT NULL DEFAULT '',
+  decision_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
+  connection_differences JSONB NOT NULL DEFAULT '[]'::jsonb,
+  register_differences JSONB NOT NULL DEFAULT '[]'::jsonb,
+  interchangeable_cases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  non_interchangeable_cases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  minimal_pair_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+  learner_mistakes JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
   legacy_grammar_point_id UUID UNIQUE REFERENCES grammar_points(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE comparison_sets
+  ADD COLUMN IF NOT EXISTS common_meaning TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS decision_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS connection_differences JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS register_differences JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS interchangeable_cases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS non_interchangeable_cases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS minimal_pair_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS learner_mistakes JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS comparison_set_members (
   comparison_set_id UUID NOT NULL REFERENCES comparison_sets(id) ON DELETE CASCADE,
@@ -468,6 +486,12 @@ CREATE TABLE IF NOT EXISTS error_types (
   legacy_grammar_point_id UUID UNIQUE REFERENCES grammar_points(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS error_type_aliases (
+  alias_code TEXT PRIMARY KEY,
+  error_type_id UUID NOT NULL REFERENCES error_types(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS grammar_point_scene_tags (
@@ -524,18 +548,41 @@ CREATE TABLE IF NOT EXISTS ai_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_sentence_id UUID REFERENCES user_sentences(id) ON DELETE CASCADE,
   grammar_score INTEGER CHECK (grammar_score BETWEEN 1 AND 5),
+  meaning_score INTEGER CHECK (meaning_score BETWEEN 1 AND 5),
   naturalness_score INTEGER CHECK (naturalness_score BETWEEN 1 AND 5),
   register_score INTEGER CHECK (register_score BETWEEN 1 AND 5),
   scene_fit_score INTEGER CHECK (scene_fit_score BETWEEN 1 AND 5),
   is_correct BOOLEAN,
   feedback_text TEXT NOT NULL,
+  explanation TEXT,
   corrected_sentence TEXT,
   better_versions JSONB NOT NULL DEFAULT '[]'::jsonb,
   mistake_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  issues JSONB NOT NULL DEFAULT '[]'::jsonb,
   next_practice_prompt TEXT,
+  next_hint TEXT,
   model_name TEXT,
   raw_ai_response JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ai_feedback
+  ADD COLUMN IF NOT EXISTS meaning_score INTEGER CHECK (meaning_score BETWEEN 1 AND 5),
+  ADD COLUMN IF NOT EXISTS explanation TEXT,
+  ADD COLUMN IF NOT EXISTS issues JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS next_hint TEXT;
+
+CREATE TABLE IF NOT EXISTS ai_feedback_issues (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ai_feedback_id UUID NOT NULL REFERENCES ai_feedback(id) ON DELETE CASCADE,
+  error_type_id UUID NOT NULL REFERENCES error_types(id),
+  severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  explanation TEXT NOT NULL,
+  correction TEXT NOT NULL DEFAULT '',
+  related_grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE SET NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (ai_feedback_id, error_type_id)
 );
 
 CREATE TABLE IF NOT EXISTS favorites (
@@ -601,6 +648,16 @@ CREATE INDEX IF NOT EXISTS idx_comparison_set_members_point
 
 CREATE INDEX IF NOT EXISTS idx_error_types_parent
   ON error_types (parent_id, code);
+
+CREATE INDEX IF NOT EXISTS idx_error_type_aliases_error_type
+  ON error_type_aliases (error_type_id, alias_code);
+
+CREATE INDEX IF NOT EXISTS idx_ai_feedback_issues_error_type
+  ON ai_feedback_issues (error_type_id, ai_feedback_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_feedback_issues_related_grammar
+  ON ai_feedback_issues (related_grammar_point_id, ai_feedback_id)
+  WHERE related_grammar_point_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_examples_grammar_point_id
   ON example_sentences (grammar_point_id);
@@ -2044,19 +2101,160 @@ ON CONFLICT (grammar_point_id) DO UPDATE SET
   recommended_order = EXCLUDED.recommended_order,
   updated_at = NOW();
 
-WITH comparison_seed(slug, name_zh, summary, legacy_seed_key) AS (
+WITH comparison_seed(
+  slug,
+  name_zh,
+  summary,
+  common_meaning,
+  decision_rules,
+  connection_differences,
+  register_differences,
+  interchangeable_cases,
+  non_interchangeable_cases,
+  minimal_pair_examples,
+  learner_mistakes,
+  legacy_seed_key
+) AS (
   VALUES
-    ('wa_vs_ga', 'は与が', '比较话题提示、主语标记与信息焦点。', 'gp_wa_vs_ga'),
-    ('ni_vs_de', 'に与で', '比较存在地点、到达点和动作发生地点。', 'gp_ni_vs_de'),
-    ('conditional_forms', 'たら、ば、と、なら', '比较四种常见条件表达的成立条件和语用限制。', 'gp_condition_contrast'),
-    ('kara_vs_node', 'から与ので', '比较直接主观的原因说明与较柔和客观的说明。', 'gp_reason_contrast'),
-    ('tame_ni_vs_you_ni', 'ために与ように', '比较可控目的与目标状态。', 'gp_purpose_contrast'),
-    ('sou_da_vs_rashii', 'そうだ与らしい', '比较样态そうだ、传闻そうだ与间接推测らしい。', 'gp_inference_contrast')
+    (
+      'wa_vs_ga',
+      'は与が',
+      '比较话题提示、主语标记与信息焦点。',
+      '两者都能把名词与谓语联系起来，但「は」组织话题或对比，「が」标记主语、新信息或焦点。',
+      '[{"conditionZh":"说明已知话题、做一般陈述或形成对比","preferredMemberPosition":1,"explanationZh":"用「は」先建立谈论对象。"},{"conditionZh":"回答谁、什么，或突出新出现的信息","preferredMemberPosition":2,"explanationZh":"用「が」把主语作为焦点。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"名词 + は + 谓语；は替代原来的が或を时常带话题化。"},{"memberPosition":2,"descriptionZh":"名词 + が + 谓语；从句主语和存在、能力等结构也常用が。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"口语、礼貌体和书面语都常用；对比语气取决于上下文。"},{"memberPosition":2,"descriptionZh":"语体中性；强调焦点时语气可能更直接。"}]'::jsonb,
+      '["在不强调信息结构的简单事实句中，两者有时都合语法，但句子焦点会变化。"]'::jsonb,
+      '["回答「誰がしますか」必须用が突出回答项。","初次介绍新出现的人或事物时通常不用は抢先话题化。"]'::jsonb,
+      '[{"contextZh":"说明自己是学生与回答谁来做","sentences":[{"memberPosition":1,"jp":"私は学生です。","zh":"我是学生。"},{"memberPosition":2,"jp":"私がやります。","zh":"我来做。"}],"explanationZh":"前句建立自我话题，后句回答执行者。"}]'::jsonb,
+      '[{"descriptionZh":"把所有中文主语都机械翻成は。","correctionZh":"先判断是已知话题还是需要突出谁、什么。"}]'::jsonb,
+      'gp_wa_vs_ga'
+    ),
+    (
+      'ni_vs_de',
+      'に与で',
+      '比较存在地点、到达点和动作发生地点。',
+      '两者都能跟地点名词搭配，但「に」标记存在、到达点或时间点，「で」标记动作发生的场所、手段或范围。',
+      '[{"conditionZh":"谓语表示存在、到达、放置后的所在位置","preferredMemberPosition":1,"explanationZh":"静态所在或目标点使用に。"},{"conditionZh":"人在某地进行具体动作","preferredMemberPosition":2,"explanationZh":"动作舞台使用で。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"地点 + に + ある/いる/行く/着く。"},{"memberPosition":2,"descriptionZh":"地点 + で + 动作动词；工具 + で + 动作。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"各种语体均可，语体差异很小。"},{"memberPosition":2,"descriptionZh":"各种语体均可，语体差异很小。"}]'::jsonb,
+      '["少数动词可因视角不同分别搭配に或で，但语义会从所在点变成动作场所。"]'::jsonb,
+      '["「コンビニがある」的存在地点用に。","「勉強する」的动作地点用で。"]'::jsonb,
+      '[{"contextZh":"车站里有便利店与在车站见朋友","sentences":[{"memberPosition":1,"jp":"駅にコンビニがあります。","zh":"车站有便利店。"},{"memberPosition":2,"jp":"駅で友達に会います。","zh":"在车站见朋友。"}],"explanationZh":"存在地点和动作地点不同。"}]'::jsonb,
+      '[{"descriptionZh":"看到地点就固定使用で。","correctionZh":"先看谓语是存在、移动目标还是实际动作。"}]'::jsonb,
+      'gp_ni_vs_de'
+    ),
+    (
+      'conditional_forms',
+      'たら、ば、と、なら',
+      '比较四种常见条件表达的成立条件和语用限制。',
+      '四者都可表达条件，但分别侧重事件完成后的条件、一般逻辑条件、恒常结果和基于话题前提的判断。',
+      '[{"conditionZh":"日常会话中的一次性假设、先后动作或后项命令","preferredMemberPosition":1,"explanationZh":"たら最通用，也能自然接请求和意志。"},{"conditionZh":"强调一般条件或满足条件即可成立","preferredMemberPosition":2,"explanationZh":"ば偏逻辑关系。"},{"conditionZh":"自然规律、操作结果或反复必然结果","preferredMemberPosition":3,"explanationZh":"と的后项通常不放说话人的命令和意志。"},{"conditionZh":"承接对方信息或以某话题为前提给建议","preferredMemberPosition":4,"explanationZh":"なら从已知前提展开。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"动词た形 + ら。"},{"memberPosition":2,"descriptionZh":"动词ば形；い形容词ければ。"},{"memberPosition":3,"descriptionZh":"动词辞书形/ない形 + と。"},{"memberPosition":4,"descriptionZh":"普通形或名词 + なら。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"会话高频，中性自然。"},{"memberPosition":2,"descriptionZh":"说明、规则中常见，略偏逻辑。"},{"memberPosition":3,"descriptionZh":"说明操作和规律时自然。"},{"memberPosition":4,"descriptionZh":"会话中承接话题尤其自然。"}]'::jsonb,
+      '["一般假设中たら与ば有时都可使用，但强调的时间顺序和逻辑关系不同。"]'::jsonb,
+      '["后项是请求或命令时通常不用恒常条件と。","承接对方刚提出的计划时なら比と自然。"]'::jsonb,
+      '[{"contextZh":"到站后打电话与按钮操作结果","sentences":[{"memberPosition":1,"jp":"駅に着いたら、電話してください。","zh":"到车站后请打电话。"},{"memberPosition":3,"jp":"このボタンを押すと、ドアが開きます。","zh":"按这个按钮门就开。"}],"explanationZh":"请求使用たら，自动结果使用と。"}]'::jsonb,
+      '[{"descriptionZh":"把四个条件形式都当作中文“如果”的同义词。","correctionZh":"同时检查后项是否为意志、命令、自然结果或基于前提的建议。"}]'::jsonb,
+      'gp_condition_contrast'
+    ),
+    (
+      'kara_vs_node',
+      'から与ので',
+      '比较直接主观的原因说明与较柔和客观的说明。',
+      '两者都连接原因和结果；「から」更直接、主观，「ので」更柔和，常把原因作为背景说明。',
+      '[{"conditionZh":"明确表达自己的判断、意志或直接理由","preferredMemberPosition":1,"explanationZh":"から清楚直接。"},{"conditionZh":"道歉、请求、拒绝或正式说明背景","preferredMemberPosition":2,"explanationZh":"ので能降低强硬感。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"普通形 + から；礼貌句也可接です/ますから。"},{"memberPosition":2,"descriptionZh":"普通形 + ので；名词/な形容词使用なので。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"口语高频；对上位者使用时需注意直接感。"},{"memberPosition":2,"descriptionZh":"礼貌说明、邮件和服务场景更稳妥。"}]'::jsonb,
+      '["客观事实说明中两者有时都可用，但语气的主观度和柔和度不同。"]'::jsonb,
+      '["正式道歉或委婉拒绝时，から可能显得把理由强加给对方。"]'::jsonb,
+      '[{"contextZh":"朋友间直接说明与向上司委婉请假","sentences":[{"memberPosition":1,"jp":"時間がないから、先に行くね。","zh":"因为没时间，我先走了。"},{"memberPosition":2,"jp":"体調が悪いので、早退させていただけますか。","zh":"因为身体不适，可以让我早退吗？"}],"explanationZh":"对象和沟通目的决定柔和度。"}]'::jsonb,
+      '[{"descriptionZh":"只按中文“因为”随机选择。","correctionZh":"请求、拒绝和道歉优先考虑ので。"}]'::jsonb,
+      'gp_reason_contrast'
+    ),
+    (
+      'tame_ni_vs_you_ni',
+      'ために与ように',
+      '比较可控目的与目标状态。',
+      '两者都表达目的；「ために」用于主体主动控制的意志目标，「ように」用于能力、避免或非意志状态。',
+      '[{"conditionZh":"主体为可控制的目标主动采取行动","preferredMemberPosition":1,"explanationZh":"意志动词目的用ために。"},{"conditionZh":"目标是能做到、看得见、不要忘记等状态","preferredMemberPosition":2,"explanationZh":"非意志或能力目标用ように。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"意志动词辞书形/名词 + の + ために。"},{"memberPosition":2,"descriptionZh":"可能形、ない形或非意志动词普通形 + ように。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"中性到书面均可，目标感明确。"},{"memberPosition":2,"descriptionZh":"提醒和日常说明中自然，语气较柔和。"}]'::jsonb,
+      '["部分学习、准备类目标可因说话人强调行动还是目标状态而选择不同形式。"]'::jsonb,
+      '["可能动词和否定目标通常不能直接换成ために。"]'::jsonb,
+      '[{"contextZh":"为就业主动学习与为了不忘做记录","sentences":[{"memberPosition":1,"jp":"日本で働くために、日本語を勉強しています。","zh":"为了在日本工作而学习日语。"},{"memberPosition":2,"jp":"忘れないように、メモします。","zh":"为了不忘而记笔记。"}],"explanationZh":"前者是主动目标，后者是避免发生的状态。"}]'::jsonb,
+      '[{"descriptionZh":"看到“为了”一律使用ために。","correctionZh":"检查目标能否由主体直接控制，以及是否接可能形或ない形。"}]'::jsonb,
+      'gp_purpose_contrast'
+    ),
+    (
+      'sou_da_vs_rashii',
+      'そうだ（传闻）与らしい',
+      '比较明确转述信息与根据间接线索作出的判断。',
+      '两者都可传达非亲眼确认的信息；传闻「そうだ」强调明确的信息来源，「らしい」可表示听说，也包含说话人的间接判断。',
+      '[{"conditionZh":"忠实转述新闻、他人发言或明确来源","preferredMemberPosition":1,"explanationZh":"传闻そうだ突出“据说”。"},{"conditionZh":"根据多条间接信息推断，或来源不必明确","preferredMemberPosition":2,"explanationZh":"らしい保留说话人的判断。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"普通形 + そうだ；名词/な形容词 + だそうだ。"},{"memberPosition":2,"descriptionZh":"普通形 + らしい；名词可直接接らしい。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"新闻转述、正式说明和日常传话都可用。"},{"memberPosition":2,"descriptionZh":"会话和说明均常见，比单纯转述更有推测感。"}]'::jsonb,
+      '["信息来源明确且说话人不强调判断时，两者有时都可表达“听说”，但确定度不同。"]'::jsonb,
+      '["传闻そうだ不能使用样态そうだ的词干接续。","需要忠实引用来源时らしい可能显得只是推测。"]'::jsonb,
+      '[{"contextZh":"转述天气预报与根据周围信息判断","sentences":[{"memberPosition":1,"jp":"天気予報では、明日は雨が降るそうです。","zh":"天气预报说明天会下雨。"},{"memberPosition":2,"jp":"空が暗いので、もうすぐ雨が降るらしいです。","zh":"天色很暗，看样子快下雨了。"}],"explanationZh":"前句有明确来源，后句带间接判断。"}]'::jsonb,
+      '[{"descriptionZh":"把样态そうだ与传闻そうだ共用接续。","correctionZh":"传闻接普通形；样态接动词或形容词词干。"}]'::jsonb,
+      'gp_inference_contrast'
+    ),
+    (
+      'te_moraemasu_vs_te_itadakemasu',
+      'てもらえますか与ていただけますか',
+      '比较一般礼貌请求与更郑重的谦让请求。',
+      '两者都询问对方能否为自己做某事；「いただけますか」通过谦让授受提高礼貌度。',
+      '[{"conditionZh":"日常对陌生人、店员、同事做一般礼貌请求","preferredMemberPosition":1,"explanationZh":"てもらえますか自然且不过度正式。"},{"conditionZh":"对医生、老师、客户、上司或商务对象郑重请求","preferredMemberPosition":2,"explanationZh":"ていただけますか更尊重对方。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"动词て形 + もらえますか。"},{"memberPosition":2,"descriptionZh":"动词て形 + いただけますか。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"一般礼貌；亲密关系中可能显得稍正式。"},{"memberPosition":2,"descriptionZh":"正式、商务和高礼貌度场景；朋友间可能过度郑重。"}]'::jsonb,
+      '["服务场景中两者通常都合语法，可根据与对方的距离调整礼貌度。"]'::jsonb,
+      '["对客户或上司提出负担较大的请求时，不宜只用一般礼貌形式。"]'::jsonb,
+      '[{"contextZh":"请同事确认与请医生再次说明","sentences":[{"memberPosition":1,"jp":"この資料を確認してもらえますか。","zh":"可以请你确认这份资料吗？"},{"memberPosition":2,"jp":"すみません、もう一度説明していただけますか。","zh":"不好意思，能否请您再说明一次？"}],"explanationZh":"后者对象和场景要求更高礼貌度。"}]'::jsonb,
+      '[{"descriptionZh":"只把两者理解成完全相同的“能请您吗”。","correctionZh":"根据社会关系、请求负担和正式程度选择。"}]'::jsonb,
+      NULL
+    ),
+    (
+      'te_kureru_vs_te_morau',
+      'てくれる与てもらう',
+      '比较对方主动为我方做事与我方获得对方帮助的视角。',
+      '两者都描述我方受益，但「てくれる」以施惠者为主语，「てもらう」以受益者为主语并常暗示请求或安排。',
+      '[{"conditionZh":"强调对方主动、好意地为我方做某事","preferredMemberPosition":1,"explanationZh":"施惠者 + が + てくれる。"},{"conditionZh":"强调我方请人做并获得帮助","preferredMemberPosition":2,"explanationZh":"受益者 + は + 对方に + てもらう。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"施惠者が + 动词て形 + くれる。"},{"memberPosition":2,"descriptionZh":"受益者は + 施惠者に + 动词て形 + もらう。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"日常会话高频，带感谢或好意视角。"},{"memberPosition":2,"descriptionZh":"日常和礼貌说明均可，强调请求安排。"}]'::jsonb,
+      '["同一帮助事件可从不同视角描述，但主语、助词和主动性含义会改变。"]'::jsonb,
+      '["不能只替换句尾而保留原主语和助词。"]'::jsonb,
+      '[{"contextZh":"朋友帮我搬行李","sentences":[{"memberPosition":1,"jp":"友達が荷物を運んでくれました。","zh":"朋友主动帮我搬了行李。"},{"memberPosition":2,"jp":"友達に荷物を運んでもらいました。","zh":"我请朋友帮我搬了行李。"}],"explanationZh":"事件相同，叙述视角和是否经过请求不同。"}]'::jsonb,
+      '[{"descriptionZh":"忽略主语方向，把くれる和もらう直接互换。","correctionZh":"先确定谁是句子主语、谁受益、是否有请求。"}]'::jsonb,
+      NULL
+    ),
+    (
+      'sasete_morau_vs_sasete_itadaku',
+      'させてもらう与させていただく',
+      '比较获得允许做某事的一般表达与商务谦让表达。',
+      '两者都从说话人角度表示获得许可或恩惠后做某事；「させていただく」更郑重并带谦让语色彩。',
+      '[{"conditionZh":"日常或内部关系中说明得到允许做某事","preferredMemberPosition":1,"explanationZh":"させてもらう自然直接。"},{"conditionZh":"商务、客户、公开发言中郑重说明己方行动","preferredMemberPosition":2,"explanationZh":"させていただく降低己方并尊重许可方。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"动词使役形 + てもらう。"},{"memberPosition":2,"descriptionZh":"动词使役形 + ていただく。"}]'::jsonb,
+      '[{"memberPosition":1,"descriptionZh":"一般会话；正式场合可能礼貌不足。"},{"memberPosition":2,"descriptionZh":"商务和正式表达；没有许可或受益关系时容易滥用。"}]'::jsonb,
+      '["确实存在许可关系时，两者都可成立，礼貌程度不同。"]'::jsonb,
+      '["单纯陈述自己决定的行动时，不应为了显得礼貌而滥用させていただく。"]'::jsonb,
+      '[{"contextZh":"得到允许提前离开与商务会议中开始说明","sentences":[{"memberPosition":1,"jp":"今日は早く帰らせてもらいました。","zh":"今天得到允许先回去了。"},{"memberPosition":2,"jp":"それでは、資料を説明させていただきます。","zh":"那么，请允许我说明资料。"}],"explanationZh":"后句处于正式商务场景。"}]'::jsonb,
+      '[{"descriptionZh":"认为任何自己的动作加させていただく都会更礼貌。","correctionZh":"确认是否真的有许可、恩惠关系以及正式语境。"}]'::jsonb,
+      NULL
+    )
 )
 INSERT INTO comparison_sets (
   slug,
   name_zh,
   summary,
+  common_meaning,
+  decision_rules,
+  connection_differences,
+  register_differences,
+  interchangeable_cases,
+  non_interchangeable_cases,
+  minimal_pair_examples,
+  learner_mistakes,
   status,
   legacy_grammar_point_id
 )
@@ -2064,16 +2262,47 @@ SELECT
   comparison_seed.slug,
   comparison_seed.name_zh,
   comparison_seed.summary,
+  comparison_seed.common_meaning,
+  comparison_seed.decision_rules,
+  comparison_seed.connection_differences,
+  comparison_seed.register_differences,
+  comparison_seed.interchangeable_cases,
+  comparison_seed.non_interchangeable_cases,
+  comparison_seed.minimal_pair_examples,
+  comparison_seed.learner_mistakes,
   'active',
   grammar_points.id
 FROM comparison_seed
-JOIN grammar_points ON grammar_points.seed_key = comparison_seed.legacy_seed_key
+LEFT JOIN grammar_points ON grammar_points.seed_key = comparison_seed.legacy_seed_key
 ON CONFLICT (slug) DO UPDATE SET
   name_zh = EXCLUDED.name_zh,
   summary = EXCLUDED.summary,
+  common_meaning = EXCLUDED.common_meaning,
+  decision_rules = EXCLUDED.decision_rules,
+  connection_differences = EXCLUDED.connection_differences,
+  register_differences = EXCLUDED.register_differences,
+  interchangeable_cases = EXCLUDED.interchangeable_cases,
+  non_interchangeable_cases = EXCLUDED.non_interchangeable_cases,
+  minimal_pair_examples = EXCLUDED.minimal_pair_examples,
+  learner_mistakes = EXCLUDED.learner_mistakes,
   status = EXCLUDED.status,
   legacy_grammar_point_id = EXCLUDED.legacy_grammar_point_id,
   updated_at = NOW();
+
+DELETE FROM comparison_set_members
+USING comparison_sets
+WHERE comparison_set_members.comparison_set_id = comparison_sets.id
+  AND comparison_sets.slug IN (
+    'wa_vs_ga',
+    'ni_vs_de',
+    'conditional_forms',
+    'kara_vs_node',
+    'tame_ni_vs_you_ni',
+    'sou_da_vs_rashii',
+    'te_moraemasu_vs_te_itadakemasu',
+    'te_kureru_vs_te_morau',
+    'sasete_morau_vs_sasete_itadaku'
+  );
 
 WITH comparison_member_seed(comparison_slug, grammar_seed_key, sort_order) AS (
   VALUES
@@ -2089,9 +2318,14 @@ WITH comparison_member_seed(comparison_slug, grammar_seed_key, sort_order) AS (
     ('kara_vs_node', 'gp_node', 2),
     ('tame_ni_vs_you_ni', 'gp_tame_ni', 1),
     ('tame_ni_vs_you_ni', 'gp_you_ni_purpose', 2),
-    ('sou_da_vs_rashii', 'gp_sou_da', 1),
-    ('sou_da_vs_rashii', 'gp_sou_da_hearsay', 2),
-    ('sou_da_vs_rashii', 'gp_rashii', 3)
+    ('sou_da_vs_rashii', 'gp_sou_da_hearsay', 1),
+    ('sou_da_vs_rashii', 'gp_rashii', 2),
+    ('te_moraemasu_vs_te_itadakemasu', 'gp_te_moraemasu_ka', 1),
+    ('te_moraemasu_vs_te_itadakemasu', 'gp_te_itadakemasu_ka', 2),
+    ('te_kureru_vs_te_morau', 'gp_te_kureru', 1),
+    ('te_kureru_vs_te_morau', 'gp_te_morau', 2),
+    ('sasete_morau_vs_sasete_itadaku', 'gp_sasete_morau', 1),
+    ('sasete_morau_vs_sasete_itadaku', 'gp_sasete_itadaku', 2)
 )
 INSERT INTO comparison_set_members (comparison_set_id, grammar_point_id, sort_order)
 SELECT comparison_sets.id, grammar_points.id, comparison_member_seed.sort_order
@@ -2101,13 +2335,27 @@ JOIN grammar_points ON grammar_points.seed_key = comparison_member_seed.grammar_
 ON CONFLICT (comparison_set_id, grammar_point_id) DO UPDATE SET
   sort_order = EXCLUDED.sort_order;
 
+UPDATE error_types
+SET code = 'tense_aspect_error',
+    name_zh = '时态与体错误',
+    updated_at = NOW()
+WHERE code = 'tense_mismatch'
+  AND NOT EXISTS (
+    SELECT 1 FROM error_types WHERE code = 'tense_aspect_error'
+  );
+
 WITH error_seed(code, name_zh, description, default_severity, legacy_seed_key) AS (
   VALUES
+    ('conjugation_error', '活用错误', '动词、形容词或名词的活用形式不正确。', 'high', NULL),
     ('connection_error', '接续错误', '词形或后续表达所要求的接续形式不正确。', 'high', 'gp_connection_error_te'),
     ('particle_error', '助词错误', '助词与谓语、语义角色或场景关系不匹配。', 'high', 'gp_particle_error_ni_de'),
-    ('tense_mismatch', '时态错误', '时态、肯否或时间关系不一致。', 'high', 'gp_tense_error_past'),
+    ('tense_aspect_error', '时态与体错误', '时态、肯否、时间关系或动作阶段不一致。', 'high', 'gp_tense_error_past'),
+    ('giving_receiving_direction_error', '授受方向错误', '施惠者、受益者、主语或助词方向不匹配。', 'high', NULL),
+    ('semantic_error', '语义错误', '目标语法表达的意思与当前意图或语境不一致。', 'high', NULL),
     ('register_mismatch', '语体不匹配', '表达的礼貌程度或社会关系与场景不匹配。', 'medium', 'gp_register_mismatch_error'),
-    ('literal_translation', '中文直译与不自然表达', '中文词序或搭配被直接搬入日语，造成不自然表达。', 'medium', 'gp_literal_translation_error')
+    ('collocation_error', '搭配错误', '词语组合不符合日语中的常用搭配。', 'medium', NULL),
+    ('literal_translation', '中文直译', '中文词序或表达方式被直接搬入日语。', 'medium', 'gp_literal_translation_error'),
+    ('unnatural_expression', '表达不自然', '句子可以理解，但表达不完整、生硬或不符合自然日语习惯。', 'medium', NULL)
 )
 INSERT INTO error_types (
   code,
@@ -2125,7 +2373,7 @@ SELECT
   'active',
   grammar_points.id
 FROM error_seed
-JOIN grammar_points ON grammar_points.seed_key = error_seed.legacy_seed_key
+LEFT JOIN grammar_points ON grammar_points.seed_key = error_seed.legacy_seed_key
 ON CONFLICT (code) DO UPDATE SET
   name_zh = EXCLUDED.name_zh,
   description = EXCLUDED.description,
@@ -2133,6 +2381,77 @@ ON CONFLICT (code) DO UPDATE SET
   status = EXCLUDED.status,
   legacy_grammar_point_id = EXCLUDED.legacy_grammar_point_id,
   updated_at = NOW();
+
+WITH error_alias_seed(alias_code, error_code) AS (
+  VALUES
+    ('wrong_register', 'register_mismatch'),
+    ('tense_mismatch', 'tense_aspect_error'),
+    ('missing_target_grammar', 'semantic_error'),
+    ('wrong_particle', 'particle_error'),
+    ('wrong_connection', 'connection_error')
+)
+INSERT INTO error_type_aliases (alias_code, error_type_id)
+SELECT error_alias_seed.alias_code, error_types.id
+FROM error_alias_seed
+JOIN error_types ON error_types.code = error_alias_seed.error_code
+ON CONFLICT (alias_code) DO UPDATE SET
+  error_type_id = EXCLUDED.error_type_id;
+
+INSERT INTO ai_feedback_issues (
+  ai_feedback_id,
+  error_type_id,
+  severity,
+  explanation,
+  correction,
+  related_grammar_point_id,
+  sort_order
+)
+SELECT
+  ai_feedback.id,
+  COALESCE(direct_error.id, aliased_error.id),
+  COALESCE(direct_error.default_severity, aliased_error.default_severity),
+  ai_feedback.feedback_text,
+  COALESCE(ai_feedback.corrected_sentence, ''),
+  user_sentences.grammar_point_id,
+  legacy_issue.ordinality::integer
+FROM ai_feedback
+JOIN user_sentences ON user_sentences.id = ai_feedback.user_sentence_id
+CROSS JOIN LATERAL jsonb_array_elements_text(
+  CASE
+    WHEN jsonb_typeof(ai_feedback.mistake_types) = 'array'
+      THEN ai_feedback.mistake_types
+    ELSE '[]'::jsonb
+  END
+) WITH ORDINALITY AS legacy_issue(code, ordinality)
+LEFT JOIN error_types AS direct_error ON direct_error.code = legacy_issue.code
+LEFT JOIN error_type_aliases ON error_type_aliases.alias_code = legacy_issue.code
+LEFT JOIN error_types AS aliased_error ON aliased_error.id = error_type_aliases.error_type_id
+WHERE COALESCE(direct_error.id, aliased_error.id) IS NOT NULL
+ON CONFLICT (ai_feedback_id, error_type_id) DO NOTHING;
+
+UPDATE ai_feedback
+SET meaning_score = COALESCE(meaning_score, scene_fit_score, 3),
+    explanation = COALESCE(NULLIF(explanation, ''), feedback_text),
+    next_hint = COALESCE(NULLIF(next_hint, ''), next_practice_prompt),
+    issues = COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'errorTypeCode', error_types.code,
+            'severity', ai_feedback_issues.severity,
+            'explanation', ai_feedback_issues.explanation,
+            'correction', ai_feedback_issues.correction,
+            'relatedGrammarPointId', ai_feedback_issues.related_grammar_point_id
+          )
+          ORDER BY ai_feedback_issues.sort_order ASC
+        )
+        FROM ai_feedback_issues
+        JOIN error_types ON error_types.id = ai_feedback_issues.error_type_id
+        WHERE ai_feedback_issues.ai_feedback_id = ai_feedback.id
+      ),
+      issues,
+      '[]'::jsonb
+    );
 
 COMMIT;
 

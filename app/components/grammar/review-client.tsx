@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { GrammarReviewItem, GrammarReviewResponse } from "@/shared/types/api";
+import type {
+  GrammarReviewAggregations,
+  GrammarReviewItem,
+  GrammarReviewResponse,
+} from "@/shared/types/api";
 import {
+  displayFeedbackSeverityLabel,
   displayMistakeTypeLabel,
   displayReviewStatusLabel,
 } from "@/app/components/grammar/display-labels";
@@ -14,6 +19,12 @@ import { formatShortDateTime } from "@/app/lib/date";
 
 export function ReviewClient() {
   const [items, setItems] = useState<GrammarReviewItem[]>([]);
+  const [aggregations, setAggregations] = useState<GrammarReviewAggregations>({
+    grammarPoints: [],
+    errorTypes: [],
+    scenarios: [],
+    registers: [],
+  });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -29,6 +40,14 @@ export function ReviewClient() {
           signal: controller.signal,
         }).then((response) => readJson<GrammarReviewResponse>(response));
         setItems(result.items);
+        setAggregations(
+          result.aggregations ?? {
+            grammarPoints: [],
+            errorTypes: [],
+            scenarios: [],
+            registers: [],
+          }
+        );
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setError(getErrorMessage(loadError, "复习记录加载失败，请稍后再试。"));
@@ -47,6 +66,13 @@ export function ReviewClient() {
     };
   }, []);
 
+  const aggregationGroups = [
+    { label: "具体用法", items: aggregations.grammarPoints },
+    { label: "错误类型", items: aggregations.errorTypes },
+    { label: "场景", items: aggregations.scenarios },
+    { label: "语体", items: aggregations.registers },
+  ];
+
   return (
     <div className="mx-auto w-full max-w-[1120px]">
       <section className="rounded-[22px] border border-white/10 bg-[#1e1e1eb3] p-[clamp(18px,2.6vw,26px)]">
@@ -54,7 +80,7 @@ export function ReviewClient() {
           <div>
             <p className="text-2xl leading-tight font-semibold text-white/78">复习</p>
             <p className="mt-1 text-sm leading-6 text-white/42">
-              当前 {items.length} 个语法点需要回看。
+              当前 {items.length} 个具体用法需要回看。
             </p>
           </div>
           <Link
@@ -65,6 +91,27 @@ export function ReviewClient() {
           </Link>
         </div>
       </section>
+
+      {!isLoading && !error && items.length > 0 ? (
+        <section className="mt-6 grid gap-5 border-y border-white/8 py-5 sm:grid-cols-2 lg:grid-cols-4">
+          {aggregationGroups.map((group) => (
+            <div key={group.label}>
+              <p className="text-sm font-semibold text-white/46">{group.label}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {group.items.map((aggregateItem) => (
+                  <span
+                    key={aggregateItem.key}
+                    className="inline-flex min-h-8 items-center rounded-full border border-white/10 px-3 py-1 text-xs text-white/58"
+                  >
+                    {aggregateItem.label}
+                    <span className="ml-2 text-white/30">{aggregateItem.count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {error ? (
         <div
@@ -111,6 +158,10 @@ export function ReviewClient() {
                     <PracticalityBadge practicality={item.grammarPoint.practicality} />
                     <TagBadge tag={displayReviewStatusLabel(item.status)} />
                     <TagBadge tag={`错误 ${item.mistakeCount}`} />
+                    {item.sceneTag ? <TagBadge tag={item.sceneTag} tone="scene" /> : null}
+                    {item.registerTag ? (
+                      <TagBadge tag={item.registerTag} tone="register" />
+                    ) : null}
                   </div>
                   <Link
                     href={`/grammar/${item.grammarPoint.id}`}
@@ -148,11 +199,36 @@ export function ReviewClient() {
                 </p>
               ) : null}
 
+              {item.issues.length > 0 ? (
+                <div className="mt-5 divide-y divide-white/8 border-y border-white/8">
+                  {item.issues.map((issue) => (
+                    <div key={issue.errorTypeCode} className="py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <TagBadge
+                          tag={displayMistakeTypeLabel(issue.errorTypeCode)}
+                        />
+                        <span className="text-xs text-white/34">
+                          {displayFeedbackSeverityLabel(issue.severity)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-white/54">
+                        {issue.explanation}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
-                  {item.mistakeTypes.map((mistakeType) => (
-                    <TagBadge key={mistakeType} tag={displayMistakeTypeLabel(mistakeType)} />
-                  ))}
+                  {item.issues.length === 0
+                    ? item.mistakeTypes.map((mistakeType) => (
+                        <TagBadge
+                          key={mistakeType}
+                          tag={displayMistakeTypeLabel(mistakeType)}
+                        />
+                      ))
+                    : null}
                 </div>
                 <Link
                   href={`/practice?grammarId=${item.grammarPoint.id}`}

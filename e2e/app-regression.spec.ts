@@ -135,10 +135,111 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
     .click();
   await expect(page).toHaveURL(/\/grammar\/gp_sou_da_hearsay$/);
   await expect(page.getByRole("heading", { name: "〜そうだ（传闻）" })).toBeVisible();
-  await expect(page.getByText("普通形 + そうだ")).toBeVisible();
+  await expect(page.getByText("普通形 + そうだ", { exact: true })).toBeVisible();
   await expect(page.getByText("天気予報によると、明日は雨が降るそうです。")).toBeVisible();
+  await expect(page.getByText("易混语法对比")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "そうだ（传闻）与らしい" })).toBeVisible();
 
   expectNoBrowserErrors(browserErrors);
+});
+
+test("structured fallback feedback feeds multidimensional review", async ({ page }) => {
+  const taxonomyResponse = await page.request.get("/api/grammar/taxonomy");
+  expect(taxonomyResponse.ok()).toBe(true);
+  const taxonomy = (await taxonomyResponse.json()) as {
+    comparisonSets: Array<{
+      slug: string;
+      commonMeaning: string;
+      decisionRules: unknown[];
+      members: Array<{ grammarPointId: string }>;
+    }>;
+    errorTypes: Array<{ code: string }>;
+  };
+  const requestComparison = taxonomy.comparisonSets.find(
+    (comparisonSet) =>
+      comparisonSet.slug === "te_moraemasu_vs_te_itadakemasu"
+  );
+  expect(requestComparison).toBeDefined();
+  expect(requestComparison?.commonMeaning).toContain("礼貌度");
+  expect(requestComparison?.decisionRules.length).toBeGreaterThan(0);
+  expect(requestComparison?.members).toHaveLength(2);
+  for (const member of requestComparison?.members ?? []) {
+    expect(member.grammarPointId).toMatch(/^[0-9a-f-]{36}$/);
+  }
+  expect(taxonomy.errorTypes.map((errorType) => errorType.code)).toEqual(
+    expect.arrayContaining([
+      "register_mismatch",
+      "connection_error",
+      "tense_aspect_error",
+      "giving_receiving_direction_error",
+    ])
+  );
+
+  const grammarResponse = await page.request.get(
+    `/api/grammar?${new URLSearchParams({ query: "〜てもらえますか", limit: "20" })}`
+  );
+  expect(grammarResponse.ok()).toBe(true);
+  const grammarSearch = (await grammarResponse.json()) as {
+    items: Array<{ id: string; grammarPoint: string }>;
+  };
+  const grammarPoint = grammarSearch.items.find(
+    (item) => item.grammarPoint === "〜てもらえますか"
+  );
+  expect(grammarPoint).toBeDefined();
+
+  const submitResponse = await page.request.post("/api/practice/submit", {
+    data: {
+      grammarPointId: grammarPoint?.id,
+      sentence: "先生、もう一度説明してもらえる？",
+      sceneTag: "hospital",
+      registerTag: "polite",
+    },
+  });
+  expect(submitResponse.ok()).toBe(true);
+  const feedback = (await submitResponse.json()) as {
+    meaningScore: number;
+    issues: Array<{ errorTypeCode: string }>;
+    correctedSentence: string;
+    explanation: string;
+    nextHint: string;
+  };
+  expect(feedback.meaningScore).toBeGreaterThan(0);
+  expect(feedback.issues).toEqual([
+    expect.objectContaining({ errorTypeCode: "register_mismatch" }),
+  ]);
+  expect(feedback.correctedSentence).toBe(
+    "すみません、もう一度説明していただけますか。"
+  );
+  expect(feedback.explanation).toContain("太随便");
+  expect(feedback.nextHint).toBeTruthy();
+
+  const reviewResponse = await page.request.get("/api/review/today");
+  expect(reviewResponse.ok()).toBe(true);
+  const review = (await reviewResponse.json()) as {
+    aggregations: {
+      grammarPoints: Array<{ key: string }>;
+      errorTypes: Array<{ key: string }>;
+      scenarios: Array<{ key: string }>;
+      registers: Array<{ key: string }>;
+    };
+  };
+  expect(review.aggregations.grammarPoints).toEqual(
+    expect.arrayContaining([expect.objectContaining({ key: grammarPoint?.id })])
+  );
+  expect(review.aggregations.errorTypes).toEqual(
+    expect.arrayContaining([expect.objectContaining({ key: "register_mismatch" })])
+  );
+  expect(review.aggregations.scenarios).toEqual(
+    expect.arrayContaining([expect.objectContaining({ key: "hospital" })])
+  );
+  expect(review.aggregations.registers).toEqual(
+    expect.arrayContaining([expect.objectContaining({ key: "polite" })])
+  );
+
+  await page.goto("/review");
+  await expect(page.getByText("语体不匹配").first()).toBeVisible();
+  await expect(page.getByText("医院").first()).toBeVisible();
+  await expect(page.getByText("一般礼貌").first()).toBeVisible();
 });
 
 test("collection CRUD, add/remove word, and word detail navigation work end-to-end", async ({

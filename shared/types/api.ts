@@ -182,11 +182,49 @@ export type ComparisonSetMember = {
   sortOrder: number;
 };
 
+export type ComparisonDecisionRule = {
+  conditionZh: string;
+  preferredMemberPosition: number;
+  explanationZh: string;
+};
+
+export type ComparisonMemberDifference = {
+  memberPosition: number;
+  descriptionZh: string;
+};
+
+export type ComparisonMinimalPairSentence = {
+  memberPosition: number;
+  jp: string;
+  zh: string;
+  acceptable?: boolean;
+  notesZh?: string;
+};
+
+export type ComparisonMinimalPair = {
+  contextZh: string;
+  sentences: ComparisonMinimalPairSentence[];
+  explanationZh: string;
+};
+
+export type ComparisonLearnerMistake = {
+  descriptionZh: string;
+  correctionZh: string;
+};
+
 export type ComparisonSet = {
   id: string;
   slug: string;
   nameZh: string;
   summary: string;
+  commonMeaning: string;
+  decisionRules: ComparisonDecisionRule[];
+  connectionDifferences: ComparisonMemberDifference[];
+  registerDifferences: ComparisonMemberDifference[];
+  interchangeableCases: string[];
+  nonInterchangeableCases: string[];
+  minimalPairExamples: ComparisonMinimalPair[];
+  learnerMistakes: ComparisonLearnerMistake[];
   status: TaxonomyStatus;
   members: ComparisonSetMember[];
 };
@@ -268,6 +306,7 @@ export type GrammarPointDetail = GrammarPointSummary & {
   connections: GrammarConnection[];
   prerequisites: GrammarPrerequisite[];
   formSiblings: GrammarFormSibling[];
+  comparisonSets: ComparisonSet[];
   examples: GrammarExample[];
   similarGrammar: SimilarGrammarRelation[];
 };
@@ -332,12 +371,38 @@ export type AIFeedbackBetterVersion = {
   explanationZh: string;
 };
 
+export type FeedbackIssueSeverity = "low" | "medium" | "high" | "critical";
+
+export type GrammarErrorCode =
+  | "conjugation_error"
+  | "connection_error"
+  | "particle_error"
+  | "tense_aspect_error"
+  | "giving_receiving_direction_error"
+  | "semantic_error"
+  | "register_mismatch"
+  | "collocation_error"
+  | "literal_translation"
+  | "unnatural_expression";
+
+export type AIFeedbackIssue = {
+  errorTypeCode: GrammarErrorCode;
+  severity: FeedbackIssueSeverity;
+  explanation: string;
+  correction: string;
+  relatedGrammarPointId: string | null;
+};
+
 export type AIFeedbackResult = {
   isCorrect: boolean;
   grammarScore: number;
+  meaningScore: number;
   naturalnessScore: number;
   registerScore: number;
   sceneFitScore: number;
+  issues: AIFeedbackIssue[];
+  explanation: string;
+  nextHint: string;
   feedbackText: string;
   correctedSentence?: string | null;
   betterVersions: AIFeedbackBetterVersion[];
@@ -373,10 +438,32 @@ export type GrammarReviewItem = {
   latestFeedback?: string | null;
   correctedSentence?: string | null;
   mistakeTypes: string[];
+  issues: AIFeedbackIssue[];
+  meaningScore?: number | null;
+  explanation?: string | null;
+  nextHint?: string | null;
+  sceneTag?: GrammarTag | null;
+  registerTag?: GrammarTag | null;
+};
+
+export type GrammarReviewAggregateItem = {
+  key: string;
+  label: string;
+  count: number;
+  grammarPointId?: string;
+  senseKey?: string;
+};
+
+export type GrammarReviewAggregations = {
+  grammarPoints: GrammarReviewAggregateItem[];
+  errorTypes: GrammarReviewAggregateItem[];
+  scenarios: GrammarReviewAggregateItem[];
+  registers: GrammarReviewAggregateItem[];
 };
 
 export type GrammarReviewResponse = {
   items: GrammarReviewItem[];
+  aggregations: GrammarReviewAggregations;
 };
 
 export type GrammarProgressGroup = {
