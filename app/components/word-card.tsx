@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { BookOpenIcon, LightbulbIcon, VolumeIcon } from "@/app/components/icons";
+import { VolumeIcon } from "@/app/components/icons";
 
 export interface WordData {
   word: string;
@@ -36,105 +36,97 @@ export function WordCard({ word, actions }: WordCardProps) {
   };
 
   return (
-    <div className="w-full max-w-2xl overflow-hidden rounded-[clamp(14px,2vw,16px)] border border-white/10 bg-[#1e1e1e]/90 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl">
-      <div className="border-b border-white/10 p-[clamp(16px,2.5vw,24px)]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+    <article className="w-full overflow-hidden rounded-lg border border-border bg-surface">
+      <header className="p-[clamp(18px,2.5vw,24px)]">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="mb-2 flex flex-wrap items-center gap-2.5 sm:gap-3">
-              <h2 className="break-words text-[clamp(30px,4vw,36px)] leading-[1.1] font-medium tracking-[0.01em] text-white/80">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="break-words text-3xl leading-tight font-semibold text-foreground">
                 {word.word}
               </h2>
               <button
                 type="button"
                 onClick={handleSpeak}
-                className="inline-flex size-[clamp(32px,3vw,36px)] items-center justify-center rounded-full transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/15"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-strong hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent-soft"
                 aria-label={`朗读 ${word.word}`}
+                title="朗读"
               >
-                <VolumeIcon className="size-5 text-white/55" />
+                <VolumeIcon className="size-5" />
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 text-white/55 sm:gap-3">
-              <span className="text-[clamp(16px,2vw,18px)] leading-[1.55]">{word.reading}</span>
-              {word.romaji ? <span className="text-sm text-white/30">•</span> : null}
-              {word.romaji ? <span className="text-sm text-white/45">{word.romaji}</span> : null}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
+              <span className="text-base text-foreground/75">{word.reading}</span>
+              {word.romaji ? <span aria-hidden="true">·</span> : null}
+              {word.romaji ? <span>{word.romaji}</span> : null}
             </div>
           </div>
 
-          {word.jlptLevel ? (
-            <div className="self-start rounded-full bg-[#fe9a0033] px-3 py-1 text-[clamp(12px,1.6vw,14px)] font-medium text-[#ffb900] backdrop-blur-sm">
-              {word.jlptLevel}
-            </div>
-          ) : null}
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <span className="inline-flex min-h-7 items-center rounded-md bg-surface-strong px-2.5 py-1 text-xs text-muted">
+              {word.partOfSpeech}
+            </span>
+            {word.jlptLevel ? (
+              <span className="inline-flex min-h-7 items-center rounded-md bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-strong">
+                {word.jlptLevel}
+              </span>
+            ) : null}
+          </div>
         </div>
+      </header>
 
-        <div className="mt-3">
-          <span className="inline-block rounded-full bg-white/10 px-3 py-1 text-[clamp(13px,1.6vw,14px)] text-white/55 backdrop-blur-sm">
-            {word.partOfSpeech}
-          </span>
-        </div>
-      </div>
-
-      <div className="border-b border-white/10 p-[clamp(16px,2.5vw,24px)]">
-        <div className="mb-3 flex items-center gap-2">
-          <BookOpenIcon className="size-5 text-white/55" />
-          <h3 className="text-[clamp(16px,2vw,18px)] font-medium text-white/70">意味</h3>
-        </div>
+      <section className="border-t border-border p-[clamp(18px,2.5vw,24px)]">
+        <h3 className="text-sm font-semibold text-foreground">意味</h3>
 
         {word.meanings.length > 0 ? (
-          <ul className="space-y-2">
+          <ol className="mt-3 space-y-2">
             {word.meanings.map((meaning, index) => (
               <li
                 key={`${meaning}-${index}`}
-                className="flex gap-[clamp(10px,1.5vw,12px)] text-[clamp(15px,2vw,16px)] leading-6 text-white/60"
+                className="grid grid-cols-[22px_minmax(0,1fr)] gap-2 text-sm leading-6 text-foreground/75"
               >
-                <span className="min-w-[24px] font-medium text-white/35">
-                  {index + 1}.
-                </span>
+                <span className="tabular-nums text-muted">{index + 1}.</span>
                 <span className="break-words">{meaning}</span>
               </li>
             ))}
-          </ul>
+          </ol>
         ) : (
-          <p className="text-sm text-white/40">当前结果还没有可展示的释义。</p>
+          <p className="mt-3 text-sm text-muted">当前结果还没有可展示的释义。</p>
         )}
-      </div>
+      </section>
 
-      <div className="p-[clamp(16px,2.5vw,24px)]">
-        <div className="mb-4 flex items-center gap-2">
-          <LightbulbIcon className="size-5 text-white/55" />
-          <h3 className="text-[clamp(16px,2vw,18px)] font-medium text-white/70">例文</h3>
+      <section className="border-t border-border p-[clamp(18px,2.5vw,24px)]">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-foreground">例文</h3>
+          {word.examples.length > 0 ? (
+            <span className="text-xs text-muted">{word.examples.length} 句</span>
+          ) : null}
         </div>
 
         {word.examples.length > 0 ? (
-          <div className="space-y-[clamp(12px,2vw,16px)]">
+          <div className="mt-3 divide-y divide-border">
             {word.examples.map((example, index) => (
-              <div
-                key={`${example.japanese}-${index}`}
-                className="border-l-[1.5px] border-white/20 pl-[clamp(14px,2vw,17px)]"
-              >
-                <p className="mb-1 break-words text-[clamp(15px,2vw,16px)] leading-6 text-white/75">
+              <div key={`${example.japanese}-${index}`} className="py-3 first:pt-0 last:pb-0">
+                <p className="break-words text-sm leading-6 text-foreground">
                   {example.japanese}
                 </p>
-                <p className="mb-1 break-words text-sm leading-5 text-white/35">
-                  {example.reading}
-                </p>
-                <p className="break-words text-[clamp(15px,2vw,16px)] leading-6 text-white/50">
+                {example.reading ? (
+                  <p className="mt-1 break-words text-xs leading-5 text-muted">
+                    {example.reading}
+                  </p>
+                ) : null}
+                <p className="mt-1 break-words text-sm leading-6 text-foreground/65">
                   {example.translation}
                 </p>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm leading-6 text-white/40">暂时没有生成例句。</p>
+          <p className="mt-3 text-sm leading-6 text-muted">暂时没有生成例句。</p>
         )}
-      </div>
+      </section>
 
-      {actions ? (
-        <div className="border-t border-white/10 p-[clamp(14px,2.2vw,18px)]">
-          {actions}
-        </div>
-      ) : null}
-    </div>
+      {actions ? <footer className="border-t border-border p-4">{actions}</footer> : null}
+    </article>
   );
 }
