@@ -87,7 +87,18 @@ describe("grammar API routes", () => {
         displayOrder: index + 1,
         status: "active",
       })),
-      comparisonSets: Array.from({ length: 9 }, (_, index) => ({
+      learningModules: Array.from({ length: 19 }, (_, index) => ({
+        id: `66666666-6666-4666-8666-${String(index + 1).padStart(12, "0")}`,
+        stageId: `55555555-5555-4555-8555-${String(Math.min(Math.floor(index / 4) + 1, 5)).padStart(12, "0")}`,
+        stageSlug: `stage_${Math.min(Math.floor(index / 4) + 1, 5)}`,
+        stageNameZh: `阶段 ${Math.min(Math.floor(index / 4) + 1, 5)}`,
+        slug: `module_${index + 1}`,
+        nameZh: `模块 ${index + 1}`,
+        description: "模块说明。",
+        displayOrder: (index % 4) + 1,
+        status: "active",
+      })),
+      comparisonSets: Array.from({ length: 27 }, (_, index) => ({
         id: `33333333-3333-4333-8333-${String(index + 1).padStart(12, "0")}`,
         slug: `comparison_${index + 1}`,
         nameZh: `对比 ${index + 1}`,
@@ -135,7 +146,8 @@ describe("grammar API routes", () => {
     );
     expect(body.taxonomyNodes).toHaveLength(46);
     expect(body.learningStages).toHaveLength(5);
-    expect(body.comparisonSets).toHaveLength(9);
+    expect(body.learningModules).toHaveLength(19);
+    expect(body.comparisonSets).toHaveLength(27);
     expect(body.errorTypes).toHaveLength(10);
     expect(body.categories).toHaveLength(18);
     expect(body.categories[0]).toMatchObject({
@@ -195,6 +207,7 @@ describe("grammar API routes", () => {
       groupSlug: "expressive_functions",
       dimensionSlug: undefined,
       stageSlug: undefined,
+      moduleSlug: undefined,
       limit: "12",
       offset: "36",
       userId: undefined,

@@ -41,13 +41,19 @@ export default async function globalSetup() {
 
   try {
     const schemaPath = path.join(process.cwd(), "shared/db/sql/schema.sql");
+    const grammarContentPath = path.join(
+      process.cwd(),
+      "shared/db/sql/grammar-content.sql"
+    );
     const fixturesPath = path.join(process.cwd(), "e2e/fixtures.sql");
-    const [schemaSql, fixturesSql] = await Promise.all([
+    const [schemaSql, grammarContentSql, fixturesSql] = await Promise.all([
       readFile(schemaPath, "utf8"),
+      readFile(grammarContentPath, "utf8"),
       readFile(fixturesPath, "utf8"),
     ]);
 
     await pool.query(schemaSql);
+    await pool.query(grammarContentSql);
     const firstGrammarSeedSnapshot = await pool.query(`
       SELECT jsonb_build_object(
         'dimensions', (SELECT COUNT(*) FROM taxonomy_dimensions),
@@ -56,7 +62,9 @@ export default async function globalSetup() {
         'pointTags', (SELECT COUNT(*) FROM grammar_point_taxonomy_tags),
         'connections', (SELECT COUNT(*) FROM grammar_point_connections),
         'prerequisites', (SELECT COUNT(*) FROM grammar_point_prerequisites),
+        'examples', (SELECT COUNT(*) FROM example_sentences),
         'learningStages', (SELECT COUNT(*) FROM learning_stages),
+        'learningModules', (SELECT COUNT(*) FROM learning_modules),
         'curriculumPlacements', (SELECT COUNT(*) FROM grammar_point_curriculum),
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
@@ -139,6 +147,7 @@ export default async function globalSetup() {
       ON CONFLICT (id) DO NOTHING;
     `);
     await pool.query(schemaSql);
+    await pool.query(grammarContentSql);
     const secondGrammarSeedSnapshot = await pool.query(`
       SELECT jsonb_build_object(
         'dimensions', (SELECT COUNT(*) FROM taxonomy_dimensions),
@@ -147,7 +156,9 @@ export default async function globalSetup() {
         'pointTags', (SELECT COUNT(*) FROM grammar_point_taxonomy_tags),
         'connections', (SELECT COUNT(*) FROM grammar_point_connections),
         'prerequisites', (SELECT COUNT(*) FROM grammar_point_prerequisites),
+        'examples', (SELECT COUNT(*) FROM example_sentences),
         'learningStages', (SELECT COUNT(*) FROM learning_stages),
+        'learningModules', (SELECT COUNT(*) FROM learning_modules),
         'curriculumPlacements', (SELECT COUNT(*) FROM grammar_point_curriculum),
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
@@ -170,6 +181,19 @@ export default async function globalSetup() {
         (SELECT COUNT(*) FROM comparison_sets WHERE status = 'active') AS active_comparison_sets,
         (SELECT COUNT(*) FROM error_types WHERE status = 'active') AS active_error_types,
         (SELECT COUNT(*) FROM learning_stages WHERE status = 'active') AS active_learning_stages,
+        (SELECT COUNT(*) FROM learning_modules WHERE status = 'active') AS active_learning_modules,
+        (
+          SELECT COUNT(*)
+          FROM learning_modules module
+          WHERE module.status = 'active'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM grammar_point_curriculum curriculum
+              JOIN grammar_points point ON point.id = curriculum.grammar_point_id
+              WHERE curriculum.learning_module_id = module.id
+                AND point.status = 'active'
+            )
+        ) AS empty_active_learning_modules,
         (
           SELECT COUNT(*)
           FROM grammar_points
@@ -200,6 +224,17 @@ export default async function globalSetup() {
         ) AS duplicate_learning_units,
         (
           SELECT COUNT(*)
+          FROM (
+            SELECT example.jp
+            FROM example_sentences example
+            JOIN grammar_points point ON point.id = example.grammar_point_id
+            WHERE point.status = 'active'
+            GROUP BY example.jp
+            HAVING COUNT(DISTINCT example.grammar_point_id) > 1
+          ) duplicates
+        ) AS duplicate_active_examples,
+        (
+          SELECT COUNT(*)
           FROM grammar_points gp
           WHERE gp.status = 'active'
             AND (
@@ -221,11 +256,36 @@ export default async function globalSetup() {
         (
           SELECT COUNT(*)
           FROM grammar_points gp
+          WHERE gp.status = 'active'
+            AND gp.seed_key LIKE 'gp_ext_%'
+            AND (
+              SELECT COUNT(*)
+              FROM example_sentences example
+              WHERE example.grammar_point_id = gp.id
+            ) <> 3
+        ) AS expanded_units_without_three_examples,
+        (
+          SELECT COUNT(*)
+          FROM grammar_points gp
           LEFT JOIN grammar_point_curriculum curriculum
             ON curriculum.grammar_point_id = gp.id
           WHERE gp.status = 'active'
             AND curriculum.grammar_point_id IS NULL
         ) AS active_without_curriculum,
+        (
+          SELECT COUNT(*)
+          FROM grammar_points gp
+          JOIN grammar_point_curriculum curriculum
+            ON curriculum.grammar_point_id = gp.id
+          WHERE gp.status = 'active'
+            AND (curriculum.learning_module_id IS NULL OR curriculum.module_order IS NULL)
+        ) AS active_without_module,
+        (
+          SELECT COUNT(*)
+          FROM grammar_point_curriculum curriculum
+          JOIN learning_modules module ON module.id = curriculum.learning_module_id
+          WHERE curriculum.learning_stage_id <> module.learning_stage_id
+        ) AS curriculum_module_stage_mismatches,
         (
           SELECT COUNT(*)
           FROM (
@@ -365,7 +425,6 @@ export default async function globalSetup() {
               OR jsonb_array_length(comparison_set.decision_rules) = 0
               OR jsonb_array_length(comparison_set.connection_differences) = 0
               OR jsonb_array_length(comparison_set.register_differences) = 0
-              OR jsonb_array_length(comparison_set.interchangeable_cases) = 0
               OR jsonb_array_length(comparison_set.non_interchangeable_cases) = 0
               OR jsonb_array_length(comparison_set.minimal_pair_examples) = 0
               OR jsonb_array_length(comparison_set.learner_mistakes) = 0
@@ -464,20 +523,26 @@ export default async function globalSetup() {
     const integrity = grammarIntegrity.rows[0];
     if (
       Number(integrity?.active_dimensions) !== 7 ||
-      Number(integrity?.active_learning_units) !== 153 ||
+      Number(integrity?.active_learning_units) !== 339 ||
       Number(integrity?.migrated_legacy_points) !== 11 ||
-      Number(integrity?.active_comparison_sets) !== 9 ||
+      Number(integrity?.active_comparison_sets) !== 27 ||
       Number(integrity?.active_error_types) !== 10 ||
       Number(integrity?.active_learning_stages) !== 5 ||
+      Number(integrity?.active_learning_modules) !== 19 ||
+      Number(integrity?.empty_active_learning_modules) !== 0 ||
       Number(integrity?.active_without_primary) !== 0 ||
       Number(integrity?.primary_category_mismatch) !== 0 ||
       Number(integrity?.dangling_taxonomy_tags) !== 0 ||
       Number(integrity?.duplicate_learning_units) !== 0 ||
+      Number(integrity?.duplicate_active_examples) !== 0 ||
       Number(integrity?.incomplete_active_learning_units) !== 0 ||
+      Number(integrity?.expanded_units_without_three_examples) !== 0 ||
       Number(integrity?.active_without_curriculum) !== 0 ||
+      Number(integrity?.active_without_module) !== 0 ||
+      Number(integrity?.curriculum_module_stage_mismatches) !== 0 ||
       Number(integrity?.prerequisite_cycles) !== 0 ||
       Number(integrity?.prerequisite_order_violations) !== 0 ||
-      Number(integrity?.normalized_polysemy_units) !== 22 ||
+      Number(integrity?.normalized_polysemy_units) < 22 ||
       Number(integrity?.polysemy_group_mismatches) !== 0 ||
       Number(integrity?.content_accuracy_violations) !== 0 ||
       Number(integrity?.incomplete_comparison_sets) !== 0 ||

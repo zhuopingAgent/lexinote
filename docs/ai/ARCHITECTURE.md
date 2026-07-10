@@ -13,7 +13,7 @@
 
 - `app/`: UI entry and route handlers
   - `app/page.tsx`: multi-view client shell for dictionary lookup, overview, local history, and collection management
-  - `app/grammar/page.tsx`: grammar learning workbench with search, category browsing, and grammar cards
+  - `app/grammar/page.tsx`: grammar learning workbench with search, knowledge-taxonomy browsing, curriculum-stage browsing, and grammar cards
   - `app/grammar/[grammarPointId]/page.tsx`: grammar detail view with examples, usage tags, similar grammar, favorites, and practice entry
   - `app/practice/page.tsx`: grammar scenario practice generation and sentence feedback flow
   - `app/favorites/page.tsx`: saved grammar points
@@ -170,11 +170,12 @@
 - `app/api/review/today/route.ts`
 - `features/grammar-learning/`
 - `shared/db/sql/grammar.sql.ts`
-- grammar tables and seed data in `shared/db/sql/schema.sql`
+- grammar tables and compatibility seed data in `shared/db/sql/schema.sql`
+- expanded grammar learning content in `shared/db/sql/grammar-content.sql`
 
 ### Runtime Flow
 
-1. `/grammar` fetches grammar taxonomy and paginated `GET /api/grammar` search results. Query, dimension, and taxonomy-node changes reset pagination and invalidate stale initial or load-more requests.
+1. `/grammar` fetches grammar taxonomy and paginated `GET /api/grammar` search results. Users can browse either the seven knowledge dimensions or the five-stage, nineteen-module curriculum; query and filter changes reset pagination and invalidate stale initial or load-more requests.
 2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]` by UUID or stable `sense_key`, render structured connections, same-form senses, prerequisites, curriculum placement, examples, tags, mistakes, and similar grammar, then log view history against the canonical UUID.
 3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`. Comparison practice uses structured decision rules attached through normalized comparison members.
 4. Practice generation uses Vercel AI Gateway when `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available and deterministic fallback output otherwise.
@@ -188,7 +189,7 @@
 - Treat `taxonomy_dimensions` and `taxonomy_nodes` as the knowledge taxonomy. Only the seven active knowledge dimensions belong there; comparison sets and error types are separate domain objects.
 - `grammar_points.primary_taxonomy_node_id` is the primary-category source of truth. The legacy category tables and response fields remain only for backward compatibility.
 - One active `grammar_points` row is one teachable sense. Polysemous surface forms share `canonical_form` and `form_group_slug` but keep distinct `sense_key`, meaning, connection, usage, and examples.
-- `grammar_point_connections` stores generation-ready connection rules; `grammar_point_prerequisites` stores required/recommended dependency edges and rejects cycles; `learning_stages` plus `grammar_point_curriculum` provide database-configured level and recommended order.
+- `grammar_point_connections` stores generation-ready connection rules; `grammar_point_prerequisites` stores required/recommended dependency edges and rejects cycles; `learning_stages`, `learning_modules`, and `grammar_point_curriculum` provide database-configured level, module placement, and dependency-aware recommended order.
 - `comparison_set_members` is the canonical relation between a comparison card and grammar senses. `comparison_sets` stores decision rules, connection/register differences, interchangeable boundaries, minimal pairs, and learner mistakes.
 - `ai_feedback_issues` normalizes one or more feedback issues against stable `error_types`; legacy feedback columns remain readable. Review aggregation uses the latest feedback per concrete sense and groups it by sense, error type, scenario, and register without traversing taxonomy tags.
 - Keep migrated comparison/error grammar-point IDs readable from detail, favorites, practice, and review flows; normal grammar search only lists active learning units.
@@ -219,8 +220,8 @@
 
 1. `npm run test:e2e` runs Playwright against a production-style local server on `127.0.0.1:3100`.
 2. `playwright.config.ts` starts the app with `npm run build && npm run start`, points it at the E2E database, and clears deployment Basic Auth and 2FA secrets.
-3. `e2e/global-setup.mjs` validates `E2E_DATABASE_URL`, applies `schema.sql`, truncates core tables, and loads `e2e/fixtures.sql`.
-4. The desktop regression suite covers lookup, history, overview, collections, duplicate prevention, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
+3. `e2e/global-setup.mjs` validates `E2E_DATABASE_URL`, applies `schema.sql` and `grammar-content.sql` twice to verify idempotency and grammar-domain integrity, then truncates user-facing fixture tables and loads `e2e/fixtures.sql`.
+4. The desktop regression suite covers lookup, history, overview, grammar curriculum, collections, duplicate prevention, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
 5. The mobile suite verifies navigation and no horizontal overflow on a narrow viewport.
 
 ### Important Rules

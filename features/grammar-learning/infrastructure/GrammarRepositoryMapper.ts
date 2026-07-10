@@ -22,6 +22,7 @@ import type {
   GrammarReviewAggregations,
   GrammarTag,
   GrammarTaxonomyTag,
+  LearningModule,
   LearningStage,
   Practicality,
   ReviewStatus,
@@ -365,6 +366,47 @@ function parseLearningStage(value: unknown): LearningStage | null {
   };
 }
 
+function parseLearningModule(value: unknown): LearningModule | null {
+  const record = parseJsonObject(value);
+  if (!record) {
+    return null;
+  }
+
+  const id = typeof record.id === "string" ? record.id : "";
+  const stageId = typeof record.stageId === "string" ? record.stageId : "";
+  const stageSlug =
+    typeof record.stageSlug === "string" ? record.stageSlug : "";
+  const stageNameZh =
+    typeof record.stageNameZh === "string" ? record.stageNameZh : "";
+  const slug = typeof record.slug === "string" ? record.slug : "";
+  const nameZh = typeof record.nameZh === "string" ? record.nameZh : "";
+  const description =
+    typeof record.description === "string" ? record.description : "";
+
+  if (!id || !stageId || !stageSlug || !stageNameZh || !slug || !nameZh) {
+    return null;
+  }
+
+  return {
+    id,
+    stageId,
+    stageSlug,
+    stageNameZh,
+    slug,
+    nameZh,
+    description,
+    displayOrder: toInteger(
+      typeof record.displayOrder === "number" ||
+        typeof record.displayOrder === "string"
+        ? record.displayOrder
+        : undefined
+    ),
+    status: parseTaxonomyStatus(
+      typeof record.status === "string" ? record.status : "active"
+    ),
+  };
+}
+
 function parseCurriculum(value: unknown): GrammarCurriculumPlacement | null {
   const record = parseJsonObject(value);
   const stage = record ? parseLearningStage(record.stage) : null;
@@ -374,6 +416,7 @@ function parseCurriculum(value: unknown): GrammarCurriculumPlacement | null {
 
   return {
     stage,
+    module: parseLearningModule(record.module),
     level: toInteger(
       typeof record.level === "number" || typeof record.level === "string"
         ? record.level
@@ -385,6 +428,11 @@ function parseCurriculum(value: unknown): GrammarCurriculumPlacement | null {
         ? record.recommendedOrder
         : undefined
     ),
+    moduleOrder:
+      typeof record.moduleOrder === "number" ||
+      typeof record.moduleOrder === "string"
+        ? toInteger(record.moduleOrder)
+        : null,
   };
 }
 

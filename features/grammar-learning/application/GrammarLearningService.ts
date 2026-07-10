@@ -152,6 +152,7 @@ export class GrammarLearningService {
       knowledgeDimensions,
       taxonomyNodes,
       learningStages,
+      learningModules,
       comparisonSets,
       errorTypes,
       categoryGroups,
@@ -162,6 +163,7 @@ export class GrammarLearningService {
       this.repository.listKnowledgeDimensions(),
       this.repository.listTaxonomyNodes(),
       this.repository.listLearningStages(),
+      this.repository.listLearningModules(),
       this.repository.listComparisonSets(),
       this.repository.listErrorTypes(),
       this.repository.listCategoryGroups(),
@@ -174,6 +176,7 @@ export class GrammarLearningService {
       knowledgeDimensions,
       taxonomyNodes,
       learningStages,
+      learningModules,
       comparisonSets,
       errorTypes,
       categoryGroups,
@@ -189,6 +192,7 @@ export class GrammarLearningService {
     groupSlug?: string;
     dimensionSlug?: string;
     stageSlug?: string;
+    moduleSlug?: string;
     limit?: unknown;
     offset?: unknown;
     userId?: string;
@@ -206,6 +210,7 @@ export class GrammarLearningService {
       categorySlug: options?.categorySlug,
       dimensionSlug,
       stageSlug: options?.stageSlug,
+      moduleSlug: options?.moduleSlug,
       limit: normalizeLimit(options?.limit),
       offset: normalizeOffset(options?.offset),
       userId,

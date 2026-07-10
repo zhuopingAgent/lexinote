@@ -147,6 +147,25 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByText("易混语法对比")).toBeVisible();
   await expect(page.getByRole("heading", { name: "そうだ（传闻）与らしい" })).toBeVisible();
 
+  await page.goto("/grammar");
+  await page.getByRole("button", { name: "课程顺序", exact: true }).click();
+  await expect(page.getByLabel("课程阶段", { exact: true })).toBeVisible();
+  await expect(page.getByText("5 个阶段", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /自然综合表达/ }).click();
+  await expect(page.getByRole("button", { name: "媒体与正式书面语" })).toBeVisible();
+  await page.getByRole("button", { name: "媒体与正式书面语" }).click();
+  await expect(
+    page.getByText("新闻转述、长句结构、正式连接和数据表达。", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "〜とされる", exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("media_formal");
+
+  await page.getByRole("link", { name: "〜とされる", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "〜とされる" })).toBeVisible();
+  await expect(page.getByText("阶段 5：自然综合表达", { exact: true })).toBeVisible();
+  await expect(page.getByText(/媒体与正式书面语 · 第 \d+ 项/)).toBeVisible();
+  await expect(page.getByText("这处遗迹被认为建于一千多年前。")).toBeVisible();
+
   expectNoBrowserErrors(browserErrors);
 });
 
@@ -154,6 +173,8 @@ test("structured fallback feedback feeds multidimensional review", async ({ page
   const taxonomyResponse = await page.request.get("/api/grammar/taxonomy");
   expect(taxonomyResponse.ok()).toBe(true);
   const taxonomy = (await taxonomyResponse.json()) as {
+    learningStages: Array<{ slug: string }>;
+    learningModules: Array<{ slug: string; nameZh: string }>;
     comparisonSets: Array<{
       slug: string;
       commonMeaning: string;
@@ -162,6 +183,17 @@ test("structured fallback feedback feeds multidimensional review", async ({ page
     }>;
     errorTypes: Array<{ code: string }>;
   };
+  expect(taxonomy.learningStages).toHaveLength(5);
+  expect(taxonomy.learningModules).toHaveLength(19);
+  expect(taxonomy.learningModules).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        slug: "media_formal",
+        nameZh: "媒体与正式书面语",
+      }),
+    ])
+  );
+  expect(taxonomy.comparisonSets).toHaveLength(27);
   const requestComparison = taxonomy.comparisonSets.find(
     (comparisonSet) =>
       comparisonSet.slug === "te_moraemasu_vs_te_itadakemasu"

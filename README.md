@@ -87,7 +87,7 @@ It exposes schema resources plus a `query_readonly` tool for debugging local dat
 - `npm run test`
 - `npm run test:e2e`
 
-`npm run test:e2e` requires `E2E_DATABASE_URL` and a local PostgreSQL test database. The Playwright global setup applies `shared/db/sql/schema.sql`, truncates the core tables, and loads `e2e/fixtures.sql` before the browser test starts.
+`npm run test:e2e` requires `E2E_DATABASE_URL` and a local PostgreSQL test database. The Playwright global setup applies `shared/db/sql/schema.sql` and `shared/db/sql/grammar-content.sql`, validates the repeatable grammar seed, truncates the fixture tables, and loads `e2e/fixtures.sql` before the browser test starts.
 
 ## Current Scope
 

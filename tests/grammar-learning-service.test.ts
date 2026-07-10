@@ -256,6 +256,7 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
     listKnowledgeDimensions: vi.fn().mockResolvedValue([]),
     listTaxonomyNodes: vi.fn().mockResolvedValue([]),
     listLearningStages: vi.fn().mockResolvedValue([]),
+    listLearningModules: vi.fn().mockResolvedValue([]),
     listComparisonSets: vi.fn().mockResolvedValue([]),
     listErrorTypes: vi.fn().mockResolvedValue([]),
     listCategoryGroups: vi.fn(),
@@ -387,6 +388,7 @@ describe("GrammarLearningService", () => {
       categorySlug: "time_and_sequence",
       groupSlug: "expressive_functions",
       stageSlug: "functional_patterns",
+      moduleSlug: undefined,
       limit: 12,
       offset: 36,
     });

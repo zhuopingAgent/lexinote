@@ -49,6 +49,24 @@ export const SELECT_LEARNING_STAGES_SQL = `
   ORDER BY display_order ASC;
 `;
 
+export const SELECT_LEARNING_MODULES_SQL = `
+  SELECT
+    module.id::text,
+    stage.id::text AS stage_id,
+    stage.slug AS stage_slug,
+    stage.name_zh AS stage_name_zh,
+    module.slug,
+    module.name_zh,
+    module.description,
+    module.display_order,
+    module.status
+  FROM learning_modules module
+  JOIN learning_stages stage ON stage.id = module.learning_stage_id
+  WHERE module.status = 'active'
+    AND stage.status = 'active'
+  ORDER BY stage.display_order ASC, module.display_order ASC;
+`;
+
 export const SELECT_COMPARISON_SETS_SQL = `
   SELECT
     cs.id::text,
@@ -234,8 +252,23 @@ const GRAMMAR_POINT_SELECT_FIELDS = `
         'displayOrder', ls.display_order,
         'status', ls.status
       ),
+      'module', CASE
+        WHEN lm.id IS NULL THEN NULL
+        ELSE jsonb_build_object(
+          'id', lm.id::text,
+          'stageId', ls.id::text,
+          'stageSlug', ls.slug,
+          'stageNameZh', ls.name_zh,
+          'slug', lm.slug,
+          'nameZh', lm.name_zh,
+          'description', lm.description,
+          'displayOrder', lm.display_order,
+          'status', lm.status
+        )
+      END,
       'level', gpc.level,
-      'recommendedOrder', gpc.recommended_order
+      'recommendedOrder', gpc.recommended_order,
+      'moduleOrder', gpc.module_order
     )
   END AS curriculum,
   CASE
@@ -278,6 +311,7 @@ const GRAMMAR_POINT_SELECT_JOINS = `
   LEFT JOIN grammar_category_groups compat_group ON compat_group.id = compat_gc.group_id
   LEFT JOIN grammar_point_curriculum gpc ON gpc.grammar_point_id = gp.id
   LEFT JOIN learning_stages ls ON ls.id = gpc.learning_stage_id
+  LEFT JOIN learning_modules lm ON lm.id = gpc.learning_module_id
   LEFT JOIN comparison_sets cs ON cs.legacy_grammar_point_id = gp.id
   LEFT JOIN error_types et ON et.legacy_grammar_point_id = gp.id
   LEFT JOIN LATERAL (
@@ -382,6 +416,10 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
     AND (
       $7::text = ''
       OR ls.slug = $7::text
+    )
+    AND (
+      $9::text = ''
+      OR lm.slug = $9::text
     )
   ORDER BY
     CASE
