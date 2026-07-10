@@ -11,7 +11,7 @@
     "start": "next start",
     "auth:reset-2fa": "node scripts/reset-two-factor.mjs",
     "lint": "eslint",
-    "typecheck": "node scripts/tsc7.mjs --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
@@ -30,11 +30,11 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
-    "typescript": "^6.0.3",
-    "typescript-7": "npm:typescript@^7.0.1-rc",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.0.18"
   }
 }
