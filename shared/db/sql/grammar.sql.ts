@@ -566,3 +566,40 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     rr.mistake_count DESC,
     gp.grammar_point ASC;
 `;
+
+export const SELECT_GRAMMAR_PROGRESS_SQL = `
+  SELECT
+    cgrp.id::text,
+    cgrp.slug,
+    cgrp.name_zh,
+    cgrp.name_en,
+    cgrp.description,
+    cgrp.priority,
+    COUNT(DISTINCT gp.id)::int AS total_count,
+    COUNT(DISTINCT rr.grammar_point_id) FILTER (
+      WHERE rr.id IS NOT NULL
+    )::int AS started_count,
+    COUNT(DISTINCT rr.grammar_point_id) FILTER (
+      WHERE rr.status = 'mastered'
+    )::int AS mastered_count,
+    COUNT(DISTINCT rr.grammar_point_id) FILTER (
+      WHERE rr.id IS NOT NULL
+        AND (
+          rr.next_review_at IS NULL
+          OR rr.next_review_at <= NOW()
+          OR rr.mistake_count > 0
+        )
+    )::int AS review_count,
+    COUNT(DISTINCT favorites.grammar_point_id)::int AS favorite_count
+  FROM grammar_category_groups cgrp
+  LEFT JOIN grammar_categories gc ON gc.group_id = cgrp.id
+  LEFT JOIN grammar_points gp ON gp.category_id = gc.id
+  LEFT JOIN review_records rr
+    ON rr.grammar_point_id = gp.id
+   AND rr.user_id = $1::uuid
+  LEFT JOIN favorites
+    ON favorites.grammar_point_id = gp.id
+   AND favorites.user_id = $1::uuid
+  GROUP BY cgrp.id
+  ORDER BY cgrp.priority ASC, cgrp.name_zh ASC;
+`;

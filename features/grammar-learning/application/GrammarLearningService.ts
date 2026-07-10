@@ -4,6 +4,7 @@ import { DEFAULT_GRAMMAR_USER_ID } from "@/shared/db/sql/grammar.sql";
 import type {
   GrammarDetailResponse,
   GrammarFavoritesResponse,
+  GrammarProgressResponse,
   GrammarReviewResponse,
   GrammarSearchResponse,
   GrammarTaxonomyResponse,
@@ -327,6 +328,34 @@ export class GrammarLearningService {
   async listReviewItems(userId?: string): Promise<GrammarReviewResponse> {
     return {
       items: await this.repository.listReviewItems(normalizeUserId(userId)),
+    };
+  }
+
+  async getProgress(userId?: string): Promise<GrammarProgressResponse> {
+    const groupProgress = await this.repository.getProgress(normalizeUserId(userId));
+
+    return {
+      totalGrammarPoints: groupProgress.reduce(
+        (total, group) => total + group.totalCount,
+        0
+      ),
+      startedCount: groupProgress.reduce(
+        (total, group) => total + group.startedCount,
+        0
+      ),
+      masteredCount: groupProgress.reduce(
+        (total, group) => total + group.masteredCount,
+        0
+      ),
+      reviewCount: groupProgress.reduce(
+        (total, group) => total + group.reviewCount,
+        0
+      ),
+      favoriteCount: groupProgress.reduce(
+        (total, group) => total + group.favoriteCount,
+        0
+      ),
+      groupProgress,
     };
   }
 }

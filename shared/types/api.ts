@@ -227,6 +227,29 @@ export type GrammarReviewResponse = {
   items: GrammarReviewItem[];
 };
 
+export type GrammarProgressGroup = {
+  id: string;
+  slug: string;
+  nameZh: string;
+  nameEn: string;
+  description: string;
+  priority: number;
+  totalCount: number;
+  startedCount: number;
+  masteredCount: number;
+  reviewCount: number;
+  favoriteCount: number;
+};
+
+export type GrammarProgressResponse = {
+  totalGrammarPoints: number;
+  startedCount: number;
+  masteredCount: number;
+  reviewCount: number;
+  favoriteCount: number;
+  groupProgress: GrammarProgressGroup[];
+};
+
 export type AutoFilterSyncStatus =
   | "idle"
   | "pending"

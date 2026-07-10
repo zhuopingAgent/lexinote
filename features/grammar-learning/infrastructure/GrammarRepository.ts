@@ -9,6 +9,7 @@ import {
   SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL,
   SELECT_FAVORITES_SQL,
   SELECT_GRAMMAR_CATEGORIES_SQL,
+  SELECT_GRAMMAR_PROGRESS_SQL,
   SELECT_GRAMMAR_POINT_DETAIL_SQL,
   SELECT_REGISTER_TAGS_SQL,
   SELECT_REVIEW_ITEMS_SQL,
@@ -27,6 +28,7 @@ import type {
   GrammarExample,
   GrammarPointDetail,
   GrammarPointSummary,
+  GrammarProgressGroup,
   GrammarReviewItem,
   GrammarTag,
   Practicality,
@@ -139,6 +141,20 @@ type ReviewRow = GrammarSummaryRow & {
   latest_feedback: string | null;
   corrected_sentence: string | null;
   mistake_types: unknown;
+};
+
+type ProgressGroupRow = {
+  id: string;
+  slug: string;
+  name_zh: string;
+  name_en: string;
+  description: string;
+  priority: number | string;
+  total_count: number | string;
+  started_count: number | string;
+  mastered_count: number | string;
+  review_count: number | string;
+  favorite_count: number | string;
 };
 
 type StoredFeedback = {
@@ -553,6 +569,26 @@ export class GrammarRepository {
       latestFeedback: row.latest_feedback,
       correctedSentence: row.corrected_sentence,
       mistakeTypes: parseMistakeTypes(row.mistake_types),
+    }));
+  }
+
+  async getProgress(userId: string): Promise<GrammarProgressGroup[]> {
+    const rows = await query<ProgressGroupRow>(SELECT_GRAMMAR_PROGRESS_SQL, [
+      userId,
+    ]);
+
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      nameZh: row.name_zh,
+      nameEn: row.name_en,
+      description: row.description,
+      priority: toInteger(row.priority),
+      totalCount: toInteger(row.total_count),
+      startedCount: toInteger(row.started_count),
+      masteredCount: toInteger(row.mastered_count),
+      reviewCount: toInteger(row.review_count),
+      favoriteCount: toInteger(row.favorite_count),
     }));
   }
 }
