@@ -16,6 +16,7 @@ export async function GET(request: Request) {
       dimensionSlug: url.searchParams.get("dimension") ?? undefined,
       stageSlug: url.searchParams.get("stage") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
+      offset: url.searchParams.get("offset") ?? undefined,
       userId: url.searchParams.get("userId") ?? undefined,
     });
 

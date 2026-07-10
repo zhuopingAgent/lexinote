@@ -10,24 +10,28 @@ const THEMES: Array<{
   ariaLabel: string;
   label: string;
   shortLabel: string;
+  tinyLabel: string;
   value: ThemeName;
 }> = [
   {
     ariaLabel: "Classic dark theme",
     label: "Classic",
     shortLabel: "Classic",
+    tinyLabel: "C",
     value: "dark",
   },
   {
     ariaLabel: "Paper light theme",
     label: "Paper",
     shortLabel: "Paper",
+    tinyLabel: "P",
     value: "paper",
   },
   {
     ariaLabel: "Paper dark theme",
     label: "Paper Dark",
     shortLabel: "P Dark",
+    tinyLabel: "PD",
     value: "paper-dark",
   },
 ];
@@ -90,6 +94,7 @@ export function ThemeToggle() {
             type="button"
             aria-label={item.ariaLabel}
             aria-pressed={isActive}
+            title={item.label}
             className={
               isActive
                 ? "theme-toggle__option theme-toggle__option--active"
@@ -102,6 +107,9 @@ export function ThemeToggle() {
             </span>
             <span className="theme-toggle__label theme-toggle__label--short">
               {item.shortLabel}
+            </span>
+            <span className="theme-toggle__label theme-toggle__label--tiny">
+              {item.tinyLabel}
             </span>
           </button>
         );

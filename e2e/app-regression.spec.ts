@@ -110,6 +110,9 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("expression_function");
+  await expect(page.getByText("已显示 36 个", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "加载更多", exact: true }).click();
+  await expect(page.getByText("已显示 72 个", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "形态、活用与时间体" }).click();
   await expect(page.getByText("组织词形变化、时态、否定、体和派生形。")).toBeVisible();

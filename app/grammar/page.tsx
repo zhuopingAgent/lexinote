@@ -13,7 +13,7 @@ export default function GrammarPage() {
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
       <AppHeader navItems={TOP_NAV_ITEMS} />
-      <section className="flex-1 px-[clamp(16px,4vw,40px)] py-[clamp(28px,4vw,44px)]">
+      <section className="flex-1 px-[clamp(16px,4vw,40px)] py-[clamp(24px,3vw,36px)]">
         <GrammarLearningShell />
       </section>
     </main>

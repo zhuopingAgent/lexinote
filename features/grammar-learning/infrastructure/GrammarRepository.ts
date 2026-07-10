@@ -235,10 +235,12 @@ export class GrammarRepository {
     dimensionSlug?: string;
     stageSlug?: string;
     limit?: number;
+    offset?: number;
     userId?: string;
   }): Promise<GrammarPointSummary[]> {
     const normalizedQuery = options?.query?.trim() ?? "";
     const normalizedLimit = Math.min(Math.max(options?.limit ?? 24, 1), 80);
+    const normalizedOffset = Math.min(Math.max(options?.offset ?? 0, 0), 10_000);
     const categorySlug = options?.categorySlug?.trim() ?? "";
     const dimensionSlug = options?.dimensionSlug?.trim() ?? "";
     const stageSlug = options?.stageSlug?.trim() ?? "";
@@ -250,6 +252,7 @@ export class GrammarRepository {
       categorySlug,
       dimensionSlug,
       stageSlug,
+      normalizedOffset,
     ]);
 
     return rows.map((row) => mapSummaryRow(row));
