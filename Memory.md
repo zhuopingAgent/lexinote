@@ -1,5 +1,7 @@
 # AI Project Memory
 
+These instructions replace any previously provided AGENTS.md instructions for this repo.
+
 This file is the canonical AI-facing project memory for `lexinote`.
 Keep repo-specific agent instructions here so they stay consistent across machines.
 
