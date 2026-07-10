@@ -6,6 +6,7 @@ import {
   INSERT_USER_SENTENCE_SQL,
   SEARCH_GRAMMAR_POINTS_SQL,
   SELECT_COMPARISON_SETS_SQL,
+  SELECT_COMPARISON_SETS_FOR_GRAMMAR_POINT_SQL,
   SELECT_ERROR_TYPES_SQL,
   SELECT_GRAMMAR_CATEGORY_GROUPS_SQL,
   SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL,
@@ -16,6 +17,7 @@ import {
   SELECT_KNOWLEDGE_DIMENSIONS_SQL,
   SELECT_LEARNING_STAGES_SQL,
   SELECT_REGISTER_TAGS_SQL,
+  SELECT_REVIEW_AGGREGATIONS_SQL,
   SELECT_REVIEW_ITEMS_SQL,
   SELECT_SCENE_TAGS_SQL,
   SELECT_SIMILAR_GRAMMAR_FOR_POINT_SQL,
@@ -26,9 +28,18 @@ import {
   UPSERT_REVIEW_RECORD_FOR_MISTAKE_SQL,
 } from "@/shared/db/sql/grammar.sql";
 import { query } from "@/shared/db/query";
+import {
+  normalizeFeedbackSeverity,
+  normalizeGrammarErrorCode,
+} from "@/features/grammar-learning/domain/feedback";
 import type {
   AIFeedbackBetterVersion,
+  AIFeedbackIssue,
   ComparisonSet,
+  ComparisonDecisionRule,
+  ComparisonLearnerMistake,
+  ComparisonMemberDifference,
+  ComparisonMinimalPair,
   ComparisonSetMember,
   GrammarErrorType,
   GrammarCategory,
@@ -45,6 +56,8 @@ import type {
   GrammarPointType,
   GrammarPrerequisite,
   GrammarReviewItem,
+  GrammarReviewAggregateItem,
+  GrammarReviewAggregations,
   GrammarTag,
   GrammarTaxonomyTag,
   KnowledgeDimension,
@@ -164,6 +177,14 @@ type ComparisonSetRow = {
   slug: string;
   name_zh: string;
   summary: string;
+  common_meaning: string;
+  decision_rules: unknown;
+  connection_differences: unknown;
+  register_differences: unknown;
+  interchangeable_cases: unknown;
+  non_interchangeable_cases: unknown;
+  minimal_pair_examples: unknown;
+  learner_mistakes: unknown;
   status: string;
   members: unknown;
 };
@@ -227,6 +248,22 @@ type ReviewRow = GrammarSummaryRow & {
   latest_feedback: string | null;
   corrected_sentence: string | null;
   mistake_types: unknown;
+  issues: unknown;
+  meaning_score: number | string | null;
+  explanation: string | null;
+  next_hint: string | null;
+  scene_name_en: string | null;
+  scene_name_zh: string | null;
+  scene_description: string | null;
+  scene_priority: number | string | null;
+  register_name_en: string | null;
+  register_name_zh: string | null;
+  register_description: string | null;
+  register_priority: number | string | null;
+};
+
+type ReviewAggregationsRow = {
+  aggregations: unknown;
 };
 
 type ProgressGroupRow = {
@@ -246,9 +283,13 @@ type ProgressGroupRow = {
 type StoredFeedback = {
   isCorrect: boolean;
   grammarScore: number;
+  meaningScore: number;
   naturalnessScore: number;
   registerScore: number;
   sceneFitScore: number;
+  issues: AIFeedbackIssue[];
+  explanation: string;
+  nextHint: string;
   feedbackText: string;
   correctedSentence?: string | null;
   betterVersions: AIFeedbackBetterVersion[];
@@ -353,6 +394,106 @@ function parseTags(value: unknown): GrammarTag[] {
 
 function parseMistakeTypes(value: unknown): string[] {
   return parseStringArray(value);
+}
+
+function parseFeedbackIssues(options: {
+  issues: unknown;
+  mistakeTypes: unknown;
+  fallbackExplanation?: string | null;
+  fallbackCorrection?: string | null;
+  grammarPointId?: string | null;
+}): AIFeedbackIssue[] {
+  const issues = new Map<string, AIFeedbackIssue>();
+
+  for (const item of parseJsonArray(options.issues)) {
+    const record = parseJsonObject(item);
+    if (!record) {
+      continue;
+    }
+
+    const errorTypeCode = normalizeGrammarErrorCode(record.errorTypeCode);
+    if (!errorTypeCode || issues.has(errorTypeCode)) {
+      continue;
+    }
+
+    issues.set(errorTypeCode, {
+      errorTypeCode,
+      severity: normalizeFeedbackSeverity(record.severity),
+      explanation:
+        typeof record.explanation === "string" && record.explanation
+          ? record.explanation
+          : options.fallbackExplanation ?? "发现需要复习的问题。",
+      correction:
+        typeof record.correction === "string"
+          ? record.correction
+          : options.fallbackCorrection ?? "",
+      relatedGrammarPointId:
+        typeof record.relatedGrammarPointId === "string"
+          ? record.relatedGrammarPointId
+          : options.grammarPointId ?? null,
+    });
+  }
+
+  for (const mistakeType of parseMistakeTypes(options.mistakeTypes)) {
+    const errorTypeCode = normalizeGrammarErrorCode(mistakeType);
+    if (!errorTypeCode || issues.has(errorTypeCode)) {
+      continue;
+    }
+
+    issues.set(errorTypeCode, {
+      errorTypeCode,
+      severity: "medium",
+      explanation: options.fallbackExplanation ?? "发现需要复习的问题。",
+      correction: options.fallbackCorrection ?? "",
+      relatedGrammarPointId: options.grammarPointId ?? null,
+    });
+  }
+
+  return Array.from(issues.values());
+}
+
+function parseReviewAggregateItems(value: unknown): GrammarReviewAggregateItem[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const key = typeof record.key === "string" ? record.key : "";
+    const label = typeof record.label === "string" ? record.label : "";
+    if (!key || !label) {
+      return [];
+    }
+
+    return [
+      {
+        key,
+        label,
+        count: toInteger(
+          typeof record.count === "number" || typeof record.count === "string"
+            ? record.count
+            : undefined
+        ),
+        grammarPointId:
+          typeof record.grammarPointId === "string"
+            ? record.grammarPointId
+            : undefined,
+        senseKey:
+          typeof record.senseKey === "string" ? record.senseKey : undefined,
+      },
+    ];
+  });
+}
+
+function parseReviewAggregations(value: unknown): GrammarReviewAggregations {
+  const record = parseJsonObject(value);
+
+  return {
+    grammarPoints: parseReviewAggregateItems(record?.grammarPoints),
+    errorTypes: parseReviewAggregateItems(record?.errorTypes),
+    scenarios: parseReviewAggregateItems(record?.scenarios),
+    registers: parseReviewAggregateItems(record?.registers),
+  };
 }
 
 function parsePracticality(value: string): Practicality {
@@ -668,6 +809,139 @@ function parseComparisonMembers(value: unknown): ComparisonSetMember[] {
   });
 }
 
+function parseComparisonDecisionRules(value: unknown): ComparisonDecisionRule[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const conditionZh =
+      typeof record.conditionZh === "string" ? record.conditionZh : "";
+    const explanationZh =
+      typeof record.explanationZh === "string" ? record.explanationZh : "";
+    const preferredMemberPosition = toInteger(
+      typeof record.preferredMemberPosition === "number" ||
+        typeof record.preferredMemberPosition === "string"
+        ? record.preferredMemberPosition
+        : undefined
+    );
+
+    return conditionZh && explanationZh && preferredMemberPosition > 0
+      ? [{ conditionZh, preferredMemberPosition, explanationZh }]
+      : [];
+  });
+}
+
+function parseComparisonDifferences(value: unknown): ComparisonMemberDifference[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const descriptionZh =
+      typeof record.descriptionZh === "string" ? record.descriptionZh : "";
+    const memberPosition = toInteger(
+      typeof record.memberPosition === "number" ||
+        typeof record.memberPosition === "string"
+        ? record.memberPosition
+        : undefined
+    );
+
+    return descriptionZh && memberPosition > 0
+      ? [{ memberPosition, descriptionZh }]
+      : [];
+  });
+}
+
+function parseComparisonMinimalPairs(value: unknown): ComparisonMinimalPair[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const contextZh = typeof record.contextZh === "string" ? record.contextZh : "";
+    const explanationZh =
+      typeof record.explanationZh === "string" ? record.explanationZh : "";
+    const sentences = parseJsonArray(record.sentences).flatMap((sentenceItem) => {
+      const sentence = parseJsonObject(sentenceItem);
+      if (!sentence) {
+        return [];
+      }
+
+      const memberPosition = toInteger(
+        typeof sentence.memberPosition === "number" ||
+          typeof sentence.memberPosition === "string"
+          ? sentence.memberPosition
+          : undefined
+      );
+      const jp = typeof sentence.jp === "string" ? sentence.jp : "";
+      const zh = typeof sentence.zh === "string" ? sentence.zh : "";
+
+      return memberPosition > 0 && jp && zh
+        ? [
+            {
+              memberPosition,
+              jp,
+              zh,
+              acceptable:
+                typeof sentence.acceptable === "boolean"
+                  ? sentence.acceptable
+                  : undefined,
+              notesZh:
+                typeof sentence.notesZh === "string"
+                  ? sentence.notesZh
+                  : undefined,
+            },
+          ]
+        : [];
+    });
+
+    return contextZh && explanationZh && sentences.length > 0
+      ? [{ contextZh, sentences, explanationZh }]
+      : [];
+  });
+}
+
+function parseComparisonLearnerMistakes(value: unknown): ComparisonLearnerMistake[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const descriptionZh =
+      typeof record.descriptionZh === "string" ? record.descriptionZh : "";
+    const correctionZh =
+      typeof record.correctionZh === "string" ? record.correctionZh : "";
+
+    return descriptionZh && correctionZh ? [{ descriptionZh, correctionZh }] : [];
+  });
+}
+
+function mapComparisonSetRow(row: ComparisonSetRow): ComparisonSet {
+  return {
+    id: row.id,
+    slug: row.slug,
+    nameZh: row.name_zh,
+    summary: row.summary,
+    commonMeaning: row.common_meaning,
+    decisionRules: parseComparisonDecisionRules(row.decision_rules),
+    connectionDifferences: parseComparisonDifferences(
+      row.connection_differences
+    ),
+    registerDifferences: parseComparisonDifferences(row.register_differences),
+    interchangeableCases: parseStringArray(row.interchangeable_cases),
+    nonInterchangeableCases: parseStringArray(row.non_interchangeable_cases),
+    minimalPairExamples: parseComparisonMinimalPairs(row.minimal_pair_examples),
+    learnerMistakes: parseComparisonLearnerMistakes(row.learner_mistakes),
+    status: parseTaxonomyStatus(row.status),
+    members: parseComparisonMembers(row.members),
+  };
+}
+
 function mapTagRow(row: TagRow): GrammarTag {
   return {
     nameEn: row.name_en,
@@ -762,14 +1036,18 @@ export class GrammarRepository {
   async listComparisonSets(): Promise<ComparisonSet[]> {
     const rows = await query<ComparisonSetRow>(SELECT_COMPARISON_SETS_SQL);
 
-    return rows.map((row) => ({
-      id: row.id,
-      slug: row.slug,
-      nameZh: row.name_zh,
-      summary: row.summary,
-      status: parseTaxonomyStatus(row.status),
-      members: parseComparisonMembers(row.members),
-    }));
+    return rows.map((row) => mapComparisonSetRow(row));
+  }
+
+  async listComparisonSetsForGrammarPoint(
+    grammarPointId: string
+  ): Promise<ComparisonSet[]> {
+    const rows = await query<ComparisonSetRow>(
+      SELECT_COMPARISON_SETS_FOR_GRAMMAR_POINT_SQL,
+      [grammarPointId]
+    );
+
+    return rows.map((row) => mapComparisonSetRow(row));
   }
 
   async listErrorTypes(): Promise<GrammarErrorType[]> {
@@ -894,9 +1172,10 @@ export class GrammarRepository {
       return null;
     }
 
-    const [examples, similarGrammar] = await Promise.all([
+    const [examples, similarGrammar, comparisonSets] = await Promise.all([
       this.listExamples(row.id),
       this.listSimilarGrammar(row.id),
+      this.listComparisonSetsForGrammarPoint(row.id),
     ]);
 
     return {
@@ -908,6 +1187,7 @@ export class GrammarRepository {
       connections: parseConnections(row.connections),
       prerequisites: parsePrerequisites(row.prerequisites),
       formSiblings: parseFormSiblings(row.form_siblings),
+      comparisonSets,
       examples,
       similarGrammar,
     };
@@ -988,15 +1268,19 @@ export class GrammarRepository {
     const rows = await query<InsertIdRow>(INSERT_AI_FEEDBACK_SQL, [
       userSentenceId,
       feedback.grammarScore,
+      feedback.meaningScore,
       feedback.naturalnessScore,
       feedback.registerScore,
       feedback.sceneFitScore,
       feedback.isCorrect,
       feedback.feedbackText,
+      feedback.explanation,
       feedback.correctedSentence ?? null,
       JSON.stringify(feedback.betterVersions),
       JSON.stringify(feedback.mistakeTypes),
+      JSON.stringify(feedback.issues),
       feedback.nextPracticePrompt ?? null,
+      feedback.nextHint,
       feedback.modelName ?? null,
       JSON.stringify(feedback.rawAiResponse ?? {}),
     ]);
@@ -1047,18 +1331,63 @@ export class GrammarRepository {
   async listReviewItems(userId: string): Promise<GrammarReviewItem[]> {
     const rows = await query<ReviewRow>(SELECT_REVIEW_ITEMS_SQL, [userId]);
 
-    return rows.map((row) => ({
-      reviewRecordId: row.review_record_id,
-      grammarPoint: mapSummaryRow(row),
-      status: parseReviewStatus(row.review_status),
-      mistakeCount: toInteger(row.mistake_count),
-      nextReviewAt: toIsoString(row.next_review_at),
-      lastReviewedAt: toIsoString(row.last_reviewed_at),
-      latestSentence: row.latest_sentence,
-      latestFeedback: row.latest_feedback,
-      correctedSentence: row.corrected_sentence,
-      mistakeTypes: parseMistakeTypes(row.mistake_types),
-    }));
+    return rows.map((row) => {
+      const issues = parseFeedbackIssues({
+        issues: row.issues,
+        mistakeTypes: row.mistake_types,
+        fallbackExplanation: row.explanation ?? row.latest_feedback,
+        fallbackCorrection: row.corrected_sentence,
+        grammarPointId: row.id,
+      });
+
+      return {
+        reviewRecordId: row.review_record_id,
+        grammarPoint: mapSummaryRow(row),
+        status: parseReviewStatus(row.review_status),
+        mistakeCount: toInteger(row.mistake_count),
+        nextReviewAt: toIsoString(row.next_review_at),
+        lastReviewedAt: toIsoString(row.last_reviewed_at),
+        latestSentence: row.latest_sentence,
+        latestFeedback: row.latest_feedback,
+        correctedSentence: row.corrected_sentence,
+        mistakeTypes:
+          issues.length > 0
+            ? issues.map((issue) => issue.errorTypeCode)
+            : parseMistakeTypes(row.mistake_types),
+        issues,
+        meaningScore:
+          row.meaning_score === null ? null : toInteger(row.meaning_score),
+        explanation: row.explanation,
+        nextHint: row.next_hint,
+        sceneTag:
+          row.scene_name_en && row.scene_name_zh
+            ? {
+                nameEn: row.scene_name_en,
+                nameZh: row.scene_name_zh,
+                description: row.scene_description ?? undefined,
+                priority: toInteger(row.scene_priority),
+              }
+            : null,
+        registerTag:
+          row.register_name_en && row.register_name_zh
+            ? {
+                nameEn: row.register_name_en,
+                nameZh: row.register_name_zh,
+                description: row.register_description ?? undefined,
+                priority: toInteger(row.register_priority),
+              }
+            : null,
+      };
+    });
+  }
+
+  async getReviewAggregations(userId: string): Promise<GrammarReviewAggregations> {
+    const rows = await query<ReviewAggregationsRow>(
+      SELECT_REVIEW_AGGREGATIONS_SQL,
+      [userId]
+    );
+
+    return parseReviewAggregations(rows[0]?.aggregations);
   }
 
   async getProgress(userId: string): Promise<GrammarProgressGroup[]> {

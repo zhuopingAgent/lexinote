@@ -74,7 +74,7 @@ describe("grammar domain seed", () => {
     expect(sql).not.toMatch(/DELETE FROM grammar_points\s/);
   });
 
-  it("moves six comparison cards and five error records out of knowledge taxonomy", () => {
+  it("seeds nine comparison cards and ten stable error types outside knowledge taxonomy", () => {
     const sql = readSchemaSql();
     const comparisonBlock = extractBlock(
       sql,
@@ -82,31 +82,64 @@ describe("grammar domain seed", () => {
       "INSERT INTO comparison_sets"
     );
     const errorBlock = extractBlock(sql, "WITH error_seed", "INSERT INTO error_types");
-    const comparisonSlugs = Array.from(
-      comparisonBlock.matchAll(/^\s*\('([^']+)',/gm),
-      (match) => match[1]
-    );
     const errorCodes = Array.from(
       errorBlock.matchAll(/^\s*\('([^']+)',/gm),
       (match) => match[1]
     );
 
-    expect(comparisonSlugs).toEqual([
+    const comparisonSlugs = [
       "wa_vs_ga",
       "ni_vs_de",
       "conditional_forms",
       "kara_vs_node",
       "tame_ni_vs_you_ni",
       "sou_da_vs_rashii",
-    ]);
+      "te_moraemasu_vs_te_itadakemasu",
+      "te_kureru_vs_te_morau",
+      "sasete_morau_vs_sasete_itadaku",
+    ];
+    for (const slug of comparisonSlugs) {
+      expect(comparisonBlock).toContain(`'${slug}'`);
+    }
     expect(errorCodes).toEqual([
+      "conjugation_error",
       "connection_error",
       "particle_error",
-      "tense_mismatch",
+      "tense_aspect_error",
+      "giving_receiving_direction_error",
+      "semantic_error",
       "register_mismatch",
+      "collocation_error",
       "literal_translation",
+      "unnatural_expression",
     ]);
     expect(sql).toContain("THEN 'migrated'");
+  });
+
+  it("stores structured comparison content while keeping members relational", () => {
+    const sql = readSchemaSql();
+
+    expect(sql).toContain("common_meaning TEXT NOT NULL DEFAULT ''");
+    expect(sql).toContain("decision_rules JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(sql).toContain("minimal_pair_examples JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(sql).toContain("PRIMARY KEY (comparison_set_id, grammar_point_id)");
+    expect(sql).toContain(
+      "('te_moraemasu_vs_te_itadakemasu', 'gp_te_moraemasu_ka', 1)"
+    );
+    expect(sql).toContain(
+      "('te_moraemasu_vs_te_itadakemasu', 'gp_te_itadakemasu_ka', 2)"
+    );
+  });
+
+  it("normalizes structured feedback issues without removing legacy fields", () => {
+    const sql = readSchemaSql();
+
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS ai_feedback_issues");
+    expect(sql).toContain("error_type_id UUID NOT NULL REFERENCES error_types(id)");
+    expect(sql).toContain("mistake_types JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(sql).toContain("issues JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(sql).toContain("('wrong_register', 'register_mismatch')");
+    expect(sql).toContain("('tense_mismatch', 'tense_aspect_error')");
   });
 
   it("uses stable keys and conflict-safe associations for repeatable migrations", () => {

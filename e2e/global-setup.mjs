@@ -60,7 +60,8 @@ export default async function globalSetup() {
         'curriculumPlacements', (SELECT COUNT(*) FROM grammar_point_curriculum),
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
-        'errorTypes', (SELECT COUNT(*) FROM error_types)
+        'errorTypes', (SELECT COUNT(*) FROM error_types),
+        'errorAliases', (SELECT COUNT(*) FROM error_type_aliases)
       ) AS snapshot
     `);
     await pool.query(`
@@ -92,6 +93,8 @@ export default async function globalSetup() {
         user_id,
         grammar_point_id,
         sentence,
+        scene_tag_id,
+        register_tag_id,
         prompt_text
       )
       SELECT
@@ -99,6 +102,8 @@ export default async function globalSetup() {
         '00000000-0000-0000-0000-000000000001'::uuid,
         id,
         '私は学生です。',
+        (SELECT id FROM scene_tags WHERE name_en = 'hospital'),
+        (SELECT id FROM register_tags WHERE name_en = 'polite'),
         'legacy compatibility check'
       FROM grammar_points
       WHERE seed_key = 'gp_wa_vs_ga'
@@ -114,7 +119,7 @@ export default async function globalSetup() {
         'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2'::uuid,
         'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1'::uuid,
         'legacy compatibility check',
-        '[]'::jsonb
+        '["wrong_register"]'::jsonb
       )
       ON CONFLICT (id) DO NOTHING;
 
@@ -146,7 +151,8 @@ export default async function globalSetup() {
         'curriculumPlacements', (SELECT COUNT(*) FROM grammar_point_curriculum),
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
-        'errorTypes', (SELECT COUNT(*) FROM error_types)
+        'errorTypes', (SELECT COUNT(*) FROM error_types),
+        'errorAliases', (SELECT COUNT(*) FROM error_type_aliases)
       ) AS snapshot
     `);
 
@@ -351,6 +357,102 @@ export default async function globalSetup() {
           ) violations
         ) AS content_accuracy_violations,
         (
+          SELECT COUNT(*)
+          FROM comparison_sets comparison_set
+          WHERE comparison_set.status = 'active'
+            AND (
+              NULLIF(BTRIM(comparison_set.common_meaning), '') IS NULL
+              OR jsonb_array_length(comparison_set.decision_rules) = 0
+              OR jsonb_array_length(comparison_set.connection_differences) = 0
+              OR jsonb_array_length(comparison_set.register_differences) = 0
+              OR jsonb_array_length(comparison_set.interchangeable_cases) = 0
+              OR jsonb_array_length(comparison_set.non_interchangeable_cases) = 0
+              OR jsonb_array_length(comparison_set.minimal_pair_examples) = 0
+              OR jsonb_array_length(comparison_set.learner_mistakes) = 0
+              OR (
+                SELECT COUNT(*)
+                FROM comparison_set_members member
+                WHERE member.comparison_set_id = comparison_set.id
+              ) < 2
+            )
+        ) AS incomplete_comparison_sets,
+        (
+          SELECT COUNT(*)
+          FROM comparison_set_members member
+          JOIN grammar_points gp ON gp.id = member.grammar_point_id
+          WHERE gp.status <> 'active'
+        ) AS inactive_comparison_members,
+        (
+          SELECT COUNT(*)
+          FROM (
+            SELECT
+              comparison_set.id AS comparison_set_id,
+              (rule ->> 'preferredMemberPosition')::integer AS member_position
+            FROM comparison_sets comparison_set
+            CROSS JOIN LATERAL jsonb_array_elements(comparison_set.decision_rules) rule
+            UNION ALL
+            SELECT
+              comparison_set.id,
+              (difference ->> 'memberPosition')::integer
+            FROM comparison_sets comparison_set
+            CROSS JOIN LATERAL jsonb_array_elements(
+              comparison_set.connection_differences || comparison_set.register_differences
+            ) difference
+            UNION ALL
+            SELECT
+              comparison_set.id,
+              (sentence ->> 'memberPosition')::integer
+            FROM comparison_sets comparison_set
+            CROSS JOIN LATERAL jsonb_array_elements(comparison_set.minimal_pair_examples) pair
+            CROSS JOIN LATERAL jsonb_array_elements(pair -> 'sentences') sentence
+          ) member_reference
+          WHERE member_reference.member_position < 1
+             OR member_reference.member_position > (
+               SELECT COUNT(*)
+               FROM comparison_set_members member
+               WHERE member.comparison_set_id = member_reference.comparison_set_id
+             )
+        ) AS invalid_comparison_member_positions,
+        (
+          SELECT COUNT(*)
+          FROM (
+            VALUES
+              ('conjugation_error'),
+              ('connection_error'),
+              ('particle_error'),
+              ('tense_aspect_error'),
+              ('giving_receiving_direction_error'),
+              ('semantic_error'),
+              ('register_mismatch'),
+              ('collocation_error'),
+              ('literal_translation'),
+              ('unnatural_expression')
+          ) expected(code)
+          LEFT JOIN error_types
+            ON error_types.code = expected.code
+           AND error_types.status = 'active'
+          WHERE error_types.id IS NULL
+        ) AS missing_stable_error_codes,
+        (
+          SELECT COUNT(*)
+          FROM ai_feedback_issues issue
+          LEFT JOIN ai_feedback feedback ON feedback.id = issue.ai_feedback_id
+          LEFT JOIN error_types error_type ON error_type.id = issue.error_type_id
+          WHERE feedback.id IS NULL OR error_type.id IS NULL
+        ) AS dangling_feedback_issues,
+        (
+          SELECT COUNT(*)
+          FROM ai_feedback feedback
+          JOIN ai_feedback_issues issue ON issue.ai_feedback_id = feedback.id
+          JOIN error_types error_type ON error_type.id = issue.error_type_id
+          WHERE feedback.id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2'::uuid
+            AND feedback.feedback_text = 'legacy compatibility check'
+            AND feedback.meaning_score IS NOT NULL
+            AND feedback.explanation IS NOT NULL
+            AND jsonb_array_length(feedback.issues) > 0
+            AND error_type.code = 'register_mismatch'
+        ) AS readable_legacy_feedback,
+        (
           SELECT
             (SELECT COUNT(*) FROM favorites f JOIN grammar_points gp ON gp.id = f.grammar_point_id WHERE gp.seed_key = 'gp_wa_vs_ga')
             + (SELECT COUNT(*) FROM review_records rr JOIN grammar_points gp ON gp.id = rr.grammar_point_id WHERE gp.seed_key = 'gp_wa_vs_ga')
@@ -364,8 +466,8 @@ export default async function globalSetup() {
       Number(integrity?.active_dimensions) !== 7 ||
       Number(integrity?.active_learning_units) !== 153 ||
       Number(integrity?.migrated_legacy_points) !== 11 ||
-      Number(integrity?.active_comparison_sets) !== 6 ||
-      Number(integrity?.active_error_types) !== 5 ||
+      Number(integrity?.active_comparison_sets) !== 9 ||
+      Number(integrity?.active_error_types) !== 10 ||
       Number(integrity?.active_learning_stages) !== 5 ||
       Number(integrity?.active_without_primary) !== 0 ||
       Number(integrity?.primary_category_mismatch) !== 0 ||
@@ -378,6 +480,12 @@ export default async function globalSetup() {
       Number(integrity?.normalized_polysemy_units) !== 22 ||
       Number(integrity?.polysemy_group_mismatches) !== 0 ||
       Number(integrity?.content_accuracy_violations) !== 0 ||
+      Number(integrity?.incomplete_comparison_sets) !== 0 ||
+      Number(integrity?.inactive_comparison_members) !== 0 ||
+      Number(integrity?.invalid_comparison_member_positions) !== 0 ||
+      Number(integrity?.missing_stable_error_codes) !== 0 ||
+      Number(integrity?.dangling_feedback_issues) !== 0 ||
+      Number(integrity?.readable_legacy_feedback) !== 1 ||
       Number(integrity?.preserved_legacy_references) !== 5
     ) {
       throw new Error(`Grammar domain integrity check failed: ${JSON.stringify(integrity)}`);

@@ -1,3 +1,8 @@
+import type {
+  FeedbackIssueSeverity,
+  GrammarPointType,
+} from "@/shared/types/api";
+
 const REGISTER_TAG_LABELS: Record<string, string> = {
   casual: "朋友口语",
   polite: "一般礼貌",
@@ -15,8 +20,13 @@ const MISTAKE_TYPE_LABELS: Record<string, string> = {
   wrong_register: "语体不匹配",
   register_mismatch: "语体不匹配",
   connection_error: "接续错误",
+  conjugation_error: "活用错误",
   particle_error: "助词错误",
   tense_mismatch: "时态不匹配",
+  tense_aspect_error: "时态与体错误",
+  giving_receiving_direction_error: "授受方向错误",
+  semantic_error: "语义错误",
+  collocation_error: "搭配错误",
   literal_translation: "中文直译与不自然表达",
   missing_target_grammar: "目标语法缺失",
   unnatural_expression: "表达不自然",
@@ -59,4 +69,13 @@ export function displayReviewStatusLabel(value: string) {
 export function displayGrammarPointTypeLabel(value: GrammarPointType) {
   return GRAMMAR_POINT_TYPE_LABELS[value];
 }
-import type { GrammarPointType } from "@/shared/types/api";
+
+export function displayFeedbackSeverityLabel(value: FeedbackIssueSeverity) {
+  return value === "critical"
+    ? "严重"
+    : value === "high"
+      ? "较高"
+      : value === "medium"
+        ? "中等"
+        : "较低";
+}

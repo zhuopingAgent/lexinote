@@ -87,15 +87,23 @@ describe("grammar API routes", () => {
         displayOrder: index + 1,
         status: "active",
       })),
-      comparisonSets: Array.from({ length: 6 }, (_, index) => ({
+      comparisonSets: Array.from({ length: 9 }, (_, index) => ({
         id: `33333333-3333-4333-8333-${String(index + 1).padStart(12, "0")}`,
         slug: `comparison_${index + 1}`,
         nameZh: `对比 ${index + 1}`,
         summary: "对比说明。",
+        commonMeaning: "共同含义。",
+        decisionRules: [],
+        connectionDifferences: [],
+        registerDifferences: [],
+        interchangeableCases: [],
+        nonInterchangeableCases: [],
+        minimalPairExamples: [],
+        learnerMistakes: [],
         status: "active",
         members: [],
       })),
-      errorTypes: Array.from({ length: 5 }, (_, index) => ({
+      errorTypes: Array.from({ length: 10 }, (_, index) => ({
         id: `44444444-4444-4444-8444-${String(index + 1).padStart(12, "0")}`,
         code: `error_${index + 1}`,
         nameZh: `错误 ${index + 1}`,
@@ -127,8 +135,8 @@ describe("grammar API routes", () => {
     );
     expect(body.taxonomyNodes).toHaveLength(46);
     expect(body.learningStages).toHaveLength(5);
-    expect(body.comparisonSets).toHaveLength(6);
-    expect(body.errorTypes).toHaveLength(5);
+    expect(body.comparisonSets).toHaveLength(9);
+    expect(body.errorTypes).toHaveLength(10);
     expect(body.categories).toHaveLength(18);
     expect(body.categories[0]).toMatchObject({
       slug: "basic_sentence_patterns",

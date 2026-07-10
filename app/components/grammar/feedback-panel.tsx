@@ -1,5 +1,6 @@
 import type { AIFeedbackResult } from "@/shared/types/api";
 import {
+  displayFeedbackSeverityLabel,
   displayMistakeTypeLabel,
   displayRegisterTagLabel,
 } from "@/app/components/grammar/display-labels";
@@ -49,12 +50,38 @@ export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <ScorePill label="语法" value={feedback.grammarScore} />
+        <ScorePill label="意思" value={feedback.meaningScore} />
         <ScorePill label="自然度" value={feedback.naturalnessScore} />
         <ScorePill label="语体" value={feedback.registerScore} />
         <ScorePill label="场景" value={feedback.sceneFitScore} />
       </div>
 
-      <p className="mt-5 text-base leading-7 text-white/72">{feedback.feedbackText}</p>
+      <p className="mt-5 text-base leading-7 text-white/72">
+        {feedback.explanation || feedback.feedbackText}
+      </p>
+
+      {feedback.issues.length > 0 ? (
+        <div className="mt-5 divide-y divide-white/8 border-y border-white/8">
+          {feedback.issues.map((issue) => (
+            <div key={issue.errorTypeCode} className="py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <TagBadge tag={displayMistakeTypeLabel(issue.errorTypeCode)} />
+                <span className="text-xs text-white/34">
+                  {displayFeedbackSeverityLabel(issue.severity)}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-white/56">
+                {issue.explanation}
+              </p>
+              {issue.correction ? (
+                <p className="mt-2 text-sm leading-6 text-white/42">
+                  {issue.correction}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {feedback.correctedSentence ? (
         <div className="mt-5 rounded-[14px] border border-white/8 bg-[#15151599] p-4">
@@ -89,7 +116,7 @@ export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
         </div>
       ) : null}
 
-      {feedback.mistakeTypes.length > 0 ? (
+      {feedback.issues.length === 0 && feedback.mistakeTypes.length > 0 ? (
         <div className="mt-5 flex flex-wrap gap-2">
           {feedback.mistakeTypes.map((mistakeType) => (
             <TagBadge key={mistakeType} tag={displayMistakeTypeLabel(mistakeType)} />
@@ -97,7 +124,14 @@ export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
         </div>
       ) : null}
 
-      {feedback.nextPracticePrompt ? (
+      {feedback.nextHint ? (
+        <p className="mt-5 rounded-[14px] border border-accent/20 bg-accent-soft px-4 py-3 text-sm leading-6 text-accent-strong">
+          下一步：{feedback.nextHint}
+        </p>
+      ) : null}
+
+      {feedback.nextPracticePrompt &&
+      feedback.nextPracticePrompt !== feedback.nextHint ? (
         <p className="mt-5 rounded-[14px] border border-accent/20 bg-accent-soft px-4 py-3 text-sm leading-6 text-accent-strong">
           {feedback.nextPracticePrompt}
         </p>

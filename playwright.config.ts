@@ -20,6 +20,8 @@ export default defineConfig({
     env: {
       ...process.env,
       DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
+      AI_GATEWAY_API_KEY: "",
+      VERCEL_OIDC_TOKEN: "",
     },
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,

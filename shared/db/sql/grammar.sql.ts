@@ -55,6 +55,14 @@ export const SELECT_COMPARISON_SETS_SQL = `
     cs.slug,
     cs.name_zh,
     cs.summary,
+    cs.common_meaning,
+    cs.decision_rules,
+    cs.connection_differences,
+    cs.register_differences,
+    cs.interchangeable_cases,
+    cs.non_interchangeable_cases,
+    cs.minimal_pair_examples,
+    cs.learner_mistakes,
     cs.status,
     COALESCE(members.items, '[]'::jsonb) AS members
   FROM comparison_sets cs
@@ -74,6 +82,48 @@ export const SELECT_COMPARISON_SETS_SQL = `
     WHERE csm.comparison_set_id = cs.id
   ) members ON TRUE
   WHERE cs.status = 'active'
+  ORDER BY cs.name_zh ASC;
+`;
+
+export const SELECT_COMPARISON_SETS_FOR_GRAMMAR_POINT_SQL = `
+  SELECT
+    cs.id::text,
+    cs.slug,
+    cs.name_zh,
+    cs.summary,
+    cs.common_meaning,
+    cs.decision_rules,
+    cs.connection_differences,
+    cs.register_differences,
+    cs.interchangeable_cases,
+    cs.non_interchangeable_cases,
+    cs.minimal_pair_examples,
+    cs.learner_mistakes,
+    cs.status,
+    COALESCE(members.items, '[]'::jsonb) AS members
+  FROM comparison_sets cs
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'grammarPointId', gp.id::text,
+        'grammarPoint', gp.grammar_point,
+        'canonicalForm', gp.canonical_form,
+        'senseKey', gp.sense_key,
+        'sortOrder', csm.sort_order
+      )
+      ORDER BY csm.sort_order ASC, gp.grammar_point ASC
+    ) AS items
+    FROM comparison_set_members csm
+    JOIN grammar_points gp ON gp.id = csm.grammar_point_id
+    WHERE csm.comparison_set_id = cs.id
+  ) members ON TRUE
+  WHERE cs.status = 'active'
+    AND EXISTS (
+      SELECT 1
+      FROM comparison_set_members current_member
+      WHERE current_member.comparison_set_id = cs.id
+        AND current_member.grammar_point_id = $1::uuid
+    )
   ORDER BY cs.name_zh ASC;
 `;
 
@@ -517,37 +567,80 @@ export const INSERT_USER_SENTENCE_SQL = `
 `;
 
 export const INSERT_AI_FEEDBACK_SQL = `
-  INSERT INTO ai_feedback (
-    user_sentence_id,
-    grammar_score,
-    naturalness_score,
-    register_score,
-    scene_fit_score,
-    is_correct,
-    feedback_text,
-    corrected_sentence,
-    better_versions,
-    mistake_types,
-    next_practice_prompt,
-    model_name,
-    raw_ai_response
+  WITH inserted_feedback AS (
+    INSERT INTO ai_feedback (
+      user_sentence_id,
+      grammar_score,
+      meaning_score,
+      naturalness_score,
+      register_score,
+      scene_fit_score,
+      is_correct,
+      feedback_text,
+      explanation,
+      corrected_sentence,
+      better_versions,
+      mistake_types,
+      issues,
+      next_practice_prompt,
+      next_hint,
+      model_name,
+      raw_ai_response
+    )
+    VALUES (
+      $1::uuid,
+      $2::integer,
+      $3::integer,
+      $4::integer,
+      $5::integer,
+      $6::integer,
+      $7::boolean,
+      $8::text,
+      $9::text,
+      $10::text,
+      $11::jsonb,
+      $12::jsonb,
+      $13::jsonb,
+      $14::text,
+      $15::text,
+      $16::text,
+      $17::jsonb
+    )
+    RETURNING id
+  ),
+  inserted_issues AS (
+    INSERT INTO ai_feedback_issues (
+      ai_feedback_id,
+      error_type_id,
+      severity,
+      explanation,
+      correction,
+      related_grammar_point_id,
+      sort_order
+    )
+    SELECT
+      inserted_feedback.id,
+      error_types.id,
+      issue.item ->> 'severity',
+      issue.item ->> 'explanation',
+      COALESCE(issue.item ->> 'correction', ''),
+      NULLIF(issue.item ->> 'relatedGrammarPointId', '')::uuid,
+      issue.ordinality::integer
+    FROM inserted_feedback
+    CROSS JOIN LATERAL jsonb_array_elements($13::jsonb)
+      WITH ORDINALITY AS issue(item, ordinality)
+    JOIN error_types
+      ON error_types.code = issue.item ->> 'errorTypeCode'
+    ON CONFLICT (ai_feedback_id, error_type_id) DO UPDATE SET
+      severity = EXCLUDED.severity,
+      explanation = EXCLUDED.explanation,
+      correction = EXCLUDED.correction,
+      related_grammar_point_id = EXCLUDED.related_grammar_point_id,
+      sort_order = EXCLUDED.sort_order
+    RETURNING ai_feedback_id
   )
-  VALUES (
-    $1::uuid,
-    $2::integer,
-    $3::integer,
-    $4::integer,
-    $5::integer,
-    $6::boolean,
-    $7::text,
-    $8::text,
-    $9::jsonb,
-    $10::jsonb,
-    $11::text,
-    $12::text,
-    $13::jsonb
-  )
-  RETURNING id::text;
+  SELECT id::text
+  FROM inserted_feedback;
 `;
 
 export const UPSERT_REVIEW_RECORD_FOR_MISTAKE_SQL = `
@@ -641,7 +734,19 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     latest_feedback.sentence AS latest_sentence,
     latest_feedback.feedback_text AS latest_feedback,
     latest_feedback.corrected_sentence,
-    latest_feedback.mistake_types
+    latest_feedback.mistake_types,
+    latest_feedback.issues,
+    latest_feedback.meaning_score,
+    latest_feedback.explanation,
+    latest_feedback.next_hint,
+    latest_feedback.scene_name_en,
+    latest_feedback.scene_name_zh,
+    latest_feedback.scene_description,
+    latest_feedback.scene_priority,
+    latest_feedback.register_name_en,
+    latest_feedback.register_name_zh,
+    latest_feedback.register_description,
+    latest_feedback.register_priority
   FROM review_records rr
   JOIN grammar_points gp ON gp.id = rr.grammar_point_id
   ${GRAMMAR_POINT_SELECT_JOINS}
@@ -650,9 +755,23 @@ export const SELECT_REVIEW_ITEMS_SQL = `
       user_sentences.sentence,
       ai_feedback.feedback_text,
       ai_feedback.corrected_sentence,
-      ai_feedback.mistake_types
+      ai_feedback.mistake_types,
+      ai_feedback.issues,
+      ai_feedback.meaning_score,
+      ai_feedback.explanation,
+      ai_feedback.next_hint,
+      scene_tags.name_en AS scene_name_en,
+      scene_tags.name_zh AS scene_name_zh,
+      scene_tags.description AS scene_description,
+      scene_tags.priority AS scene_priority,
+      register_tags.name_en AS register_name_en,
+      register_tags.name_zh AS register_name_zh,
+      register_tags.description AS register_description,
+      register_tags.priority AS register_priority
     FROM user_sentences
     JOIN ai_feedback ON ai_feedback.user_sentence_id = user_sentences.id
+    LEFT JOIN scene_tags ON scene_tags.id = user_sentences.scene_tag_id
+    LEFT JOIN register_tags ON register_tags.id = user_sentences.register_tag_id
     WHERE user_sentences.user_id = rr.user_id
       AND user_sentences.grammar_point_id = rr.grammar_point_id
     ORDER BY ai_feedback.created_at DESC
@@ -668,6 +787,143 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     rr.next_review_at ASC NULLS FIRST,
     rr.mistake_count DESC,
     gp.grammar_point ASC;
+`;
+
+export const SELECT_REVIEW_AGGREGATIONS_SQL = `
+  WITH review_scope AS (
+    SELECT
+      rr.id AS review_record_id,
+      gp.id AS grammar_point_id,
+      gp.grammar_point,
+      gp.sense_key,
+      latest_feedback.feedback_id,
+      latest_feedback.scene_name_en,
+      latest_feedback.scene_name_zh,
+      latest_feedback.register_name_en,
+      latest_feedback.register_name_zh
+    FROM review_records rr
+    JOIN grammar_points gp ON gp.id = rr.grammar_point_id
+    LEFT JOIN LATERAL (
+      SELECT
+        ai_feedback.id AS feedback_id,
+        scene_tags.name_en AS scene_name_en,
+        scene_tags.name_zh AS scene_name_zh,
+        register_tags.name_en AS register_name_en,
+        register_tags.name_zh AS register_name_zh
+      FROM user_sentences
+      JOIN ai_feedback ON ai_feedback.user_sentence_id = user_sentences.id
+      LEFT JOIN scene_tags ON scene_tags.id = user_sentences.scene_tag_id
+      LEFT JOIN register_tags ON register_tags.id = user_sentences.register_tag_id
+      WHERE user_sentences.user_id = rr.user_id
+        AND user_sentences.grammar_point_id = rr.grammar_point_id
+      ORDER BY ai_feedback.created_at DESC
+      LIMIT 1
+    ) latest_feedback ON TRUE
+    WHERE rr.user_id = $1::uuid
+      AND (
+        rr.next_review_at IS NULL
+        OR rr.next_review_at <= NOW()
+        OR rr.mistake_count > 0
+      )
+  ),
+  grammar_point_counts AS (
+    SELECT
+      grammar_point_id,
+      grammar_point,
+      sense_key,
+      COUNT(DISTINCT review_record_id)::integer AS item_count
+    FROM review_scope
+    GROUP BY grammar_point_id, grammar_point, sense_key
+  ),
+  error_type_counts AS (
+    SELECT
+      error_types.code,
+      error_types.name_zh,
+      COUNT(DISTINCT review_scope.review_record_id)::integer AS item_count
+    FROM review_scope
+    JOIN ai_feedback_issues
+      ON ai_feedback_issues.ai_feedback_id = review_scope.feedback_id
+    JOIN error_types ON error_types.id = ai_feedback_issues.error_type_id
+    GROUP BY error_types.code, error_types.name_zh
+  ),
+  scenario_counts AS (
+    SELECT
+      scene_name_en,
+      scene_name_zh,
+      COUNT(DISTINCT review_record_id)::integer AS item_count
+    FROM review_scope
+    WHERE scene_name_en IS NOT NULL AND scene_name_zh IS NOT NULL
+    GROUP BY scene_name_en, scene_name_zh
+  ),
+  register_counts AS (
+    SELECT
+      register_name_en,
+      register_name_zh,
+      COUNT(DISTINCT review_record_id)::integer AS item_count
+    FROM review_scope
+    WHERE register_name_en IS NOT NULL AND register_name_zh IS NOT NULL
+    GROUP BY register_name_en, register_name_zh
+  )
+  SELECT jsonb_build_object(
+    'grammarPoints', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'key', grammar_point_id::text,
+            'label', grammar_point,
+            'count', item_count,
+            'grammarPointId', grammar_point_id::text,
+            'senseKey', sense_key
+          )
+          ORDER BY item_count DESC, grammar_point ASC
+        )
+        FROM grammar_point_counts
+      ),
+      '[]'::jsonb
+    ),
+    'errorTypes', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'key', code,
+            'label', name_zh,
+            'count', item_count
+          )
+          ORDER BY item_count DESC, name_zh ASC
+        )
+        FROM error_type_counts
+      ),
+      '[]'::jsonb
+    ),
+    'scenarios', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'key', scene_name_en,
+            'label', scene_name_zh,
+            'count', item_count
+          )
+          ORDER BY item_count DESC, scene_name_zh ASC
+        )
+        FROM scenario_counts
+      ),
+      '[]'::jsonb
+    ),
+    'registers', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'key', register_name_en,
+            'label', register_name_zh,
+            'count', item_count
+          )
+          ORDER BY item_count DESC, register_name_zh ASC
+        )
+        FROM register_counts
+      ),
+      '[]'::jsonb
+    )
+  ) AS aggregations;
 `;
 
 export const SELECT_GRAMMAR_PROGRESS_SQL = `

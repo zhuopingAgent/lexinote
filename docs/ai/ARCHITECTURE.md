@@ -173,7 +173,7 @@
 
 1. `/grammar` fetches grammar taxonomy and `GET /api/grammar` search results.
 2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]` by UUID or stable `sense_key`, render structured connections, same-form senses, prerequisites, curriculum placement, examples, tags, mistakes, and similar grammar, then log view history against the canonical UUID.
-3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`.
+3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`. Comparison practice uses structured decision rules attached through normalized comparison members.
 4. Practice generation uses Vercel AI Gateway when `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available and deterministic fallback output otherwise.
 5. User sentence submission calls `POST /api/practice/submit`, stores `user_sentences`, stores `ai_feedback`, updates `review_records`, and logs learning history.
 6. `/favorites` uses `GET /api/favorites`; detail pages toggle favorites through `POST`/`DELETE /api/favorites`.
@@ -186,6 +186,8 @@
 - `grammar_points.primary_taxonomy_node_id` is the primary-category source of truth. The legacy category tables and response fields remain only for backward compatibility.
 - One active `grammar_points` row is one teachable sense. Polysemous surface forms share `canonical_form` and `form_group_slug` but keep distinct `sense_key`, meaning, connection, usage, and examples.
 - `grammar_point_connections` stores generation-ready connection rules; `grammar_point_prerequisites` stores required/recommended dependency edges and rejects cycles; `learning_stages` plus `grammar_point_curriculum` provide database-configured level and recommended order.
+- `comparison_set_members` is the canonical relation between a comparison card and grammar senses. `comparison_sets` stores decision rules, connection/register differences, interchangeable boundaries, minimal pairs, and learner mistakes.
+- `ai_feedback_issues` normalizes one or more feedback issues against stable `error_types`; legacy feedback columns remain readable. Review aggregation uses the latest feedback per concrete sense and groups it by sense, error type, scenario, and register without traversing taxonomy tags.
 - Keep migrated comparison/error grammar-point IDs readable from detail, favorites, practice, and review flows; normal grammar search only lists active learning units.
 - The local MVP defaults to user id `00000000-0000-0000-0000-000000000001` when no auth user id exists.
 - Keep grammar AI prompts under `features/grammar-learning/prompts/`.

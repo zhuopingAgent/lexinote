@@ -7,6 +7,21 @@ import { AI_QUOTA_EXHAUSTED_CODE } from "@/shared/utils/errors";
 const GRAMMAR_POINT_ID = "11111111-1111-4111-8111-111111111111";
 const DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
+function expectStructuredFeedbackSchema(value: Record<string, unknown>) {
+  expect(value).toEqual(
+    expect.objectContaining({
+      grammarScore: expect.any(Number),
+      meaningScore: expect.any(Number),
+      registerScore: expect.any(Number),
+      naturalnessScore: expect.any(Number),
+      issues: expect.any(Array),
+      explanation: expect.any(String),
+      nextHint: expect.any(String),
+    })
+  );
+  expect(Object.hasOwn(value, "correctedSentence")).toBe(true);
+}
+
 const grammarPoint: GrammarPointDetail = {
   id: GRAMMAR_POINT_ID,
   grammarPoint: "〜てもらえますか",
@@ -81,6 +96,7 @@ const grammarPoint: GrammarPointDetail = {
   ],
   prerequisites: [],
   formSiblings: [],
+  comparisonSets: [],
   examples: [
     {
       id: "33333333-3333-4333-8333-333333333333",
@@ -266,6 +282,12 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
     removeFavorite: vi.fn().mockResolvedValue(undefined),
     listFavorites: vi.fn().mockResolvedValue([grammarPoint]),
     listReviewItems: vi.fn().mockResolvedValue([]),
+    getReviewAggregations: vi.fn().mockResolvedValue({
+      grammarPoints: [],
+      errorTypes: [],
+      scenarios: [],
+      registers: [],
+    }),
   };
 }
 
@@ -316,6 +338,14 @@ describe("GrammarLearningService", () => {
         slug: "wa_vs_ga",
         nameZh: "は与が",
         summary: "",
+        commonMeaning: "",
+        decisionRules: [],
+        connectionDifferences: [],
+        registerDifferences: [],
+        interchangeableCases: [],
+        nonInterchangeableCases: [],
+        minimalPairExamples: [],
+        learnerMistakes: [],
         status: "active",
         members: [],
       },
@@ -524,14 +554,15 @@ describe("GrammarLearningService", () => {
           output_text: JSON.stringify({
             is_correct: true,
             grammar_score: 5,
+            meaning_score: 5,
             register_score: 5,
             naturalness_score: 5,
             scene_fit_score: 5,
-            feedback_text_zh: "自然な文です。",
-            mistake_types: [],
+            issues: [],
+            explanation_zh: "表达自然，意思和语体都符合场景。",
+            next_hint_zh: "换一个对象再练习一次。",
             corrected_sentence: "",
             better_versions: [],
-            next_practice_prompt_zh: "別の場面でもう一文作ってみましょう。",
           }),
         }),
       })
@@ -548,6 +579,16 @@ describe("GrammarLearningService", () => {
     });
 
     expect(result.source).toBe("ai");
+    expectStructuredFeedbackSchema(result as unknown as Record<string, unknown>);
+    expect(result).toMatchObject({
+      grammarScore: 5,
+      meaningScore: 5,
+      registerScore: 5,
+      naturalnessScore: 5,
+      issues: [],
+      explanation: "表达自然，意思和语体都符合场景。",
+      nextHint: "换一个对象再练习一次。",
+    });
     expect(getLastFetchBody()).toEqual(
       expect.objectContaining({
         model: "openai/gpt-5-mini",
@@ -574,8 +615,16 @@ describe("GrammarLearningService", () => {
     });
 
     expect(result.isCorrect).toBe(false);
+    expectStructuredFeedbackSchema(result as unknown as Record<string, unknown>);
     expect(result.grammarScore).toBe(4);
     expect(result.registerScore).toBe(2);
+    expect(result.meaningScore).toBe(4);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        errorTypeCode: "register_mismatch",
+        relatedGrammarPointId: GRAMMAR_POINT_ID,
+      }),
+    ]);
     expect(result.feedbackText).toContain("太随便");
     expect(result.correctedSentence).toBe(
       "すみません、もう一度説明していただけますか。"
@@ -588,7 +637,10 @@ describe("GrammarLearningService", () => {
     expect(repository.insertFeedback).toHaveBeenCalledWith(
       "44444444-4444-4444-8444-444444444444",
       expect.objectContaining({
-        mistakeTypes: ["wrong_register"],
+        mistakeTypes: ["register_mismatch"],
+        issues: [
+          expect.objectContaining({ errorTypeCode: "register_mismatch" }),
+        ],
       })
     );
   });
@@ -635,6 +687,28 @@ describe("GrammarLearningService", () => {
 
     expect(result.isCorrect).toBe(false);
     expect(result.feedbackText).toContain("时态");
-    expect(result.mistakeTypes).toContain("tense_mismatch");
+    expect(result.mistakeTypes).toContain("tense_aspect_error");
+  });
+
+  it("returns multiple stable error types for one fallback submission", async () => {
+    const repository = createRepositoryMock(teKudasaiGrammarPoint);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.submitSentence({
+      grammarPointId: teKudasaiGrammarPoint.id,
+      sentence: "ここに名前を書きくださいだよ。",
+      sceneTag: "daily_life",
+      registerTag: "polite",
+    });
+
+    expect(result.issues.map((issue) => issue.errorTypeCode)).toEqual(
+      expect.arrayContaining(["connection_error", "register_mismatch"])
+    );
+    expect(result.mistakeTypes).toEqual(
+      result.issues.map((issue) => issue.errorTypeCode)
+    );
   });
 });

@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { GrammarPointDetail, GrammarTaxonomyTag } from "@/shared/types/api";
+import type {
+  ComparisonSet,
+  GrammarPointDetail,
+  GrammarTaxonomyTag,
+} from "@/shared/types/api";
 import { displayGrammarPointTypeLabel } from "@/app/components/grammar/display-labels";
 import {
   PracticalityBadge,
@@ -15,6 +19,10 @@ type GrammarDetailProps = {
   grammarPoint: GrammarPointDetail;
   onFavoriteChange?: (isFavorite: boolean) => Promise<void>;
 };
+
+function comparisonMemberAt(comparisonSet: ComparisonSet, position: number) {
+  return comparisonSet.members.find((member) => member.sortOrder === position);
+}
 
 export function GrammarDetail({
   grammarPoint,
@@ -248,6 +256,149 @@ export function GrammarDetail({
                 <span className="mx-2 text-white/24">·</span>
                 {prerequisite.grammarPoint}
               </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {grammarPoint.comparisonSets.length > 0 ? (
+        <section className="mt-6">
+          <h2 className="text-lg font-semibold text-white/74">易混语法对比</h2>
+          <div className="mt-4 space-y-4">
+            {grammarPoint.comparisonSets.map((comparisonSet) => (
+              <article
+                key={comparisonSet.id}
+                className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
+              >
+                <h3 className="text-xl font-semibold text-white/78">
+                  {comparisonSet.nameZh}
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-white/56">
+                  {comparisonSet.commonMeaning || comparisonSet.summary}
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {comparisonSet.members.map((member) => (
+                    <Link
+                      key={member.grammarPointId}
+                      href={`/grammar/${member.senseKey}`}
+                      className="inline-flex min-h-8 items-center rounded-full border border-white/12 px-3 py-1 text-xs font-semibold text-white/60 transition hover:border-white/24 hover:text-white/82"
+                    >
+                      {member.grammarPoint}
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="mt-5 grid gap-5 md:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-semibold text-white/44">选择规则</p>
+                    <ul className="mt-3 space-y-3">
+                      {comparisonSet.decisionRules.map((rule) => {
+                        const preferredMember = comparisonMemberAt(
+                          comparisonSet,
+                          rule.preferredMemberPosition
+                        );
+                        return (
+                          <li key={`${rule.conditionZh}-${rule.preferredMemberPosition}`}>
+                            <p className="text-sm leading-6 text-white/62">
+                              {rule.conditionZh}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-white/40">
+                              {preferredMember ? `${preferredMember.grammarPoint}：` : ""}
+                              {rule.explanationZh}
+                            </p>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white/44">接续与语体</p>
+                    <ul className="mt-3 space-y-3">
+                      {[
+                        ...comparisonSet.connectionDifferences,
+                        ...comparisonSet.registerDifferences,
+                      ].map((difference, index) => {
+                        const member = comparisonMemberAt(
+                          comparisonSet,
+                          difference.memberPosition
+                        );
+                        return (
+                          <li
+                            key={`${difference.memberPosition}-${index}-${difference.descriptionZh}`}
+                            className="text-sm leading-6 text-white/54"
+                          >
+                            {member ? `${member.grammarPoint}：` : ""}
+                            {difference.descriptionZh}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-5 border-t border-white/8 pt-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white/44">可以互换</p>
+                    {comparisonSet.interchangeableCases.map((item) => (
+                      <p key={item} className="mt-2 text-xs leading-5 text-white/42">
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white/44">不能互换</p>
+                    {comparisonSet.nonInterchangeableCases.map((item) => (
+                      <p key={item} className="mt-2 text-xs leading-5 text-white/42">
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white/44">常见误区</p>
+                    {comparisonSet.learnerMistakes.map((mistake) => (
+                      <p
+                        key={mistake.descriptionZh}
+                        className="mt-2 text-xs leading-5 text-white/42"
+                      >
+                        {mistake.descriptionZh} {mistake.correctionZh}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+
+                {comparisonSet.minimalPairExamples.map((pair) => (
+                  <div
+                    key={pair.contextZh}
+                    className="mt-5 border-t border-white/8 pt-4"
+                  >
+                    <p className="text-sm font-semibold text-white/44">
+                      {pair.contextZh}
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {pair.sentences.map((sentence) => {
+                        const member = comparisonMemberAt(
+                          comparisonSet,
+                          sentence.memberPosition
+                        );
+                        return (
+                          <p
+                            key={`${sentence.memberPosition}-${sentence.jp}`}
+                            className="text-sm leading-6 text-white/64"
+                          >
+                            {member ? `${member.grammarPoint}：` : ""}
+                            {sentence.jp}
+                            <span className="ml-2 text-white/36">{sentence.zh}</span>
+                          </p>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-white/38">
+                      {pair.explanationZh}
+                    </p>
+                  </div>
+                ))}
+              </article>
             ))}
           </div>
         </section>

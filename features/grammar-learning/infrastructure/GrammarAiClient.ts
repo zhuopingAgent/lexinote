@@ -3,8 +3,13 @@ import {
   type PracticeVariation,
 } from "@/features/grammar-learning/prompts/practiceGeneration";
 import { buildSentenceFeedbackPrompt } from "@/features/grammar-learning/prompts/sentenceFeedback";
+import {
+  normalizeFeedbackSeverity,
+  normalizeGrammarErrorCode,
+} from "@/features/grammar-learning/domain/feedback";
 import type {
   AIFeedbackBetterVersion,
+  AIFeedbackIssue,
   AIFeedbackResult,
   GrammarPointDetail,
   PracticeLevel,
@@ -31,9 +36,13 @@ type RawPracticeOutput = {
 type RawFeedbackOutput = {
   is_correct?: unknown;
   grammar_score?: unknown;
+  meaning_score?: unknown;
   naturalness_score?: unknown;
   register_score?: unknown;
   scene_fit_score?: unknown;
+  issues?: unknown;
+  explanation_zh?: unknown;
+  next_hint_zh?: unknown;
   feedback_text_zh?: unknown;
   corrected_sentence?: unknown;
   better_versions?: unknown;
@@ -229,30 +238,104 @@ function parsePracticeOutput(raw: unknown): Omit<GeneratedPractice, "source"> | 
   };
 }
 
-function parseFeedbackOutput(raw: unknown): Omit<EvaluatedSentence, "source"> | null {
+function parseFeedbackIssues(
+  value: unknown,
+  grammarPointId: string,
+  fallbackExplanation: string,
+  fallbackCorrection: string
+): AIFeedbackIssue[] {
+  const issues = new Map<string, AIFeedbackIssue>();
+
+  for (const item of Array.isArray(value) ? value : []) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const record = item as Record<string, unknown>;
+    const errorTypeCode = normalizeGrammarErrorCode(
+      record.error_type_code ?? record.errorTypeCode
+    );
+    if (!errorTypeCode || issues.has(errorTypeCode)) {
+      continue;
+    }
+
+    const relatedId = sanitizeText(
+      record.related_grammar_point_id ?? record.relatedGrammarPointId
+    );
+    issues.set(errorTypeCode, {
+      errorTypeCode,
+      severity: normalizeFeedbackSeverity(record.severity),
+      explanation:
+        sanitizeText(record.explanation) || fallbackExplanation,
+      correction: sanitizeText(record.correction) || fallbackCorrection,
+      relatedGrammarPointId: relatedId === grammarPointId ? relatedId : null,
+    });
+  }
+
+  return Array.from(issues.values());
+}
+
+function parseFeedbackOutput(
+  raw: unknown,
+  grammarPointId: string
+): Omit<EvaluatedSentence, "source"> | null {
   if (!raw || typeof raw !== "object") {
     return null;
   }
 
   const parsed = raw as RawFeedbackOutput;
-  const feedbackText = sanitizeText(parsed.feedback_text_zh);
+  const legacyFeedbackText = sanitizeText(parsed.feedback_text_zh);
+  const explanation =
+    sanitizeText(parsed.explanation_zh) || legacyFeedbackText;
+  const correctedSentence = sanitizeText(parsed.corrected_sentence) || null;
   const betterVersions = parseBetterVersions(parsed.better_versions);
 
-  if (!feedbackText) {
+  if (!explanation) {
     return null;
   }
 
+  const parsedIssues = parseFeedbackIssues(
+    parsed.issues,
+    grammarPointId,
+    explanation,
+    correctedSentence ?? ""
+  );
+  const issues =
+    parsedIssues.length > 0
+      ? parsedIssues
+      : parseStringArray(parsed.mistake_types).flatMap((mistakeType) => {
+          const errorTypeCode = normalizeGrammarErrorCode(mistakeType);
+          return errorTypeCode
+            ? [
+                {
+                  errorTypeCode,
+                  severity: normalizeFeedbackSeverity(undefined),
+                  explanation,
+                  correction: correctedSentence ?? "",
+                  relatedGrammarPointId: grammarPointId,
+                } satisfies AIFeedbackIssue,
+              ]
+            : [];
+        });
+  const nextHint =
+    sanitizeText(parsed.next_hint_zh) ||
+    sanitizeText(parsed.next_practice_prompt_zh);
+
   return {
-    isCorrect: parsed.is_correct === true,
+    isCorrect: parsed.is_correct === true && issues.length === 0,
     grammarScore: clampScore(parsed.grammar_score, 3),
+    meaningScore: clampScore(parsed.meaning_score, 3),
     naturalnessScore: clampScore(parsed.naturalness_score, 3),
     registerScore: clampScore(parsed.register_score, 3),
     sceneFitScore: clampScore(parsed.scene_fit_score, 3),
-    feedbackText,
-    correctedSentence: sanitizeText(parsed.corrected_sentence) || null,
+    issues,
+    explanation,
+    nextHint,
+    feedbackText: legacyFeedbackText || explanation,
+    correctedSentence,
     betterVersions,
-    mistakeTypes: parseStringArray(parsed.mistake_types),
-    nextPracticePrompt: sanitizeText(parsed.next_practice_prompt_zh) || null,
+    mistakeTypes: issues.map((issue) => issue.errorTypeCode),
+    nextPracticePrompt: nextHint || null,
     rawAiResponse: raw,
   };
 }
@@ -419,8 +502,16 @@ function buildFallbackPractice(input: {
   const scene = resolveSceneLabel(input);
   const register = resolveRegisterLabel(input);
   const category = resolveCategoryPath(input.grammarPoint);
+  const comparisonSet = input.grammarPoint.comparisonSets[0];
+  const comparisonMembers = comparisonSet?.members
+    .filter((member) => member.grammarPointId !== input.grammarPoint.id)
+    .map((member) => member.grammarPoint)
+    .join("、");
   const similarGrammarText =
-    input.grammarPoint.similarGrammar[0]?.similarGrammarPointText ?? "相近表达";
+    comparisonMembers ||
+    input.grammarPoint.similarGrammar[0]?.similarGrammarPointText ||
+    "相近表达";
+  const comparisonRule = comparisonSet?.decisionRules[0]?.explanationZh;
   const chineseCue =
     example?.zh ?? input.grammarPoint.naturalTranslation ?? input.grammarPoint.coreMeaning;
   const promptByLevel: Record<PracticeLevel, string> = {
@@ -428,7 +519,7 @@ function buildFallbackPractice(input: {
     2: `你正在「${scene}」场景里和别人沟通。请设定一个具体听话对象和表达目的，用「${category}」分类中的「${input.grammarPoint.grammarPoint}」写一句能直接说出口的「${register}」语体日语。${variationSuffix}`,
     3: `请把中文意图「${chineseCue}」改成自然日语。不要直译中文语序，必须使用「${input.grammarPoint.grammarPoint}」，并保持「${scene}」场景和「${register}」语体。${variationSuffix}`,
     4: `请把同一个意思改成「${register}」语体的自然日语，并使用「${input.grammarPoint.grammarPoint}」。注意句尾和称呼不要混用随便体、礼貌体和商务表达。${variationSuffix}`,
-    5: `请在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语，并特别注意不要和「${similarGrammarText}」混淆。句子要体现目标语法自己的用法边界。${variationSuffix}`,
+    5: `请在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语，并特别注意不要和「${similarGrammarText}」混淆。${comparisonRule ? `判断依据：${comparisonRule}` : "句子要体现目标语法自己的用法边界。"}${variationSuffix}`,
   };
 
   return {
@@ -456,15 +547,31 @@ function buildFallbackFeedback(input: {
   promptText?: string;
 }): EvaluatedSentence {
   if (isHospitalPoliteMoraemasuCase(input)) {
+    const explanation =
+      "意思可以理解，目标语法也接近正确，但「もらえる？」对医生有点太随便。医院场景建议用「もらえますか」或更礼貌的「いただけますか」。";
+    const correction = "すみません、もう一度説明していただけますか。";
+    const nextHint = "先用「すみません」缓冲，再把请求句尾改成礼貌形。";
+
     return {
       isCorrect: false,
       grammarScore: 4,
+      meaningScore: 4,
       naturalnessScore: 3,
       registerScore: 2,
       sceneFitScore: 3,
-      feedbackText:
-        "意思可以理解，目标语法也接近正确，但「もらえる？」对医生有点太随便。医院场景建议用「もらえますか」或更礼貌的「いただけますか」。",
-      correctedSentence: "すみません、もう一度説明していただけますか。",
+      issues: [
+        {
+          errorTypeCode: "register_mismatch",
+          severity: "high",
+          explanation: "对医生使用「もらえる？」礼貌度不足。",
+          correction,
+          relatedGrammarPointId: input.grammarPoint.id,
+        },
+      ],
+      explanation,
+      nextHint,
+      feedbackText: explanation,
+      correctedSentence: correction,
       betterVersions: [
         {
           sentence: "すみません、もう一度説明してもらえますか。",
@@ -477,7 +584,7 @@ function buildFallbackFeedback(input: {
           explanationZh: "更礼貌，更适合对医生、老师、客户或上司说。",
         },
       ],
-      mistakeTypes: ["wrong_register"],
+      mistakeTypes: ["register_mismatch"],
       nextPracticePrompt: "请用更礼貌的表达，请店员再说明一次退货流程。",
       source: "fallback",
     };
@@ -503,14 +610,56 @@ function buildFallbackFeedback(input: {
     /だよ|だね|かな|かも|もらえる[？?]?$/.test(input.sentence);
   const isTenseMismatch = hasPastTimeMismatch(input);
   const hasUnnaturalExpression = input.sentence.length < 7;
-  const mistakeTypes = [
-    !usesPattern && !hasConnectionIssue ? "missing_target_grammar" : null,
-    hasConnectionIssue ? "connection_error" : null,
-    isTenseMismatch ? "tense_mismatch" : null,
-    isCasualMismatch ? "wrong_register" : null,
-    hasUnnaturalExpression ? "unnatural_expression" : null,
-  ].filter((mistakeType): mistakeType is string => Boolean(mistakeType));
-  const hasMistake = mistakeTypes.length > 0;
+  const referenceCorrection = input.grammarPoint.examples[0]?.jp ?? "";
+  const issues: AIFeedbackIssue[] = [];
+
+  if (!usesPattern && !hasConnectionIssue) {
+    issues.push({
+      errorTypeCode: "semantic_error",
+      severity: "high",
+      explanation: "句子没有清楚表达目标语法的具体用法。",
+      correction: referenceCorrection,
+      relatedGrammarPointId: input.grammarPoint.id,
+    });
+  }
+  if (hasConnectionIssue) {
+    issues.push({
+      errorTypeCode: "connection_error",
+      severity: "high",
+      explanation: "目标表达前需要使用正确的て形接续。",
+      correction: referenceCorrection,
+      relatedGrammarPointId: input.grammarPoint.id,
+    });
+  }
+  if (isTenseMismatch) {
+    issues.push({
+      errorTypeCode: "tense_aspect_error",
+      severity: "high",
+      explanation: "过去时间词与句末的非过去形式不一致。",
+      correction: referenceCorrection,
+      relatedGrammarPointId: input.grammarPoint.id,
+    });
+  }
+  if (isCasualMismatch) {
+    issues.push({
+      errorTypeCode: "register_mismatch",
+      severity: "high",
+      explanation: "当前句尾比目标场景要求的语体更随便。",
+      correction: referenceCorrection,
+      relatedGrammarPointId: input.grammarPoint.id,
+    });
+  }
+  if (hasUnnaturalExpression) {
+    issues.push({
+      errorTypeCode: "unnatural_expression",
+      severity: "medium",
+      explanation: "句子过短或表达不完整，缺少可判断的具体内容。",
+      correction: referenceCorrection,
+      relatedGrammarPointId: input.grammarPoint.id,
+    });
+  }
+  const mistakeTypes = issues.map((issue) => issue.errorTypeCode);
+  const hasMistake = issues.length > 0;
   const feedbackText = hasMistake
     ? [
         hasConnectionIssue
@@ -525,12 +674,20 @@ function buildFallbackFeedback(input: {
         .join("")
     : "目标语法使用基本自然，语体也和当前场景大体匹配。可以继续练习更自然的表达变化。";
 
+  const nextHint = hasMistake
+    ? `先按「${input.grammarPoint.connections[0]?.pattern ?? input.grammarPoint.structure ?? input.grammarPoint.grammarPoint}」检查接续，再确认场景语体。`
+    : "保持同一语法点，换一个说话对象继续练习。";
+
   return {
     isCorrect: !hasMistake,
     grammarScore: usesPattern && !hasConnectionIssue ? 4 : 2,
+    meaningScore: usesPattern ? 4 : 2,
     naturalnessScore: hasMistake ? 3 : 4,
     registerScore: isCasualMismatch ? 2 : 4,
     sceneFitScore: 4,
+    issues,
+    explanation: feedbackText,
+    nextHint,
     feedbackText,
     correctedSentence: hasMistake
       ? input.grammarPoint.examples[0]?.jp ?? null
@@ -669,7 +826,8 @@ export class GrammarAiClient {
 
       const data = (await response.json()) as AiGatewayResponse;
       const parsed = parseFeedbackOutput(
-        extractJsonObject(extractAiGatewayResponseText(data))
+        extractJsonObject(extractAiGatewayResponseText(data)),
+        input.grammarPoint.id
       );
 
       return parsed

@@ -117,9 +117,11 @@ function hasMistake(feedback: PracticeSubmitResponse) {
   return (
     !feedback.isCorrect ||
     feedback.grammarScore < 4 ||
+    feedback.meaningScore < 4 ||
     feedback.naturalnessScore < 4 ||
     feedback.registerScore < 4 ||
     feedback.sceneFitScore < 4 ||
+    feedback.issues.length > 0 ||
     feedback.mistakeTypes.length > 0
   );
 }
@@ -325,9 +327,13 @@ export class GrammarLearningService {
       source: feedback.source,
       isCorrect: feedback.isCorrect,
       grammarScore: feedback.grammarScore,
+      meaningScore: feedback.meaningScore,
       naturalnessScore: feedback.naturalnessScore,
       registerScore: feedback.registerScore,
       sceneFitScore: feedback.sceneFitScore,
+      issues: feedback.issues,
+      explanation: feedback.explanation,
+      nextHint: feedback.nextHint,
       feedbackText: feedback.feedbackText,
       correctedSentence: feedback.correctedSentence,
       betterVersions: feedback.betterVersions,
@@ -386,8 +392,15 @@ export class GrammarLearningService {
   }
 
   async listReviewItems(userId?: string): Promise<GrammarReviewResponse> {
+    const normalizedUserId = normalizeUserId(userId);
+    const [items, aggregations] = await Promise.all([
+      this.repository.listReviewItems(normalizedUserId),
+      this.repository.getReviewAggregations(normalizedUserId),
+    ]);
+
     return {
-      items: await this.repository.listReviewItems(normalizeUserId(userId)),
+      items,
+      aggregations,
     };
   }
 
