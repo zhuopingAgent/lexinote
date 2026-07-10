@@ -287,10 +287,14 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
         <section className="rounded-[18px] border border-white/10 bg-[#1e1e1eb3] p-5">
           <div className="flex flex-wrap items-center gap-2">
             <PracticalityBadge practicality={grammarPoint.practicality} />
-            {grammarPoint.categoryGroupNameZh ? (
-              <TagBadge tag={grammarPoint.categoryGroupNameZh} />
+            {grammarPoint.primaryCategory ? (
+              <>
+                <TagBadge tag={grammarPoint.primaryCategory.dimensionNameZh} />
+                <TagBadge tag={grammarPoint.primaryCategory.nameZh} />
+              </>
+            ) : grammarPoint.migrationTarget ? (
+              <TagBadge tag={grammarPoint.migrationTarget.nameZh} />
             ) : null}
-            {grammarPoint.categoryNameZh ? <TagBadge tag={grammarPoint.categoryNameZh} /> : null}
           </div>
           <h1 className="mt-4 break-words text-3xl leading-tight font-semibold text-white/82">
             {grammarPoint.grammarPoint}

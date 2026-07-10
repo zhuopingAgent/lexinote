@@ -13,8 +13,11 @@ const REGISTER_TAG_LABELS: Record<string, string> = {
 
 const MISTAKE_TYPE_LABELS: Record<string, string> = {
   wrong_register: "语体不匹配",
+  register_mismatch: "语体不匹配",
   connection_error: "接续错误",
+  particle_error: "助词错误",
   tense_mismatch: "时态不匹配",
+  literal_translation: "中文直译与不自然表达",
   missing_target_grammar: "目标语法缺失",
   unnatural_expression: "表达不自然",
 };
@@ -24,6 +27,17 @@ const REVIEW_STATUS_LABELS: Record<string, string> = {
   learning: "学习中",
   reviewing: "复习中",
   mastered: "已掌握",
+};
+
+const GRAMMAR_POINT_TYPE_LABELS: Record<GrammarPointType, string> = {
+  grammar_pattern: "语法表达",
+  conjugation: "活用形式",
+  sentence_pattern: "句型",
+  syntax_concept: "句法概念",
+  particle: "助词",
+  collocation: "搭配",
+  register_concept: "语体概念",
+  discourse_marker: "篇章连接表达",
 };
 
 export function displayRegisterTagLabel(value: string | null | undefined) {
@@ -41,3 +55,8 @@ export function displayMistakeTypeLabel(value: string) {
 export function displayReviewStatusLabel(value: string) {
   return REVIEW_STATUS_LABELS[value] ?? value;
 }
+
+export function displayGrammarPointTypeLabel(value: GrammarPointType) {
+  return GRAMMAR_POINT_TYPE_LABELS[value];
+}
+import type { GrammarPointType } from "@/shared/types/api";

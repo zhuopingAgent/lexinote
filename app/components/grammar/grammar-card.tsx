@@ -31,11 +31,22 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {grammarPoint.categoryGroupNameZh ? (
-          <TagBadge tag={grammarPoint.categoryGroupNameZh} />
-        ) : null}
-        {grammarPoint.categoryNameZh ? (
-          <TagBadge tag={grammarPoint.categoryNameZh} />
+        {grammarPoint.primaryCategory ? (
+          <>
+            <TagBadge tag={grammarPoint.primaryCategory.dimensionNameZh} />
+            <TagBadge tag={grammarPoint.primaryCategory.nameZh} />
+          </>
+        ) : grammarPoint.migrationTarget ? (
+          <>
+            <TagBadge
+              tag={
+                grammarPoint.migrationTarget.kind === "comparison_set"
+                  ? "对比学习"
+                  : "错误诊断"
+              }
+            />
+            <TagBadge tag={grammarPoint.migrationTarget.nameZh} />
+          </>
         ) : null}
         {grammarPoint.subCategory ? <TagBadge tag={grammarPoint.subCategory} /> : null}
       </div>

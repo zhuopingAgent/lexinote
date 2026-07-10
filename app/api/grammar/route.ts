@@ -13,6 +13,7 @@ export async function GET(request: Request) {
       query: url.searchParams.get("query") ?? undefined,
       categorySlug: url.searchParams.get("category") ?? undefined,
       groupSlug: url.searchParams.get("group") ?? undefined,
+      dimensionSlug: url.searchParams.get("dimension") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
       userId: url.searchParams.get("userId") ?? undefined,
     });

@@ -1,17 +1,96 @@
 export const DEFAULT_GRAMMAR_USER_ID =
   "00000000-0000-0000-0000-000000000001";
 
-export const SELECT_GRAMMAR_CATEGORY_GROUPS_SQL = `
+export const SELECT_KNOWLEDGE_DIMENSIONS_SQL = `
   SELECT
     id::text,
     slug,
     name_zh,
     name_en,
     description,
-    priority,
-    is_mvp
-  FROM grammar_category_groups
-  ORDER BY priority ASC, name_zh ASC;
+    display_order,
+    status
+  FROM taxonomy_dimensions
+  WHERE status = 'active'
+  ORDER BY display_order ASC, name_zh ASC;
+`;
+
+export const SELECT_TAXONOMY_NODES_SQL = `
+  SELECT
+    tn.id::text,
+    tn.slug,
+    tn.dimension_id::text,
+    td.slug AS dimension_slug,
+    td.name_zh AS dimension_name_zh,
+    td.name_en AS dimension_name_en,
+    tn.name_zh,
+    tn.name_en,
+    tn.description,
+    tn.example_expressions,
+    tn.display_order,
+    tn.status
+  FROM taxonomy_nodes tn
+  JOIN taxonomy_dimensions td ON td.id = tn.dimension_id
+  WHERE tn.status = 'active'
+    AND td.status = 'active'
+  ORDER BY td.display_order ASC, tn.display_order ASC, tn.name_zh ASC;
+`;
+
+export const SELECT_COMPARISON_SETS_SQL = `
+  SELECT
+    cs.id::text,
+    cs.slug,
+    cs.name_zh,
+    cs.summary,
+    cs.status,
+    COALESCE(members.items, '[]'::jsonb) AS members
+  FROM comparison_sets cs
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'grammarPointId', gp.id::text,
+        'grammarPoint', gp.grammar_point,
+        'canonicalForm', gp.canonical_form,
+        'senseKey', gp.sense_key,
+        'sortOrder', csm.sort_order
+      )
+      ORDER BY csm.sort_order ASC, gp.grammar_point ASC
+    ) AS items
+    FROM comparison_set_members csm
+    JOIN grammar_points gp ON gp.id = csm.grammar_point_id
+    WHERE csm.comparison_set_id = cs.id
+  ) members ON TRUE
+  WHERE cs.status = 'active'
+  ORDER BY cs.name_zh ASC;
+`;
+
+export const SELECT_ERROR_TYPES_SQL = `
+  SELECT
+    id::text,
+    code,
+    name_zh,
+    description,
+    parent_id::text,
+    default_severity,
+    status
+  FROM error_types
+  WHERE status = 'active'
+  ORDER BY name_zh ASC;
+`;
+
+export const SELECT_GRAMMAR_CATEGORY_GROUPS_SQL = `
+  SELECT
+    gcg.id::text,
+    gcg.slug,
+    gcg.name_zh,
+    gcg.name_en,
+    gcg.description,
+    gcg.priority,
+    gcg.is_mvp
+  FROM grammar_category_groups gcg
+  JOIN taxonomy_dimensions td ON td.legacy_group_id = gcg.id
+  WHERE td.status = 'active'
+  ORDER BY td.display_order ASC, gcg.name_zh ASC;
 `;
 
 export const SELECT_GRAMMAR_CATEGORIES_SQL = `
@@ -31,11 +110,12 @@ export const SELECT_GRAMMAR_CATEGORIES_SQL = `
     gc.priority,
     gc.is_mvp
   FROM grammar_categories gc
-  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
-  ORDER BY
-    cgrp.priority ASC NULLS LAST,
-    gc.priority ASC,
-    gc.name_zh ASC;
+  JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
+  JOIN taxonomy_nodes tn ON tn.legacy_category_id = gc.id
+  JOIN taxonomy_dimensions td ON td.id = tn.dimension_id
+  WHERE td.slug = 'expression_function'
+    AND tn.status = 'active'
+  ORDER BY gc.priority ASC, gc.name_zh ASC;
 `;
 
 export const SELECT_SCENE_TAGS_SQL = `
@@ -58,78 +138,166 @@ export const SELECT_REGISTER_TAGS_SQL = `
   ORDER BY priority ASC, name_zh ASC;
 `;
 
+const GRAMMAR_POINT_SELECT_FIELDS = `
+  gp.id::text,
+  gp.grammar_point,
+  gp.point_type,
+  gp.canonical_form,
+  gp.sense_key,
+  gp.form_group_slug,
+  gp.status,
+  gp.reading,
+  COALESCE(ptn.legacy_category_id, gp.category_id)::text AS category_id,
+  compat_gc.slug AS category_slug,
+  compat_gc.name_zh AS category_name_zh,
+  compat_gc.name_en AS category_name_en,
+  compat_group.slug AS category_group_slug,
+  compat_group.name_zh AS category_group_name_zh,
+  compat_group.name_en AS category_group_name_en,
+  gp.sub_category,
+  gp.core_meaning,
+  gp.natural_translation,
+  gp.structure,
+  gp.practicality,
+  gp.spoken_or_written,
+  CASE
+    WHEN ptn.id IS NULL THEN NULL
+    ELSE jsonb_build_object(
+      'id', ptn.id::text,
+      'slug', ptn.slug,
+      'dimensionId', ptd.id::text,
+      'dimensionSlug', ptd.slug,
+      'dimensionNameZh', ptd.name_zh,
+      'dimensionNameEn', ptd.name_en,
+      'nameZh', ptn.name_zh,
+      'nameEn', ptn.name_en,
+      'displayOrder', ptn.display_order
+    )
+  END AS primary_category,
+  COALESCE(taxonomy_tags.items, '[]'::jsonb) AS taxonomy_tags,
+  CASE
+    WHEN cs.id IS NOT NULL THEN jsonb_build_object(
+      'kind', 'comparison_set',
+      'slug', cs.slug,
+      'nameZh', cs.name_zh
+    )
+    WHEN et.id IS NOT NULL THEN jsonb_build_object(
+      'kind', 'error_type',
+      'slug', et.code,
+      'nameZh', et.name_zh
+    )
+    ELSE NULL
+  END AS migration_target,
+  COALESCE(scene_tag_rows.items, '[]'::jsonb) AS scene_tags,
+  COALESCE(register_tag_rows.items, '[]'::jsonb) AS register_tags
+`;
+
+const GRAMMAR_POINT_SELECT_JOINS = `
+  LEFT JOIN taxonomy_nodes ptn ON ptn.id = gp.primary_taxonomy_node_id
+  LEFT JOIN taxonomy_dimensions ptd ON ptd.id = ptn.dimension_id
+  LEFT JOIN grammar_categories compat_gc
+    ON compat_gc.id = COALESCE(ptn.legacy_category_id, gp.category_id)
+  LEFT JOIN grammar_category_groups compat_group ON compat_group.id = compat_gc.group_id
+  LEFT JOIN comparison_sets cs ON cs.legacy_grammar_point_id = gp.id
+  LEFT JOIN error_types et ON et.legacy_grammar_point_id = gp.id
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'id', tn.id::text,
+        'slug', tn.slug,
+        'dimensionId', td.id::text,
+        'dimensionSlug', td.slug,
+        'dimensionNameZh', td.name_zh,
+        'dimensionNameEn', td.name_en,
+        'nameZh', tn.name_zh,
+        'nameEn', tn.name_en,
+        'displayOrder', tn.display_order
+      )
+      ORDER BY td.display_order ASC, tn.display_order ASC, tn.name_zh ASC
+    ) AS items
+    FROM grammar_point_taxonomy_tags gptt
+    JOIN taxonomy_nodes tn ON tn.id = gptt.taxonomy_node_id
+    JOIN taxonomy_dimensions td ON td.id = tn.dimension_id
+    WHERE gptt.grammar_point_id = gp.id
+      AND tn.status = 'active'
+      AND td.status = 'active'
+  ) taxonomy_tags ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'nameEn', st.name_en,
+        'nameZh', st.name_zh,
+        'description', st.description,
+        'priority', st.priority
+      )
+      ORDER BY st.priority ASC, st.name_zh ASC
+    ) AS items
+    FROM grammar_point_scene_tags gpst
+    JOIN scene_tags st ON st.id = gpst.scene_tag_id
+    WHERE gpst.grammar_point_id = gp.id
+  ) scene_tag_rows ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'nameEn', rt.name_en,
+        'nameZh', rt.name_zh,
+        'description', rt.description,
+        'priority', rt.priority
+      )
+      ORDER BY rt.priority ASC, rt.name_zh ASC
+    ) AS items
+    FROM grammar_point_register_tags gprt
+    JOIN register_tags rt ON rt.id = gprt.register_tag_id
+    WHERE gprt.grammar_point_id = gp.id
+  ) register_tag_rows ON TRUE
+`;
+
 export const SEARCH_GRAMMAR_POINTS_SQL = `
   SELECT
-    gp.id::text,
-    gp.grammar_point,
-    gp.reading,
-    gp.category_id::text,
-    gc.slug AS category_slug,
-    gc.name_zh AS category_name_zh,
-    gc.name_en AS category_name_en,
-    cgrp.slug AS category_group_slug,
-    cgrp.name_zh AS category_group_name_zh,
-    cgrp.name_en AS category_group_name_en,
-    gp.sub_category,
-    gp.core_meaning,
-    gp.natural_translation,
-    gp.structure,
-    gp.practicality,
-    gp.spoken_or_written,
+    ${GRAMMAR_POINT_SELECT_FIELDS},
     EXISTS (
       SELECT 1
       FROM favorites
       WHERE favorites.user_id = $4::uuid
         AND favorites.grammar_point_id = gp.id
-    ) AS is_favorite,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', st.name_en,
-        'nameZh', st.name_zh,
-        'description', st.description,
-        'priority', st.priority
-      )) FILTER (WHERE st.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS scene_tags,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', rt.name_en,
-        'nameZh', rt.name_zh,
-        'description', rt.description,
-        'priority', rt.priority
-      )) FILTER (WHERE rt.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS register_tags
+    ) AS is_favorite
   FROM grammar_points gp
-  LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
-  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
-  LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
-  LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
-  LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
-  LEFT JOIN register_tags rt ON rt.id = gprt.register_tag_id
-  WHERE (
-    $1::text = ''
-    OR gp.grammar_point ILIKE $2
-    OR gp.reading ILIKE $2
-    OR gp.core_meaning ILIKE $2
-    OR gp.natural_translation ILIKE $2
-    OR gp.structure ILIKE $2
-    OR gc.name_zh ILIKE $2
-    OR cgrp.name_zh ILIKE $2
-    OR gp.sub_category ILIKE $2
-  )
-  AND ($5::text = '' OR gc.slug = $5::text)
-  AND ($6::text = '' OR cgrp.slug = $6::text)
-  GROUP BY
-    gp.id,
-    gc.slug,
-    gc.name_zh,
-    gc.name_en,
-    gc.priority,
-    cgrp.slug,
-    cgrp.name_zh,
-    cgrp.name_en,
-    cgrp.priority
+  ${GRAMMAR_POINT_SELECT_JOINS}
+  WHERE gp.status = 'active'
+    AND (
+      $1::text = ''
+      OR gp.grammar_point ILIKE $2
+      OR gp.canonical_form ILIKE $2
+      OR gp.reading ILIKE $2
+      OR gp.core_meaning ILIKE $2
+      OR gp.natural_translation ILIKE $2
+      OR gp.structure ILIKE $2
+      OR compat_gc.name_zh ILIKE $2
+      OR ptd.name_zh ILIKE $2
+      OR gp.sub_category ILIKE $2
+    )
+    AND (
+      $5::text = ''
+      OR EXISTS (
+        SELECT 1
+        FROM grammar_point_taxonomy_tags filter_tags
+        JOIN taxonomy_nodes filter_node ON filter_node.id = filter_tags.taxonomy_node_id
+        WHERE filter_tags.grammar_point_id = gp.id
+          AND filter_node.slug = $5::text
+      )
+    )
+    AND (
+      $6::text = ''
+      OR EXISTS (
+        SELECT 1
+        FROM grammar_point_taxonomy_tags filter_tags
+        JOIN taxonomy_nodes filter_node ON filter_node.id = filter_tags.taxonomy_node_id
+        JOIN taxonomy_dimensions filter_dimension
+          ON filter_dimension.id = filter_node.dimension_id
+        WHERE filter_tags.grammar_point_id = gp.id
+          AND filter_dimension.slug = $6::text
+      )
+    )
   ORDER BY
     CASE
       WHEN $1::text = '' THEN 10
@@ -146,30 +314,15 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
       WHEN 'C' THEN 4
       ELSE 5
     END,
-    cgrp.priority ASC NULLS LAST,
-    gc.priority ASC,
+    ptd.display_order ASC NULLS LAST,
+    ptn.display_order ASC NULLS LAST,
     gp.grammar_point ASC
   LIMIT $3;
 `;
 
 export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
   SELECT
-    gp.id::text,
-    gp.grammar_point,
-    gp.reading,
-    gp.category_id::text,
-    gc.slug AS category_slug,
-    gc.name_zh AS category_name_zh,
-    gc.name_en AS category_name_en,
-    cgrp.slug AS category_group_slug,
-    cgrp.name_zh AS category_group_name_zh,
-    cgrp.name_en AS category_group_name_en,
-    gp.sub_category,
-    gp.core_meaning,
-    gp.natural_translation,
-    gp.structure,
-    gp.practicality,
-    gp.spoken_or_written,
+    ${GRAMMAR_POINT_SELECT_FIELDS},
     gp.notes,
     gp.jlpt_level,
     gp.common_mistakes,
@@ -178,41 +331,10 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
       FROM favorites
       WHERE favorites.user_id = $2::uuid
         AND favorites.grammar_point_id = gp.id
-    ) AS is_favorite,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', st.name_en,
-        'nameZh', st.name_zh,
-        'description', st.description,
-        'priority', st.priority
-      )) FILTER (WHERE st.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS scene_tags,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', rt.name_en,
-        'nameZh', rt.name_zh,
-        'description', rt.description,
-        'priority', rt.priority
-      )) FILTER (WHERE rt.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS register_tags
+    ) AS is_favorite
   FROM grammar_points gp
-  LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
-  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
-  LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
-  LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
-  LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
-  LEFT JOIN register_tags rt ON rt.id = gprt.register_tag_id
-  WHERE gp.id = $1::uuid
-  GROUP BY
-    gp.id,
-    gc.slug,
-    gc.name_zh,
-    gc.name_en,
-    cgrp.slug,
-    cgrp.name_zh,
-    cgrp.name_en;
+  ${GRAMMAR_POINT_SELECT_JOINS}
+  WHERE gp.id = $1::uuid;
 `;
 
 export const SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL = `
@@ -339,14 +461,7 @@ export const UPSERT_REVIEW_RECORD_FOR_MISTAKE_SQL = `
     mistake_count,
     last_reviewed_at
   )
-  VALUES (
-    $1::uuid,
-    $2::uuid,
-    'learning',
-    NOW() + INTERVAL '1 day',
-    1,
-    NOW()
-  )
+  VALUES ($1::uuid, $2::uuid, 'learning', NOW() + INTERVAL '1 day', 1, NOW())
   ON CONFLICT (user_id, grammar_point_id) DO UPDATE SET
     mistake_count = review_records.mistake_count + 1,
     status = CASE
@@ -371,14 +486,7 @@ export const UPSERT_REVIEW_RECORD_FOR_CORRECT_SQL = `
     mistake_count,
     last_reviewed_at
   )
-  VALUES (
-    $1::uuid,
-    $2::uuid,
-    'mastered',
-    NOW() + INTERVAL '7 days',
-    0,
-    NOW()
-  )
+  VALUES ($1::uuid, $2::uuid, 'mastered', NOW() + INTERVAL '7 days', 0, NOW())
   ON CONFLICT (user_id, grammar_point_id) DO UPDATE SET
     mistake_count = GREATEST(review_records.mistake_count - 1, 0),
     status = CASE
@@ -391,12 +499,7 @@ export const UPSERT_REVIEW_RECORD_FOR_CORRECT_SQL = `
 `;
 
 export const INSERT_LEARNING_HISTORY_SQL = `
-  INSERT INTO learning_history (
-    user_id,
-    grammar_point_id,
-    activity_type,
-    metadata
-  )
+  INSERT INTO learning_history (user_id, grammar_point_id, activity_type, metadata)
   VALUES ($1::uuid, $2::uuid, $3::text, $4::jsonb);
 `;
 
@@ -414,85 +517,23 @@ export const DELETE_FAVORITE_SQL = `
 
 export const SELECT_FAVORITES_SQL = `
   SELECT
-    gp.id::text,
-    gp.grammar_point,
-    gp.reading,
-    gp.category_id::text,
-    gc.slug AS category_slug,
-    gc.name_zh AS category_name_zh,
-    gc.name_en AS category_name_en,
-    cgrp.slug AS category_group_slug,
-    cgrp.name_zh AS category_group_name_zh,
-    cgrp.name_en AS category_group_name_en,
-    gp.sub_category,
-    gp.core_meaning,
-    gp.natural_translation,
-    gp.structure,
-    gp.practicality,
-    gp.spoken_or_written,
-    TRUE AS is_favorite,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', st.name_en,
-        'nameZh', st.name_zh,
-        'description', st.description,
-        'priority', st.priority
-      )) FILTER (WHERE st.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS scene_tags,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', rt.name_en,
-        'nameZh', rt.name_zh,
-        'description', rt.description,
-        'priority', rt.priority
-      )) FILTER (WHERE rt.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS register_tags
+    ${GRAMMAR_POINT_SELECT_FIELDS},
+    TRUE AS is_favorite
   FROM favorites
   JOIN grammar_points gp ON gp.id = favorites.grammar_point_id
-  LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
-  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
-  LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
-  LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
-  LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
-  LEFT JOIN register_tags rt ON rt.id = gprt.register_tag_id
+  ${GRAMMAR_POINT_SELECT_JOINS}
   WHERE favorites.user_id = $1::uuid
-  GROUP BY
-    favorites.created_at,
-    gp.id,
-    gc.slug,
-    gc.name_zh,
-    gc.name_en,
-    cgrp.slug,
-    cgrp.name_zh,
-    cgrp.name_en
   ORDER BY favorites.created_at DESC;
 `;
 
 export const SELECT_REVIEW_ITEMS_SQL = `
   SELECT
     rr.id::text AS review_record_id,
-    rr.status,
+    rr.status AS review_status,
     rr.mistake_count,
     rr.next_review_at,
     rr.last_reviewed_at,
-    gp.id::text,
-    gp.grammar_point,
-    gp.reading,
-    gp.category_id::text,
-    gc.slug AS category_slug,
-    gc.name_zh AS category_name_zh,
-    gc.name_en AS category_name_en,
-    cgrp.slug AS category_group_slug,
-    cgrp.name_zh AS category_group_name_zh,
-    cgrp.name_en AS category_group_name_en,
-    gp.sub_category,
-    gp.core_meaning,
-    gp.natural_translation,
-    gp.structure,
-    gp.practicality,
-    gp.spoken_or_written,
+    ${GRAMMAR_POINT_SELECT_FIELDS},
     EXISTS (
       SELECT 1
       FROM favorites
@@ -502,33 +543,10 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     latest_feedback.sentence AS latest_sentence,
     latest_feedback.feedback_text AS latest_feedback,
     latest_feedback.corrected_sentence,
-    latest_feedback.mistake_types,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', st.name_en,
-        'nameZh', st.name_zh,
-        'description', st.description,
-        'priority', st.priority
-      )) FILTER (WHERE st.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS scene_tags,
-    COALESCE(
-      jsonb_agg(DISTINCT jsonb_build_object(
-        'nameEn', rt.name_en,
-        'nameZh', rt.name_zh,
-        'description', rt.description,
-        'priority', rt.priority
-      )) FILTER (WHERE rt.id IS NOT NULL),
-      '[]'::jsonb
-    ) AS register_tags
+    latest_feedback.mistake_types
   FROM review_records rr
   JOIN grammar_points gp ON gp.id = rr.grammar_point_id
-  LEFT JOIN grammar_categories gc ON gc.id = gp.category_id
-  LEFT JOIN grammar_category_groups cgrp ON cgrp.id = gc.group_id
-  LEFT JOIN grammar_point_scene_tags gpst ON gpst.grammar_point_id = gp.id
-  LEFT JOIN scene_tags st ON st.id = gpst.scene_tag_id
-  LEFT JOIN grammar_point_register_tags gprt ON gprt.grammar_point_id = gp.id
-  LEFT JOIN register_tags rt ON rt.id = gprt.register_tag_id
+  ${GRAMMAR_POINT_SELECT_JOINS}
   LEFT JOIN LATERAL (
     SELECT
       user_sentences.sentence,
@@ -548,19 +566,6 @@ export const SELECT_REVIEW_ITEMS_SQL = `
       OR rr.next_review_at <= NOW()
       OR rr.mistake_count > 0
     )
-  GROUP BY
-    rr.id,
-    gp.id,
-    gc.slug,
-    gc.name_zh,
-    gc.name_en,
-    cgrp.slug,
-    cgrp.name_zh,
-    cgrp.name_en,
-    latest_feedback.sentence,
-    latest_feedback.feedback_text,
-    latest_feedback.corrected_sentence,
-    latest_feedback.mistake_types
   ORDER BY
     rr.next_review_at ASC NULLS FIRST,
     rr.mistake_count DESC,
@@ -569,12 +574,12 @@ export const SELECT_REVIEW_ITEMS_SQL = `
 
 export const SELECT_GRAMMAR_PROGRESS_SQL = `
   SELECT
-    cgrp.id::text,
-    cgrp.slug,
-    cgrp.name_zh,
-    cgrp.name_en,
-    cgrp.description,
-    cgrp.priority,
+    td.id::text,
+    td.slug,
+    td.name_zh,
+    td.name_en,
+    td.description,
+    td.display_order AS priority,
     COUNT(DISTINCT gp.id)::int AS total_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.id IS NOT NULL
@@ -591,15 +596,20 @@ export const SELECT_GRAMMAR_PROGRESS_SQL = `
         )
     )::int AS review_count,
     COUNT(DISTINCT favorites.grammar_point_id)::int AS favorite_count
-  FROM grammar_category_groups cgrp
-  LEFT JOIN grammar_categories gc ON gc.group_id = cgrp.id
-  LEFT JOIN grammar_points gp ON gp.category_id = gc.id
+  FROM taxonomy_dimensions td
+  LEFT JOIN taxonomy_nodes tn
+    ON tn.dimension_id = td.id
+   AND tn.status = 'active'
+  LEFT JOIN grammar_points gp
+    ON gp.primary_taxonomy_node_id = tn.id
+   AND gp.status = 'active'
   LEFT JOIN review_records rr
     ON rr.grammar_point_id = gp.id
    AND rr.user_id = $1::uuid
   LEFT JOIN favorites
     ON favorites.grammar_point_id = gp.id
    AND favorites.user_id = $1::uuid
-  GROUP BY cgrp.id
-  ORDER BY cgrp.priority ASC, cgrp.name_zh ASC;
+  WHERE td.status = 'active'
+  GROUP BY td.id
+  ORDER BY td.display_order ASC, td.name_zh ASC;
 `;

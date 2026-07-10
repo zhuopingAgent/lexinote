@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type {
-  GrammarCategory,
-  GrammarCategoryGroup,
   GrammarPointSummary,
   GrammarProgressResponse,
   GrammarSearchResponse,
   GrammarTaxonomyResponse,
+  KnowledgeDimension,
+  TaxonomyNode,
 } from "@/shared/types/api";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
 import { GrammarProgressOverview } from "@/app/components/grammar/grammar-progress-overview";
@@ -17,10 +17,12 @@ import { getErrorMessage, readJson } from "@/app/lib/api-client";
 export function GrammarLearningShell() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const [groupSlug, setGroupSlug] = useState("");
+  const [dimensionSlug, setDimensionSlug] = useState("expression_function");
   const [categorySlug, setCategorySlug] = useState("");
-  const [categoryGroups, setCategoryGroups] = useState<GrammarCategoryGroup[]>([]);
-  const [categories, setCategories] = useState<GrammarCategory[]>([]);
+  const [knowledgeDimensions, setKnowledgeDimensions] = useState<
+    KnowledgeDimension[]
+  >([]);
+  const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([]);
   const [progress, setProgress] = useState<GrammarProgressResponse | null>(null);
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
@@ -42,8 +44,8 @@ export function GrammarLearningShell() {
         const taxonomy = await fetch("/api/grammar/taxonomy", {
           signal: controller.signal,
         }).then((response) => readJson<GrammarTaxonomyResponse>(response));
-        setCategoryGroups(taxonomy.categoryGroups ?? []);
-        setCategories(taxonomy.categories);
+        setKnowledgeDimensions(taxonomy.knowledgeDimensions ?? []);
+        setTaxonomyNodes(taxonomy.taxonomyNodes ?? []);
       } catch (error) {
         if (!controller.signal.aborted) {
           setTaxonomyError(getErrorMessage(error, "分类加载失败，请稍后再试。"));
@@ -110,8 +112,8 @@ export function GrammarLearningShell() {
         if (categorySlug) {
           params.set("category", categorySlug);
         }
-        if (groupSlug) {
-          params.set("group", groupSlug);
+        if (dimensionSlug) {
+          params.set("dimension", dimensionSlug);
         }
         params.set("limit", "36");
 
@@ -141,7 +143,7 @@ export function GrammarLearningShell() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [submittedQuery, categorySlug, groupSlug]);
+  }, [submittedQuery, categorySlug, dimensionSlug]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -156,44 +158,43 @@ export function GrammarLearningShell() {
   function clearFilters() {
     setQuery("");
     setSubmittedQuery("");
-    setGroupSlug("");
+    setDimensionSlug("expression_function");
     setCategorySlug("");
   }
 
-  function handleGroupChange(nextGroupSlug: string) {
-    setGroupSlug(nextGroupSlug);
+  function handleDimensionChange(nextDimensionSlug: string) {
+    setDimensionSlug(nextDimensionSlug);
     setCategorySlug("");
   }
 
-  const categoryButtonGroupSlug = groupSlug || "expressive_functions";
-  const categoryButtonCategories = categories.filter(
-    (category) => category.groupSlug === categoryButtonGroupSlug
+  const categoryButtonCategories = taxonomyNodes.filter(
+    (category) => category.dimensionSlug === dimensionSlug
   );
   const selectedCategoryName =
-    categories.find((category) => category.slug === categorySlug)?.nameZh ?? null;
+    taxonomyNodes.find((category) => category.slug === categorySlug)?.nameZh ?? null;
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
       <GrammarProgressOverview
         progress={progress}
-        selectedGroupSlug={groupSlug}
+        selectedGroupSlug={dimensionSlug}
         selectedCategoryName={selectedCategoryName}
         resultCount={items.length}
         isLoading={isProgressLoading}
         error={progressError}
-        onGroupSelect={handleGroupChange}
+        onGroupSelect={handleDimensionChange}
       />
 
       <GrammarSearch
-        categoryGroups={categoryGroups}
+        knowledgeDimensions={knowledgeDimensions}
         categories={categoryButtonCategories}
         query={query}
-        groupSlug={groupSlug}
+        dimensionSlug={dimensionSlug}
         categorySlug={categorySlug}
         isLoading={isSearchLoading}
         resultCount={items.length}
         onQueryChange={setQuery}
-        onGroupChange={handleGroupChange}
+        onDimensionChange={handleDimensionChange}
         onCategoryChange={setCategorySlug}
         onClearFilters={clearFilters}
         onSubmit={() => setSubmittedQuery(query)}

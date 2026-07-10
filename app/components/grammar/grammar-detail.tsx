@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { GrammarPointDetail } from "@/shared/types/api";
+import type { GrammarPointDetail, GrammarTaxonomyTag } from "@/shared/types/api";
+import { displayGrammarPointTypeLabel } from "@/app/components/grammar/display-labels";
 import {
   PracticalityBadge,
   SpokenOrWrittenBadge,
@@ -22,6 +23,23 @@ export function GrammarDetail({
   const [isFavorite, setIsFavorite] = useState(Boolean(grammarPoint.isFavorite));
   const [isSavingFavorite, setIsSavingFavorite] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const taxonomyGroups = Array.from(
+    grammarPoint.taxonomyTags.reduce(
+      (groups, tag) => {
+        const group = groups.get(tag.dimensionSlug) ?? {
+          dimensionNameZh: tag.dimensionNameZh,
+          tags: [] as GrammarTaxonomyTag[],
+        };
+        group.tags.push(tag);
+        groups.set(tag.dimensionSlug, group);
+        return groups;
+      },
+      new Map<
+        string,
+        { dimensionNameZh: string; tags: GrammarTaxonomyTag[] }
+      >()
+    ).values()
+  );
 
   async function handleFavoriteToggle() {
     if (!onFavoriteChange) {
@@ -50,6 +68,7 @@ export function GrammarDetail({
             <div className="flex flex-wrap items-center gap-2">
               <PracticalityBadge practicality={grammarPoint.practicality} />
               <SpokenOrWrittenBadge value={grammarPoint.spokenOrWritten} />
+              <TagBadge tag={displayGrammarPointTypeLabel(grammarPoint.pointType)} />
               {grammarPoint.jlptLevel ? <TagBadge tag={grammarPoint.jlptLevel} /> : null}
             </div>
             <h1 className="mt-4 break-words text-[clamp(36px,6vw,58px)] leading-tight font-semibold text-white/84">
@@ -90,6 +109,16 @@ export function GrammarDetail({
           </p>
         ) : null}
 
+        {grammarPoint.migrationTarget ? (
+          <div className="mt-5 rounded-[16px] border border-accent/25 bg-accent-soft px-4 py-3 text-sm leading-6 text-white/64">
+            这个旧学习条目已迁移到
+            {grammarPoint.migrationTarget.kind === "comparison_set"
+              ? "对比学习"
+              : "错误诊断"}
+            ：{grammarPoint.migrationTarget.nameZh}。原链接和学习记录继续保留。
+          </div>
+        ) : null}
+
         <div className="mt-7 grid gap-4 md:grid-cols-[1.3fr_0.7fr]">
           <section className="rounded-[18px] border border-white/8 bg-[#15151599] p-5">
             <p className="text-sm font-semibold text-white/48">核心意思</p>
@@ -113,17 +142,17 @@ export function GrammarDetail({
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <section>
-            <p className="text-sm font-semibold text-white/48">分类体系</p>
+            <p className="text-sm font-semibold text-white/48">主分类</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {grammarPoint.categoryGroupNameZh ? (
-                <TagBadge tag={grammarPoint.categoryGroupNameZh} />
-              ) : null}
-              {grammarPoint.categoryNameZh ? (
-                <TagBadge tag={grammarPoint.categoryNameZh} />
-              ) : null}
-              {grammarPoint.subCategory ? (
-                <TagBadge tag={grammarPoint.subCategory} />
-              ) : null}
+              {grammarPoint.primaryCategory ? (
+                <>
+                  <TagBadge tag={grammarPoint.primaryCategory.dimensionNameZh} />
+                  <TagBadge tag={grammarPoint.primaryCategory.nameZh} />
+                </>
+              ) : (
+                <span className="text-sm text-white/38">已从知识分类迁移</span>
+              )}
+              {grammarPoint.subCategory ? <TagBadge tag={grammarPoint.subCategory} /> : null}
             </div>
           </section>
           <section>
@@ -142,6 +171,18 @@ export function GrammarDetail({
               ))}
             </div>
           </section>
+          {taxonomyGroups.map((group) => (
+            <section key={group.dimensionNameZh}>
+              <p className="text-sm font-semibold text-white/48">
+                {group.dimensionNameZh}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {group.tags.map((tag) => (
+                  <TagBadge key={tag.id} tag={tag.nameZh} />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
 
         {grammarPoint.notes ? (
