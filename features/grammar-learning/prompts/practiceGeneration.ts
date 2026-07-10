@@ -1,5 +1,13 @@
 import type { GrammarPointDetail, PracticeLevel } from "@/shared/types/api";
 
+export type PracticeVariation = {
+  seed: string;
+  listenerFocus: string;
+  intentFocus: string;
+  detailConstraint: string;
+  outputTexture: string;
+};
+
 const PRACTICE_LEVEL_GUIDES: Record<PracticeLevel, string> = {
   1: "模仿造句：给一个清楚的参考结构，让学习者替换人物、地点、时间或对象。任务要降低自由度，重点练接续和句型。",
   2: "场景造句：给一个具体沟通场景，必须包含说话人、听话对象、想达成的目的。任务要像真实会话，不要像考试题。",
@@ -39,11 +47,19 @@ export function buildPracticeGenerationPrompt(input: {
   registerTag?: string;
   registerTagLabel?: string;
   level: PracticeLevel;
+  variation?: PracticeVariation;
 }) {
   const scene = input.sceneTagLabel ?? input.sceneTag ?? "日常生活";
   const register = input.registerTagLabel ?? input.registerTag ?? "一般礼貌";
   const examples = formatExamples(input.grammarPoint) || "无";
   const similarGrammar = formatSimilarGrammar(input.grammarPoint) || "无";
+  const variation = input.variation
+    ? `本次变化编号：${input.variation.seed}
+听话对象倾向：${input.variation.listenerFocus}
+表达目的倾向：${input.variation.intentFocus}
+必须加入的具体细节：${input.variation.detailConstraint}
+任务质感：${input.variation.outputTexture}`
+    : "本次变化编号：未提供。请自行选择一个具体但自然的变化方向。";
 
   return `你是面向中文母语者的日语语法练习设计师。
 请为当前语法点生成一个「可直接拿来练」的微场景任务。任务要像真实会话/写作需求，而不是考试说明。
@@ -62,6 +78,20 @@ export function buildPracticeGenerationPrompt(input: {
 ${examples}
 相似语法：
 ${similarGrammar}
+
+本次变化要求：
+${variation}
+
+当前可选项约束：
+- 使用场景必须严格围绕「${scene}」，不要换成其他场景。
+- 目标语体必须严格符合「${register}」。
+- 当前产品只展示三个练习类型：中译日、语体转换、易混对比。请让任务明显服务于当前练习等级。
+- 不要照抄参考例句；可以借鉴结构，但人物、物品、动作、时间或表达目的必须变化。
+
+等级专项要求：
+- 等级 3「中译日」：task_zh 应给出一段自然中文意图或中文句子，让学习者翻成日语；不要提前暴露日语答案。
+- 等级 4「语体转换」：task_zh 必须包含一个原始表达或原始意图，并明确要求改成「${register}」语体；重点制造语体判断，而不是只换句尾。
+- 等级 5「易混对比」：task_zh 必须明确目标语法和干扰语法/易混点；如果相似语法为“无”，就使用常见误区作为干扰点。
 
 生成目标：
 - task_zh 要告诉学习者「谁对谁说」「在什么场景」「想完成什么表达目的」。

@@ -1,4 +1,7 @@
-import { buildPracticeGenerationPrompt } from "@/features/grammar-learning/prompts/practiceGeneration";
+import {
+  buildPracticeGenerationPrompt,
+  type PracticeVariation,
+} from "@/features/grammar-learning/prompts/practiceGeneration";
 import { buildSentenceFeedbackPrompt } from "@/features/grammar-learning/prompts/sentenceFeedback";
 import type {
   AIFeedbackBetterVersion,
@@ -52,9 +55,43 @@ export type EvaluatedSentence = AIFeedbackResult & {
   rawAiResponse?: unknown;
 };
 
-const PRACTICE_MAX_OUTPUT_TOKENS = 620;
+const PRACTICE_MAX_OUTPUT_TOKENS = 820;
 const FEEDBACK_MAX_OUTPUT_TOKENS = 760;
 
+const PRACTICE_LISTENER_FOCI = [
+  "根据场景选择一个具体听话对象，例如老师、店员、医生、同事、客户、朋友或家人。",
+  "让说话人面对一个比自己更正式的对象，注意礼貌距离。",
+  "让说话人面对熟悉对象，避免过度正式，但仍符合目标语体。",
+  "让说话人与服务人员或窗口人员沟通，表达要简洁可执行。",
+  "让说话人与工作/学校相关对象沟通，表达目的要清楚。",
+];
+
+const PRACTICE_INTENT_FOCI = [
+  "请求对方做一件具体事情。",
+  "说明原因、背景或当前情况。",
+  "确认信息、时间、地点或流程。",
+  "表达计划、决定、变化或后续安排。",
+  "委婉提出问题、担心或不方便之处。",
+  "比较两个选择并表达判断。",
+  "转述听到的信息或自己的想法。",
+];
+
+const PRACTICE_DETAIL_CONSTRAINTS = [
+  "加入一个具体时间点或期限。",
+  "加入一个具体地点或窗口/房间/店铺等位置。",
+  "加入一个具体物品、资料、症状、订单或课程名。",
+  "加入一个轻微问题或限制，例如听不清、赶时间、资料不够。",
+  "加入一个数量、频率或先后顺序。",
+  "加入一个对方已经知道的背景，避免从零解释。",
+];
+
+const PRACTICE_OUTPUT_TEXTURES = [
+  "像真实会话中的一句话，短而明确。",
+  "像手机消息或聊天回复，但必须保持目标语体。",
+  "像窗口、客服或店内沟通中的一句请求/说明。",
+  "像工作或学校场景里的简短说明。",
+  "像练习者在现实生活中马上能复用的一句话。",
+];
 function extractJsonObject(text: string): unknown | null {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) {
@@ -85,6 +122,20 @@ function clampScore(value: unknown, fallback: number) {
   }
 
   return Math.min(Math.max(parsed, 1), 5);
+}
+
+function pickRandomItem(items: string[]) {
+  return items[Math.floor(Math.random() * items.length)] ?? items[0] ?? "";
+}
+
+function buildPracticeVariation(): PracticeVariation {
+  return {
+    seed: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    listenerFocus: pickRandomItem(PRACTICE_LISTENER_FOCI),
+    intentFocus: pickRandomItem(PRACTICE_INTENT_FOCI),
+    detailConstraint: pickRandomItem(PRACTICE_DETAIL_CONSTRAINTS),
+    outputTexture: pickRandomItem(PRACTICE_OUTPUT_TEXTURES),
+  };
 }
 
 function parseStringArray(value: unknown): string[] {
@@ -333,13 +384,16 @@ function buildFallbackPractice(input: {
   registerTag?: string;
   registerTagLabel?: string;
   level: PracticeLevel;
+  variation?: PracticeVariation;
 }): GeneratedPractice {
   const levelLabel = resolvePracticeLevelLabel(input.level);
+  const variation = input.variation ?? buildPracticeVariation();
+  const variationSuffix = `本次变化：${variation.intentFocus}${variation.detailConstraint}${variation.outputTexture}`;
 
   if (isHospitalPoliteMoraemasuCase(input)) {
     return {
       prompt:
-        `你在医院听不懂医生的说明，想请医生再说明一遍。请使用「请求、许可与建议」分类中的「〜てもらえますか」造一句自然的日语句子。当前等级：${levelLabel}。`,
+        `你在医院听不懂医生的说明，想请医生再说明一遍。请使用「请求、许可与建议」分类中的「〜てもらえますか」造一句自然的日语句子。当前等级：${levelLabel}。${variationSuffix}`,
       referenceAnswers: [
         {
           jp: "すみません、もう一度説明してもらえますか。",
@@ -370,11 +424,11 @@ function buildFallbackPractice(input: {
   const chineseCue =
     example?.zh ?? input.grammarPoint.naturalTranslation ?? input.grammarPoint.coreMeaning;
   const promptByLevel: Record<PracticeLevel, string> = {
-    1: `请参考下面的答案结构，替换人物、地点或时间，在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语。重点是接续正确。`,
-    2: `你正在「${scene}」场景里和别人沟通。请设定一个具体听话对象和表达目的，用「${category}」分类中的「${input.grammarPoint.grammarPoint}」写一句能直接说出口的「${register}」语体日语。`,
-    3: `请把中文意图「${chineseCue}」改成自然日语。不要直译中文语序，必须使用「${input.grammarPoint.grammarPoint}」，并保持「${scene}」场景和「${register}」语体。`,
-    4: `请把同一个意思改成「${register}」语体的自然日语，并使用「${input.grammarPoint.grammarPoint}」。注意句尾和称呼不要混用随便体、礼貌体和商务表达。`,
-    5: `请在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语，并特别注意不要和「${similarGrammarText}」混淆。句子要体现目标语法自己的用法边界。`,
+    1: `请参考下面的答案结构，替换人物、地点或时间，在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语。重点是接续正确。${variationSuffix}`,
+    2: `你正在「${scene}」场景里和别人沟通。请设定一个具体听话对象和表达目的，用「${category}」分类中的「${input.grammarPoint.grammarPoint}」写一句能直接说出口的「${register}」语体日语。${variationSuffix}`,
+    3: `请把中文意图「${chineseCue}」改成自然日语。不要直译中文语序，必须使用「${input.grammarPoint.grammarPoint}」，并保持「${scene}」场景和「${register}」语体。${variationSuffix}`,
+    4: `请把同一个意思改成「${register}」语体的自然日语，并使用「${input.grammarPoint.grammarPoint}」。注意句尾和称呼不要混用随便体、礼貌体和商务表达。${variationSuffix}`,
+    5: `请在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语，并特别注意不要和「${similarGrammarText}」混淆。句子要体现目标语法自己的用法边界。${variationSuffix}`,
   };
 
   return {
@@ -382,6 +436,7 @@ function buildFallbackPractice(input: {
     referenceAnswers: buildFallbackReferenceAnswers(input.grammarPoint),
     hints: [
       `练习等级：${levelLabel}`,
+      `变化要求：${variation.listenerFocus}`,
       `核心意思：${input.grammarPoint.coreMeaning}`,
       input.grammarPoint.structure
         ? `接续结构：${input.grammarPoint.structure}`
@@ -506,7 +561,11 @@ export class GrammarAiClient {
     level: PracticeLevel;
   }): Promise<GeneratedPractice> {
     const aiGatewayRequest = resolveAiGatewayRequest();
-    const fallback = buildFallbackPractice(input);
+    const variation = buildPracticeVariation();
+    const fallback = buildFallbackPractice({
+      ...input,
+      variation,
+    });
 
     if (!aiGatewayRequest) {
       return fallback;
@@ -529,7 +588,10 @@ export class GrammarAiClient {
             },
             {
               role: "user",
-              content: buildPracticeGenerationPrompt(input),
+              content: buildPracticeGenerationPrompt({
+                ...input,
+                variation,
+              }),
             },
           ],
         }),

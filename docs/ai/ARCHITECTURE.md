@@ -182,6 +182,9 @@
 ### Important Rules
 
 - Keep route handlers thin and put grammar behavior in `GrammarLearningService`.
+- Treat `taxonomy_dimensions` and `taxonomy_nodes` as the knowledge taxonomy. Only the seven active knowledge dimensions belong there; comparison sets and error types are separate domain objects.
+- `grammar_points.primary_taxonomy_node_id` is the primary-category source of truth. The legacy category tables and response fields remain only for backward compatibility.
+- Keep migrated comparison/error grammar-point IDs readable from detail, favorites, practice, and review flows; normal grammar search only lists active learning units.
 - The local MVP defaults to user id `00000000-0000-0000-0000-000000000001` when no auth user id exists.
 - Keep grammar AI prompts under `features/grammar-learning/prompts/`.
 - Grammar practice and feedback must remain usable without AI Gateway credentials; fallback behavior is part of the local development contract.

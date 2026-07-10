@@ -2,46 +2,29 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const EXPECTED_GROUP_SLUGS = [
-  "expressive_functions",
-  "morphology_conjugation_tense_aspect",
-  "sentence_structure_components",
+const EXPECTED_DIMENSION_SLUGS = [
+  "expression_function",
+  "form_tense_aspect",
+  "sentence_structure",
   "particle_system",
-  "register_honorific_social",
-  "discourse_connection_organization",
-  "lexical_collocations_constructions",
-  "confusing_grammar_contrasts",
-  "error_diagnosis_correction",
+  "register_social",
+  "discourse_organization",
+  "collocation_construction",
 ];
 
-const EXPECTED_EXPRESSIVE_CATEGORY_SLUGS = [
-  "basic_sentence_patterns",
-  "particles_and_relations",
-  "time_and_sequence",
-  "reasons_and_explanations",
-  "conditions_and_hypotheses",
-  "purpose_and_plans",
-  "requests_permission_advice",
-  "giving_receiving_benefit",
-  "inference_judgment_sources",
-  "comparison_degree_scope",
-  "contrast_concession_comparison",
-  "sentence_final_nuance",
-  "collocations_and_idioms",
-  "ability_potential_difficulty",
-  "obligation_necessity_unnecessity",
-  "change_start_continuation_end",
-  "quotation_reporting_topic",
-  "honorifics_and_politeness",
+const LEGACY_COMPARISON_CATEGORY_SLUGS = [
+  "particle_contrasts",
+  "condition_contrasts",
+  "reason_purpose_contrasts",
+  "inference_source_contrasts",
 ];
 
-const EXPECTED_MORPHOLOGY_CATEGORY_SLUGS = [
-  "verb_conjugation_basics",
-  "adjective_noun_conjugation",
-  "tense_and_negation",
-  "progressive_state_experience_completion",
-  "derived_forms_potential_passive_causative",
-  "modification_connection_nominalization",
+const LEGACY_ERROR_CATEGORY_SLUGS = [
+  "connection_errors",
+  "particle_errors",
+  "tense_errors",
+  "register_errors",
+  "literal_translation_errors",
 ];
 
 function readSchemaSql() {
@@ -59,101 +42,126 @@ function extractBlock(sql: string, startMarker: string, endMarker: string) {
   return sql.slice(start, end);
 }
 
-describe("grammar seed data", () => {
-  it("defines the 9-major-group taxonomy in schema.sql", () => {
+describe("grammar domain seed", () => {
+  it("defines exactly seven knowledge dimensions", () => {
     const sql = readSchemaSql();
-    const groupBlock = extractBlock(
+    const block = extractBlock(
       sql,
-      "INSERT INTO grammar_category_groups",
-      "INSERT INTO grammar_categories"
+      "WITH dimension_seed",
+      "INSERT INTO taxonomy_dimensions"
     );
     const slugs = Array.from(
-      groupBlock.matchAll(/\('([^']+)', '[^']+', '[^']+', '[^']+',/g)
-    ).map((match) => match[1]);
+      block.matchAll(/^\s*\('([^']+)',/gm),
+      (match) => match[1]
+    );
 
-    expect(slugs).toEqual(EXPECTED_GROUP_SLUGS);
-    expect(groupBlock).toContain("形态、活用与时间体系统");
+    expect(slugs).toEqual(EXPECTED_DIMENSION_SLUGS);
+    expect(block).not.toContain("confusing_grammar_contrasts");
+    expect(block).not.toContain("error_diagnosis_correction");
   });
 
-  it("keeps the 18 expressive categories and adds morphology categories", () => {
+  it("adds canonical learning-unit fields and enforces one primary node for active points", () => {
     const sql = readSchemaSql();
-    const categoryBlock = extractBlock(
-      sql,
-      "INSERT INTO grammar_categories",
-      "WITH active_grammar_seed"
-    );
 
-    for (const slug of EXPECTED_EXPRESSIVE_CATEGORY_SLUGS) {
-      expect(categoryBlock).toContain(`'${slug}'`);
-    }
-
-    for (const slug of EXPECTED_MORPHOLOGY_CATEGORY_SLUGS) {
-      expect(categoryBlock).toContain(`'${slug}'`);
-    }
-
-    expect(categoryBlock).toContain("group_slug");
-    expect(categoryBlock).toContain("example_expressions");
+    expect(sql).toContain("point_type TEXT NOT NULL DEFAULT 'grammar_pattern'");
+    expect(sql).toContain("canonical_form TEXT");
+    expect(sql).toContain("sense_key TEXT");
+    expect(sql).toContain("form_group_slug TEXT");
+    expect(sql).toContain("primary_taxonomy_node_id UUID REFERENCES taxonomy_nodes(id)");
+    expect(sql).toContain("status <> 'active' OR primary_taxonomy_node_id IS NOT NULL");
+    expect(sql).toContain("CREATE UNIQUE INDEX IF NOT EXISTS grammar_points_sense_key_key");
+    expect(sql).toContain("DROP INDEX IF EXISTS grammar_points_text_key");
+    expect(sql).not.toMatch(/DELETE FROM grammar_points\s/);
   });
 
-  it("seeds representative grammar points and two examples per point", () => {
+  it("moves six comparison cards and five error records out of knowledge taxonomy", () => {
     const sql = readSchemaSql();
-    const grammarBlock = extractBlock(
+    const comparisonBlock = extractBlock(
       sql,
-      "WITH grammar_seed",
-      ")\nINSERT INTO grammar_points"
+      "WITH comparison_seed",
+      "INSERT INTO comparison_sets"
     );
-    const activeCategoryBlock = extractBlock(
+    const errorBlock = extractBlock(sql, "WITH error_seed", "INSERT INTO error_types");
+    const comparisonSlugs = Array.from(
+      comparisonBlock.matchAll(/^\s*\('([^']+)',/gm),
+      (match) => match[1]
+    );
+    const errorCodes = Array.from(
+      errorBlock.matchAll(/^\s*\('([^']+)',/gm),
+      (match) => match[1]
+    );
+
+    expect(comparisonSlugs).toEqual([
+      "wa_vs_ga",
+      "ni_vs_de",
+      "conditional_forms",
+      "kara_vs_node",
+      "tame_ni_vs_you_ni",
+      "sou_da_vs_rashii",
+    ]);
+    expect(errorCodes).toEqual([
+      "connection_error",
+      "particle_error",
+      "tense_mismatch",
+      "register_mismatch",
+      "literal_translation",
+    ]);
+    expect(sql).toContain("THEN 'migrated'");
+  });
+
+  it("uses stable keys and conflict-safe associations for repeatable migrations", () => {
+    const sql = readSchemaSql();
+
+    expect(sql).toContain("ON CONFLICT (slug) DO UPDATE SET");
+    expect(sql).toContain("ON CONFLICT (seed_key) DO UPDATE SET");
+    expect(sql).toContain("ON CONFLICT (comparison_set_id, grammar_point_id) DO UPDATE SET");
+    expect(sql).toContain("ON CONFLICT (code) DO UPDATE SET");
+    expect(sql).toContain("PRIMARY KEY (grammar_point_id, taxonomy_node_id)");
+    expect(sql).toContain("BEGIN;");
+    expect(sql).toContain("COMMIT;");
+  });
+
+  it("reuses existing particles and collocations through taxonomy tags", () => {
+    const sql = readSchemaSql();
+    const secondaryTagBlock = extractBlock(
       sql,
-      "WITH active_category_slugs",
-      ")\nDELETE FROM grammar_categories"
+      "WITH secondary_tag_seed",
+      "INSERT INTO grammar_point_taxonomy_tags"
     );
-    const exampleBlock = extractBlock(
-      sql,
-      "WITH example_seed",
-      ")\nINSERT INTO example_sentences"
+
+    expect(secondaryTagBlock).toContain("('gp_wa', 'topic_contrast_particles')");
+    expect(secondaryTagBlock).toContain("('gp_ga', 'case_particles')");
+    expect(secondaryTagBlock).toContain("('gp_yo_ne', 'sentence_final_particles')");
+    expect(secondaryTagBlock).toContain("('gp_fuan_wo_idaku', 'noun_verb_collocations')");
+    expect(secondaryTagBlock).toContain("('gp_yoyaku_wo_toru', 'noun_verb_collocations')");
+  });
+
+  it("keeps all legacy seed records and their examples for ID compatibility", () => {
+    const sql = readSchemaSql();
+    const grammarBlock = extractBlock(sql, "WITH grammar_seed", ")\nINSERT INTO grammar_points");
+    const exampleBlock = extractBlock(sql, "WITH example_seed", ")\nINSERT INTO example_sentences");
+    const points = Array.from(
+      grammarBlock.matchAll(/^\s*\('([^']+)', '[^']+', '[^']+', '([^']+)',/gm),
+      (match) => ({ seedKey: match[1], categorySlug: match[2] })
     );
-    const activeCategorySlugs = Array.from(
-      activeCategoryBlock.matchAll(/\('([^']+)'\)/g)
-    ).map((match) => match[1]);
-    const pointCounts = new Map<string, number>();
     const exampleCounts = new Map<string, number>();
 
-    for (const line of grammarBlock.split("\n")) {
-      const match = line.match(/^\s*\('([^']+)', '[^']+', '[^']+', '([^']+)',/);
-      if (!match) {
-        continue;
-      }
-
-      const [, seedKey, categorySlug] = match;
-      pointCounts.set(categorySlug, (pointCounts.get(categorySlug) ?? 0) + 1);
-      expect(line).not.toContain("'[]'::jsonb");
-
-      if (!activeCategorySlugs.includes(categorySlug)) {
-        throw new Error(`Unexpected grammar category slug: ${categorySlug}`);
-      }
-
-      exampleCounts.set(seedKey, 0);
+    for (const point of points) {
+      exampleCounts.set(point.seedKey, 0);
+    }
+    for (const match of exampleBlock.matchAll(/^\s*\('([^']+)',/gm)) {
+      exampleCounts.set(match[1], (exampleCounts.get(match[1]) ?? 0) + 1);
     }
 
-    for (const line of exampleBlock.split("\n")) {
-      const match = line.match(/^\s*\('([^']+)',/);
-      if (!match) {
-        continue;
-      }
-
-      const seedKey = match[1];
-      exampleCounts.set(seedKey, (exampleCounts.get(seedKey) ?? 0) + 1);
-    }
-
-    for (const slug of EXPECTED_EXPRESSIVE_CATEGORY_SLUGS) {
-      expect(pointCounts.get(slug) ?? 0).toBeGreaterThanOrEqual(5);
-    }
-
-    expect(pointCounts.get("tense_and_negation") ?? 0).toBeGreaterThanOrEqual(4);
-    expect(pointCounts.get("progressive_state_experience_completion") ?? 0).toBeGreaterThanOrEqual(8);
-    expect(pointCounts.get("derived_forms_potential_passive_causative") ?? 0).toBeGreaterThanOrEqual(4);
-    expect(pointCounts.get("tense_errors") ?? 0).toBeGreaterThanOrEqual(1);
-
+    expect(points).toHaveLength(155);
+    expect(
+      points.filter((point) =>
+        LEGACY_COMPARISON_CATEGORY_SLUGS.includes(point.categorySlug)
+      )
+    ).toHaveLength(6);
+    expect(
+      points.filter((point) => LEGACY_ERROR_CATEGORY_SLUGS.includes(point.categorySlug))
+    ).toHaveLength(5);
     for (const [seedKey, count] of exampleCounts) {
       expect(count, seedKey).toBeGreaterThanOrEqual(2);
     }

@@ -19,6 +19,16 @@ import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const LEGACY_GROUP_DIMENSION_MAP: Record<string, string> = {
+  expressive_functions: "expression_function",
+  morphology_conjugation_tense_aspect: "form_tense_aspect",
+  sentence_structure_components: "sentence_structure",
+  particle_system: "particle_system",
+  register_honorific_social: "register_social",
+  discourse_connection_organization: "discourse_organization",
+  lexical_collocations_constructions: "collocation_construction",
+};
+
 function normalizeUserId(userId?: string) {
   const normalized = userId?.trim() || DEFAULT_GRAMMAR_USER_ID;
 
@@ -102,7 +112,20 @@ export class GrammarLearningService {
   ) {}
 
   async getTaxonomy(): Promise<GrammarTaxonomyResponse> {
-    const [categoryGroups, categories, sceneTags, registerTags] = await Promise.all([
+    const [
+      knowledgeDimensions,
+      taxonomyNodes,
+      comparisonSets,
+      errorTypes,
+      categoryGroups,
+      categories,
+      sceneTags,
+      registerTags,
+    ] = await Promise.all([
+      this.repository.listKnowledgeDimensions(),
+      this.repository.listTaxonomyNodes(),
+      this.repository.listComparisonSets(),
+      this.repository.listErrorTypes(),
       this.repository.listCategoryGroups(),
       this.repository.listCategories(),
       this.repository.listSceneTags(),
@@ -110,6 +133,10 @@ export class GrammarLearningService {
     ]);
 
     return {
+      knowledgeDimensions,
+      taxonomyNodes,
+      comparisonSets,
+      errorTypes,
       categoryGroups,
       categories,
       sceneTags,
@@ -121,14 +148,22 @@ export class GrammarLearningService {
     query?: string;
     categorySlug?: string;
     groupSlug?: string;
+    dimensionSlug?: string;
     limit?: unknown;
     userId?: string;
   }): Promise<GrammarSearchResponse> {
     const userId = normalizeUserId(options?.userId);
+    const requestedDimension = options?.dimensionSlug?.trim();
+    const legacyGroup = options?.groupSlug?.trim();
+    const dimensionSlug =
+      requestedDimension ||
+      (legacyGroup
+        ? LEGACY_GROUP_DIMENSION_MAP[legacyGroup] ?? legacyGroup
+        : undefined);
     const items = await this.repository.searchGrammarPoints({
       query: options?.query,
       categorySlug: options?.categorySlug,
-      groupSlug: options?.groupSlug,
+      dimensionSlug,
       limit: normalizeLimit(options?.limit),
       userId,
     });

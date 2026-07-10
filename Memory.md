@@ -13,6 +13,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - When the user asks a question in Chinese, first provide an English version of the question before answering in Chinese.
 - When pushing code to `origin`, automatically create a PR and merge it into `main` when repository permissions, branch protection, and checks allow it.
 - After completing a requested repo modification, default to committing the finished change, pushing a branch to `origin`, opening a PR to `main`, and merging it once repository permissions, branch protection, and checks allow it, unless the user asks not to commit, push, or merge.
+- Preserve unrelated user changes, and do not publish incomplete work or changes with failing required checks.
 
 ## Start Here
 
@@ -33,7 +34,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - The main UI is no longer a pure single lookup page. `app/page.tsx` is now a multi-view shell for dictionary lookup, overview, history, and collections.
 - Grammar learning functionality is active again. `app/grammar/page.tsx` is a grammar learning workbench, with detail, practice, favorites, and review pages under `/grammar`, `/practice`, `/favorites`, and `/review`.
 - Grammar learning uses `features/grammar-learning/` for service logic, AI/fallback practice generation, AI/fallback sentence feedback, and repository access. Route handlers should stay thin and call `GrammarLearningService`.
-- Grammar tables are created from `shared/db/sql/schema.sql` and seed 9 major grammar category groups, 56 MVP grammar subcategories, category example expressions, scene/register tags, 155 grammar points, examples, common mistakes, and similar grammar relations. Do not reintroduce the old `DROP TABLE IF EXISTS grammar_points` cleanup.
+- Grammar tables are created from `shared/db/sql/schema.sql` and seed 7 knowledge dimensions with 46 taxonomy nodes, 144 active learning units, 6 comparison sets, and 5 error types. Eleven legacy comparison/error `grammar_points` remain as migrated compatibility records, preserving their IDs and user references. Do not reintroduce destructive grammar-point cleanup.
 - The grammar MVP is single-user local-first. APIs default to user id `00000000-0000-0000-0000-000000000001` when no user id is supplied.
 - If Vercel AI Gateway credentials are missing, grammar practice generation and sentence feedback fall back to deterministic local feedback, including the hospital + polite `〜てもらえますか` acceptance flow.
 - Deployment access protection is app-level in `proxy.ts`: Basic Auth is enabled by `APP_BASIC_AUTH_PASSWORD`, and optional TOTP 2FA is enabled by `APP_TWO_FACTOR_TOTP_SECRET`.

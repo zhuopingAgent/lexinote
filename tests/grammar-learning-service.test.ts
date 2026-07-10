@@ -10,6 +10,35 @@ const DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001";
 const grammarPoint: GrammarPointDetail = {
   id: GRAMMAR_POINT_ID,
   grammarPoint: "〜てもらえますか",
+  pointType: "grammar_pattern",
+  canonicalForm: "〜てもらえますか",
+  senseKey: "gp_te_moraemasu_ka",
+  formGroupSlug: "te_morau",
+  status: "active",
+  primaryCategory: {
+    id: "22222222-2222-4222-8222-222222222222",
+    slug: "requests_permission_advice",
+    dimensionId: "12121212-1212-4212-8212-121212121212",
+    dimensionSlug: "expression_function",
+    dimensionNameZh: "表达功能",
+    dimensionNameEn: "Expression function",
+    nameZh: "请求、许可与建议",
+    nameEn: "Requests, permission, and advice",
+    displayOrder: 7,
+  },
+  taxonomyTags: [
+    {
+      id: "22222222-2222-4222-8222-222222222222",
+      slug: "requests_permission_advice",
+      dimensionId: "12121212-1212-4212-8212-121212121212",
+      dimensionSlug: "expression_function",
+      dimensionNameZh: "表达功能",
+      dimensionNameEn: "Expression function",
+      nameZh: "请求、许可与建议",
+      nameEn: "Requests, permission, and advice",
+      displayOrder: 7,
+    },
+  ],
   reading: "〜てもらえますか",
   categoryId: "22222222-2222-4222-8222-222222222222",
   categorySlug: "requests_permission_advice",
@@ -144,6 +173,17 @@ const tenseGrammarPoint: GrammarPointDetail = {
   ...grammarPoint,
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   grammarPoint: "时态错误",
+  canonicalForm: "时态错误",
+  senseKey: "gp_tense_error_past",
+  formGroupSlug: null,
+  status: "migrated",
+  primaryCategory: null,
+  taxonomyTags: [],
+  migrationTarget: {
+    kind: "error_type",
+    slug: "tense_mismatch",
+    nameZh: "时态错误",
+  },
   reading: "时态错误",
   categorySlug: "tense_errors",
   categoryNameZh: "时态错误",
@@ -185,6 +225,10 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
   };
 
   return {
+    listKnowledgeDimensions: vi.fn().mockResolvedValue([]),
+    listTaxonomyNodes: vi.fn().mockResolvedValue([]),
+    listComparisonSets: vi.fn().mockResolvedValue([]),
+    listErrorTypes: vi.fn().mockResolvedValue([]),
     listCategoryGroups: vi.fn(),
     listCategories: vi.fn(),
     listSceneTags: vi.fn(),
@@ -231,6 +275,119 @@ describe("GrammarLearningService", () => {
 
     return JSON.parse(String(lastCall?.[1]?.body)) as Record<string, unknown>;
   }
+
+  it("returns seven knowledge dimensions separately from comparisons and errors", async () => {
+    const repository = createRepositoryMock();
+    repository.listKnowledgeDimensions.mockResolvedValue(
+      [
+        "expression_function",
+        "form_tense_aspect",
+        "sentence_structure",
+        "particle_system",
+        "register_social",
+        "discourse_organization",
+        "collocation_construction",
+      ].map((slug, index) => ({
+        id: `${index}`,
+        slug,
+        nameZh: `维度 ${index + 1}`,
+        nameEn: `Dimension ${index + 1}`,
+        description: "",
+        displayOrder: index + 1,
+        status: "active",
+      }))
+    );
+    repository.listComparisonSets.mockResolvedValue([
+      {
+        id: "comparison",
+        slug: "wa_vs_ga",
+        nameZh: "は与が",
+        summary: "",
+        status: "active",
+        members: [],
+      },
+    ]);
+    repository.listErrorTypes.mockResolvedValue([
+      {
+        id: "error",
+        code: "particle_error",
+        nameZh: "助词错误",
+        description: "",
+        defaultSeverity: "high",
+        status: "active",
+      },
+    ]);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.getTaxonomy();
+
+    expect(result.knowledgeDimensions).toHaveLength(7);
+    expect(result.knowledgeDimensions.map((item) => item.slug)).not.toContain(
+      "confusing_grammar_contrasts"
+    );
+    expect(result.comparisonSets).toHaveLength(1);
+    expect(result.errorTypes).toHaveLength(1);
+  });
+
+  it("maps legacy category groups to the new dimension filter with AND semantics", async () => {
+    const repository = createRepositoryMock(genericGrammarPoint);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    await service.searchGrammarPoints({
+      query: "うちに",
+      categorySlug: "time_and_sequence",
+      groupSlug: "expressive_functions",
+      limit: 12,
+    });
+
+    expect(repository.searchGrammarPoints).toHaveBeenCalledWith({
+      query: "うちに",
+      categorySlug: "time_and_sequence",
+      dimensionSlug: "expression_function",
+      limit: 12,
+      userId: DEFAULT_USER_ID,
+    });
+  });
+
+  it("keeps migrated grammar point IDs readable for favorites and review", async () => {
+    const repository = createRepositoryMock(tenseGrammarPoint);
+    repository.listFavorites.mockResolvedValue([tenseGrammarPoint]);
+    repository.listReviewItems.mockResolvedValue([
+      {
+        reviewRecordId: "review-1",
+        grammarPoint: tenseGrammarPoint,
+        status: "learning",
+        mistakeCount: 1,
+        nextReviewAt: null,
+        lastReviewedAt: null,
+        mistakeTypes: ["tense_mismatch"],
+      },
+    ]);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    await service.addFavorite({ grammarPointId: tenseGrammarPoint.id });
+    const favorites = await service.listFavorites();
+    const review = await service.listReviewItems();
+
+    expect(repository.addFavorite).toHaveBeenCalledWith(
+      DEFAULT_USER_ID,
+      tenseGrammarPoint.id
+    );
+    expect(favorites.items[0]).toMatchObject({
+      id: tenseGrammarPoint.id,
+      status: "migrated",
+    });
+    expect(review.items[0].grammarPoint.id).toBe(tenseGrammarPoint.id);
+  });
 
   it("generates the hospital polite practice fallback for 〜てもらえますか", async () => {
     const repository = createRepositoryMock();

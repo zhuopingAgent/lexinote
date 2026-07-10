@@ -32,61 +32,70 @@ describe("grammar API routes", () => {
     getProgressMock.mockReset();
   });
 
-  it("returns the 9-major-group taxonomy with Chinese labels and examples", async () => {
-    const categoryGroups = Array.from({ length: 9 }, (_, index) => ({
+  it("returns seven knowledge dimensions with comparisons and errors separated", async () => {
+    const knowledgeDimensions = [
+      ["expression_function", "表达功能"],
+      ["form_tense_aspect", "形态、活用与时间体"],
+      ["sentence_structure", "句子结构与成分"],
+      ["particle_system", "助词系统"],
+      ["register_social", "语体、敬语与社会关系"],
+      ["discourse_organization", "连接与篇章组织"],
+      ["collocation_construction", "词汇搭配与构式"],
+    ].map(([slug, nameZh], index) => ({
       id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`,
-      slug:
-        index === 1
-          ? "morphology_conjugation_tense_aspect"
-          : index === 0
-            ? "expressive_functions"
-            : `group_${index + 1}`,
-      nameZh:
-        index === 1
-          ? "形态、活用与时间体系统"
-          : index === 0
-            ? "表达功能"
-            : `大类 ${index + 1}`,
-      nameEn:
-        index === 1
-          ? "Morphology, conjugation, tense, and aspect"
-          : index === 0
-            ? "Expressive functions"
-            : `Group ${index + 1}`,
-      description: index === 1 ? "系统学习词形变化、时态、否定、持续、完成和派生形。" : "大类说明。",
-      priority: index + 1,
-      isMvp: true,
+      slug,
+      nameZh,
+      nameEn: `Dimension ${index + 1}`,
+      description: "知识维度说明。",
+      displayOrder: index + 1,
+      status: "active",
     }));
-    const categories = Array.from({ length: 56 }, (_, index) => ({
+    const taxonomyNodes = Array.from({ length: 46 }, (_, index) => ({
       id: `22222222-2222-4222-8222-${String(index + 1).padStart(12, "0")}`,
-      slug:
-        index === 0
-          ? "basic_sentence_patterns"
-          : index === 18
-            ? "tense_and_negation"
-            : `category_${index + 1}`,
-      groupSlug: index < 18 ? "expressive_functions" : "morphology_conjugation_tense_aspect",
-      groupNameZh: index < 18 ? "表达功能" : "形态、活用与时间体系统",
-      nameZh:
-        index === 0 ? "基础句型" : index === 18 ? "时态与否定" : `分类 ${index + 1}`,
-      nameEn:
-        index === 0
-          ? "Basic sentence patterns"
-          : index === 18
-            ? "Tense and negation"
-            : `Category ${index + 1}`,
-      description:
-        index === 0
-          ? "用于构建最基本的日语句子。"
-          : index === 18
-            ? "非过去、过去、否定、过去否定及礼貌体对应关系。"
-            : "分类说明。",
+      slug: index === 0 ? "basic_sentence_patterns" : `node_${index + 1}`,
+      dimensionId: knowledgeDimensions[index < 18 ? 0 : 1].id,
+      dimensionSlug: index < 18 ? "expression_function" : "form_tense_aspect",
+      dimensionNameZh: index < 18 ? "表达功能" : "形态、活用与时间体",
+      dimensionNameEn: `Dimension ${index < 18 ? 1 : 2}`,
+      nameZh: index === 0 ? "基础句型" : `分类 ${index + 1}`,
+      nameEn: index === 0 ? "Basic sentence patterns" : `Node ${index + 1}`,
+      description: "分类说明。",
       exampleExpressions: index === 0 ? ["AはBです", "Aがあります / います"] : [],
+      displayOrder: index + 1,
+      status: "active",
+    }));
+    const categories = taxonomyNodes.slice(0, 18).map((node, index) => ({
+      id: node.id,
+      slug: node.slug,
+      groupSlug: "expressive_functions",
+      groupNameZh: "表达功能",
+      nameZh: node.nameZh,
+      nameEn: node.nameEn,
+      description: node.description,
+      exampleExpressions: node.exampleExpressions,
       priority: index + 1,
       isMvp: true,
     }));
     getTaxonomyMock.mockResolvedValue({
-      categoryGroups,
+      knowledgeDimensions,
+      taxonomyNodes,
+      comparisonSets: Array.from({ length: 6 }, (_, index) => ({
+        id: `33333333-3333-4333-8333-${String(index + 1).padStart(12, "0")}`,
+        slug: `comparison_${index + 1}`,
+        nameZh: `对比 ${index + 1}`,
+        summary: "对比说明。",
+        status: "active",
+        members: [],
+      })),
+      errorTypes: Array.from({ length: 5 }, (_, index) => ({
+        id: `44444444-4444-4444-8444-${String(index + 1).padStart(12, "0")}`,
+        code: `error_${index + 1}`,
+        nameZh: `错误 ${index + 1}`,
+        description: "错误说明。",
+        defaultSeverity: "medium",
+        status: "active",
+      })),
+      categoryGroups: [],
       categories,
       sceneTags: [{ nameEn: "daily_life", nameZh: "日常生活" }],
       registerTags: [{ nameEn: "polite", nameZh: "一般礼貌" }],
@@ -97,12 +106,21 @@ describe("grammar API routes", () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.categoryGroups).toHaveLength(9);
-    expect(body.categoryGroups[1]).toMatchObject({
-      slug: "morphology_conjugation_tense_aspect",
-      nameZh: "形态、活用与时间体系统",
+    expect(body.knowledgeDimensions).toHaveLength(7);
+    expect(body.knowledgeDimensions[1]).toMatchObject({
+      slug: "form_tense_aspect",
+      nameZh: "形态、活用与时间体",
     });
-    expect(body.categories).toHaveLength(56);
+    expect(body.knowledgeDimensions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "confusing_grammar_contrasts" }),
+        expect.objectContaining({ slug: "error_diagnosis_correction" }),
+      ])
+    );
+    expect(body.taxonomyNodes).toHaveLength(46);
+    expect(body.comparisonSets).toHaveLength(6);
+    expect(body.errorTypes).toHaveLength(5);
+    expect(body.categories).toHaveLength(18);
     expect(body.categories[0]).toMatchObject({
       slug: "basic_sentence_patterns",
       groupSlug: "expressive_functions",
@@ -111,7 +129,7 @@ describe("grammar API routes", () => {
     });
   });
 
-  it("forwards grammar list search with group and category filtering", async () => {
+  it("keeps legacy group and category filters compatible", async () => {
     searchGrammarPointsMock.mockResolvedValue({
       items: [
         {
@@ -158,6 +176,7 @@ describe("grammar API routes", () => {
       query: "うちに",
       categorySlug: "time_and_sequence",
       groupSlug: "expressive_functions",
+      dimensionSlug: undefined,
       limit: "12",
       userId: undefined,
     });

@@ -8,6 +8,20 @@ export type Practicality = "S" | "A" | "B" | "C" | "D";
 
 export type SpokenOrWritten = "spoken" | "written" | "both";
 
+export type GrammarPointType =
+  | "grammar_pattern"
+  | "conjugation"
+  | "sentence_pattern"
+  | "syntax_concept"
+  | "particle"
+  | "collocation"
+  | "register_concept"
+  | "discourse_marker";
+
+export type GrammarPointStatus = "active" | "migrated" | "hidden" | "deprecated";
+
+export type TaxonomyStatus = "active" | "hidden" | "deprecated";
+
 export type GrammarSceneTag =
   | "restaurant"
   | "shopping"
@@ -73,9 +87,88 @@ export type GrammarCategory = {
   isMvp: boolean;
 };
 
+export type KnowledgeDimension = {
+  id: string;
+  slug: string;
+  nameZh: string;
+  nameEn: string;
+  description: string;
+  displayOrder: number;
+  status: TaxonomyStatus;
+};
+
+export type TaxonomyNode = {
+  id: string;
+  slug: string;
+  dimensionId: string;
+  dimensionSlug: string;
+  dimensionNameZh: string;
+  dimensionNameEn: string;
+  nameZh: string;
+  nameEn: string;
+  description: string;
+  exampleExpressions: string[];
+  displayOrder: number;
+  status: TaxonomyStatus;
+};
+
+export type GrammarTaxonomyTag = Pick<
+  TaxonomyNode,
+  | "id"
+  | "slug"
+  | "dimensionId"
+  | "dimensionSlug"
+  | "dimensionNameZh"
+  | "dimensionNameEn"
+  | "nameZh"
+  | "nameEn"
+  | "displayOrder"
+>;
+
+export type ComparisonSetMember = {
+  grammarPointId: string;
+  grammarPoint: string;
+  canonicalForm: string;
+  senseKey: string;
+  sortOrder: number;
+};
+
+export type ComparisonSet = {
+  id: string;
+  slug: string;
+  nameZh: string;
+  summary: string;
+  status: TaxonomyStatus;
+  members: ComparisonSetMember[];
+};
+
+export type GrammarErrorType = {
+  id: string;
+  code: string;
+  nameZh: string;
+  description: string;
+  parentId?: string | null;
+  defaultSeverity: "low" | "medium" | "high" | "critical";
+  status: TaxonomyStatus;
+};
+
+export type GrammarMigrationTarget = {
+  kind: "comparison_set" | "error_type";
+  slug: string;
+  nameZh: string;
+};
+
 export type GrammarPointSummary = {
   id: string;
   grammarPoint: string;
+  pointType: GrammarPointType;
+  canonicalForm: string;
+  senseKey: string;
+  formGroupSlug?: string | null;
+  status: GrammarPointStatus;
+  primaryCategory: GrammarTaxonomyTag | null;
+  taxonomyTags: GrammarTaxonomyTag[];
+  migrationTarget?: GrammarMigrationTarget | null;
   reading?: string | null;
   categoryId: string | null;
   categorySlug?: string | null;
@@ -134,6 +227,10 @@ export type GrammarDetailResponse = {
 };
 
 export type GrammarTaxonomyResponse = {
+  knowledgeDimensions: KnowledgeDimension[];
+  taxonomyNodes: TaxonomyNode[];
+  comparisonSets: ComparisonSet[];
+  errorTypes: GrammarErrorType[];
   categoryGroups: GrammarCategoryGroup[];
   categories: GrammarCategory[];
   sceneTags: GrammarTag[];

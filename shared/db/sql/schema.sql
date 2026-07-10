@@ -284,6 +284,34 @@ ALTER TABLE grammar_categories
   ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES grammar_category_groups(id),
   ADD COLUMN IF NOT EXISTS example_expressions JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+CREATE TABLE IF NOT EXISTS taxonomy_dimensions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  name_en TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  legacy_group_id UUID UNIQUE REFERENCES grammar_category_groups(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS taxonomy_nodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  dimension_id UUID NOT NULL REFERENCES taxonomy_dimensions(id),
+  name_zh TEXT NOT NULL,
+  name_en TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  example_expressions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  legacy_category_id UUID UNIQUE REFERENCES grammar_categories(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS scene_tags (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name_en TEXT UNIQUE NOT NULL,
@@ -308,6 +336,12 @@ CREATE TABLE IF NOT EXISTS grammar_points (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   seed_key TEXT NOT NULL UNIQUE,
   grammar_point TEXT NOT NULL,
+  point_type TEXT NOT NULL DEFAULT 'grammar_pattern',
+  canonical_form TEXT,
+  sense_key TEXT,
+  form_group_slug TEXT,
+  primary_taxonomy_node_id UUID REFERENCES taxonomy_nodes(id),
+  status TEXT NOT NULL DEFAULT 'active',
   reading TEXT,
   category_id UUID REFERENCES grammar_categories(id),
   sub_category TEXT,
@@ -326,6 +360,12 @@ CREATE TABLE IF NOT EXISTS grammar_points (
 
 ALTER TABLE grammar_points
   ADD COLUMN IF NOT EXISTS seed_key TEXT,
+  ADD COLUMN IF NOT EXISTS point_type TEXT NOT NULL DEFAULT 'grammar_pattern',
+  ADD COLUMN IF NOT EXISTS canonical_form TEXT,
+  ADD COLUMN IF NOT EXISTS sense_key TEXT,
+  ADD COLUMN IF NOT EXISTS form_group_slug TEXT,
+  ADD COLUMN IF NOT EXISTS primary_taxonomy_node_id UUID REFERENCES taxonomy_nodes(id),
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS reading TEXT,
   ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES grammar_categories(id),
   ADD COLUMN IF NOT EXISTS sub_category TEXT,
@@ -344,8 +384,45 @@ ALTER TABLE grammar_points
 CREATE UNIQUE INDEX IF NOT EXISTS grammar_points_seed_key_key
   ON grammar_points (seed_key);
 
-CREATE UNIQUE INDEX IF NOT EXISTS grammar_points_text_key
-  ON grammar_points (grammar_point);
+DROP INDEX IF EXISTS grammar_points_text_key;
+
+CREATE TABLE IF NOT EXISTS grammar_point_taxonomy_tags (
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (grammar_point_id, taxonomy_node_id)
+);
+
+CREATE TABLE IF NOT EXISTS comparison_sets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  legacy_grammar_point_id UUID UNIQUE REFERENCES grammar_points(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS comparison_set_members (
+  comparison_set_id UUID NOT NULL REFERENCES comparison_sets(id) ON DELETE CASCADE,
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (comparison_set_id, grammar_point_id)
+);
+
+CREATE TABLE IF NOT EXISTS error_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  parent_id UUID REFERENCES error_types(id) ON DELETE SET NULL,
+  default_severity TEXT NOT NULL DEFAULT 'medium' CHECK (default_severity IN ('low', 'medium', 'high', 'critical')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  legacy_grammar_point_id UUID UNIQUE REFERENCES grammar_points(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS grammar_point_scene_tags (
   grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE CASCADE,
@@ -454,6 +531,21 @@ CREATE INDEX IF NOT EXISTS idx_grammar_points_category
 
 CREATE INDEX IF NOT EXISTS idx_grammar_categories_group
   ON grammar_categories (group_id, priority, name_zh);
+
+CREATE INDEX IF NOT EXISTS idx_taxonomy_nodes_dimension
+  ON taxonomy_nodes (dimension_id, display_order, name_zh);
+
+CREATE INDEX IF NOT EXISTS idx_grammar_points_primary_taxonomy
+  ON grammar_points (primary_taxonomy_node_id, status, practicality, grammar_point);
+
+CREATE INDEX IF NOT EXISTS idx_grammar_point_taxonomy_tags_node
+  ON grammar_point_taxonomy_tags (taxonomy_node_id, grammar_point_id);
+
+CREATE INDEX IF NOT EXISTS idx_comparison_set_members_point
+  ON comparison_set_members (grammar_point_id, comparison_set_id);
+
+CREATE INDEX IF NOT EXISTS idx_error_types_parent
+  ON error_types (parent_id, code);
 
 CREATE INDEX IF NOT EXISTS idx_examples_grammar_point_id
   ON example_sentences (grammar_point_id);
@@ -608,6 +700,96 @@ ON CONFLICT (slug) DO UPDATE SET
   example_expressions = EXCLUDED.example_expressions,
   priority = EXCLUDED.priority,
   is_mvp = EXCLUDED.is_mvp,
+  updated_at = NOW();
+
+BEGIN;
+
+WITH dimension_seed(slug, name_zh, name_en, description, display_order, legacy_group_slug) AS (
+  VALUES
+    ('expression_function', '表达功能', 'Expression function', '按真实沟通意图组织语法知识。', 1, 'expressive_functions'),
+    ('form_tense_aspect', '形态、活用与时间体', 'Form, tense, and aspect', '组织词形变化、时态、否定、体和派生形。', 2, 'morphology_conjugation_tense_aspect'),
+    ('sentence_structure', '句子结构与成分', 'Sentence structure', '组织主题、谓语、修饰、从句、省略和语序。', 3, 'sentence_structure_components'),
+    ('particle_system', '助词系统', 'Particle system', '组织格关系、主题、限定、句末语气和复合助词。', 4, 'particle_system'),
+    ('register_social', '语体、敬语与社会关系', 'Register and social relations', '组织普通体、礼貌体、敬语以及内外和上下关系。', 5, 'register_honorific_social'),
+    ('discourse_organization', '连接与篇章组织', 'Discourse organization', '组织句子连接、段落推进、总结与话题转换。', 6, 'discourse_connection_organization'),
+    ('collocation_construction', '词汇搭配与构式', 'Collocation and construction', '组织高频搭配、固定构式和场景表达块。', 7, 'lexical_collocations_constructions')
+)
+INSERT INTO taxonomy_dimensions (
+  slug,
+  name_zh,
+  name_en,
+  description,
+  display_order,
+  status,
+  legacy_group_id
+)
+SELECT
+  dimension_seed.slug,
+  dimension_seed.name_zh,
+  dimension_seed.name_en,
+  dimension_seed.description,
+  dimension_seed.display_order,
+  'active',
+  grammar_category_groups.id
+FROM dimension_seed
+JOIN grammar_category_groups
+  ON grammar_category_groups.slug = dimension_seed.legacy_group_slug
+ON CONFLICT (slug) DO UPDATE SET
+  name_zh = EXCLUDED.name_zh,
+  name_en = EXCLUDED.name_en,
+  description = EXCLUDED.description,
+  display_order = EXCLUDED.display_order,
+  status = EXCLUDED.status,
+  legacy_group_id = EXCLUDED.legacy_group_id,
+  updated_at = NOW();
+
+WITH dimension_map(legacy_group_slug, dimension_slug) AS (
+  VALUES
+    ('expressive_functions', 'expression_function'),
+    ('morphology_conjugation_tense_aspect', 'form_tense_aspect'),
+    ('sentence_structure_components', 'sentence_structure'),
+    ('particle_system', 'particle_system'),
+    ('register_honorific_social', 'register_social'),
+    ('discourse_connection_organization', 'discourse_organization'),
+    ('lexical_collocations_constructions', 'collocation_construction')
+)
+INSERT INTO taxonomy_nodes (
+  slug,
+  dimension_id,
+  name_zh,
+  name_en,
+  description,
+  example_expressions,
+  display_order,
+  status,
+  legacy_category_id
+)
+SELECT
+  grammar_categories.slug,
+  taxonomy_dimensions.id,
+  grammar_categories.name_zh,
+  grammar_categories.name_en,
+  grammar_categories.description,
+  grammar_categories.example_expressions,
+  grammar_categories.priority,
+  'active',
+  grammar_categories.id
+FROM grammar_categories
+JOIN grammar_category_groups
+  ON grammar_category_groups.id = grammar_categories.group_id
+JOIN dimension_map
+  ON dimension_map.legacy_group_slug = grammar_category_groups.slug
+JOIN taxonomy_dimensions
+  ON taxonomy_dimensions.slug = dimension_map.dimension_slug
+ON CONFLICT (slug) DO UPDATE SET
+  dimension_id = EXCLUDED.dimension_id,
+  name_zh = EXCLUDED.name_zh,
+  name_en = EXCLUDED.name_en,
+  description = EXCLUDED.description,
+  example_expressions = EXCLUDED.example_expressions,
+  display_order = EXCLUDED.display_order,
+  status = EXCLUDED.status,
+  legacy_category_id = EXCLUDED.legacy_category_id,
   updated_at = NOW();
 
 WITH active_grammar_seed(seed_key) AS (
@@ -768,7 +950,9 @@ WITH active_grammar_seed(seed_key) AS (
   ('gp_register_mismatch_error'),
   ('gp_literal_translation_error')
 )
-DELETE FROM grammar_points
+UPDATE grammar_points
+SET status = 'deprecated',
+    updated_at = NOW()
 WHERE is_mvp = TRUE
   AND seed_key IS NOT NULL
   AND seed_key NOT IN (SELECT seed_key FROM active_grammar_seed);
@@ -977,6 +1161,12 @@ WITH grammar_seed(seed_key, grammar_point, reading, category_slug, sub_category,
 INSERT INTO grammar_points (
   seed_key,
   grammar_point,
+  point_type,
+  canonical_form,
+  sense_key,
+  form_group_slug,
+  primary_taxonomy_node_id,
+  status,
   reading,
   category_id,
   sub_category,
@@ -993,6 +1183,19 @@ INSERT INTO grammar_points (
 SELECT
   grammar_seed.seed_key,
   grammar_seed.grammar_point,
+  'grammar_pattern',
+  grammar_seed.grammar_point,
+  grammar_seed.seed_key,
+  NULL,
+  taxonomy_nodes.id,
+  CASE
+    WHEN grammar_category_groups.slug IN (
+      'confusing_grammar_contrasts',
+      'error_diagnosis_correction'
+    ) THEN 'migrated'
+    WHEN taxonomy_nodes.id IS NOT NULL THEN 'active'
+    ELSE 'deprecated'
+  END,
   grammar_seed.reading,
   grammar_categories.id,
   grammar_seed.sub_category,
@@ -1007,8 +1210,16 @@ SELECT
   TRUE
 FROM grammar_seed
 JOIN grammar_categories ON grammar_categories.slug = grammar_seed.category_slug
+JOIN grammar_category_groups
+  ON grammar_category_groups.id = grammar_categories.group_id
+LEFT JOIN taxonomy_nodes
+  ON taxonomy_nodes.legacy_category_id = grammar_categories.id
 ON CONFLICT (seed_key) DO UPDATE SET
   grammar_point = EXCLUDED.grammar_point,
+  canonical_form = EXCLUDED.canonical_form,
+  sense_key = EXCLUDED.sense_key,
+  primary_taxonomy_node_id = EXCLUDED.primary_taxonomy_node_id,
+  status = EXCLUDED.status,
   reading = EXCLUDED.reading,
   category_id = EXCLUDED.category_id,
   sub_category = EXCLUDED.sub_category,
@@ -1022,6 +1233,321 @@ ON CONFLICT (seed_key) DO UPDATE SET
   common_mistakes = EXCLUDED.common_mistakes,
   is_mvp = EXCLUDED.is_mvp,
   updated_at = NOW();
+
+UPDATE grammar_points AS gp
+SET
+  canonical_form = gp.grammar_point,
+  sense_key = COALESCE(NULLIF(gp.seed_key, ''), 'legacy:' || gp.id::text),
+  form_group_slug = CASE
+    WHEN gp.seed_key IN ('gp_a_ni_narimasu', 'gp_ninaru_change') THEN 'ni_naru'
+    WHEN gp.seed_key IN ('gp_a_ni_shimasu', 'gp_nisuru_change') THEN 'ni_suru'
+    WHEN gp.seed_key IN ('gp_ga', 'gp_ga_contrast') THEN 'ga'
+    WHEN gp.seed_key IN ('gp_tame', 'gp_tame_ni') THEN 'tame'
+    WHEN gp.seed_key IN ('gp_te_morau', 'gp_te_moraemasu_ka') THEN 'te_morau'
+    WHEN gp.seed_key IN ('gp_sou_da', 'gp_inference_contrast') THEN 'sou_da'
+    ELSE gp.form_group_slug
+  END,
+  point_type = CASE
+    WHEN gp.seed_key IN (
+      'gp_wa',
+      'gp_ga',
+      'gp_wo',
+      'gp_ni',
+      'gp_de',
+      'gp_yori_comparison',
+      'gp_hodo',
+      'gp_kurai',
+      'gp_dake',
+      'gp_shika_nai',
+      'gp_ga_contrast',
+      'gp_kana',
+      'gp_yo_ne',
+      'gp_mo_particle',
+      'gp_koso_particle',
+      'gp_sae_particle',
+      'gp_bakari',
+      'gp_ni_tsuite',
+      'gp_ni_yoru_to',
+      'gp_ni_taishite',
+      'gp_toshite_particle'
+    ) THEN 'particle'
+    WHEN gc.slug = 'basic_sentence_patterns' THEN 'sentence_pattern'
+    WHEN gc.slug IN (
+      'particles_and_relations',
+      'case_particles',
+      'topic_contrast_particles',
+      'adverbial_particles',
+      'sentence_final_particles',
+      'compound_particles'
+    ) THEN 'particle'
+    WHEN gc.slug IN (
+      'verb_conjugation_basics',
+      'adjective_noun_conjugation',
+      'tense_and_negation',
+      'derived_forms_potential_passive_causative'
+    ) THEN 'conjugation'
+    WHEN gc.slug IN (
+      'topic_subject_predicate',
+      'noun_modifying_clauses',
+      'main_subordinate_clauses',
+      'ellipsis_context',
+      'word_order_focus',
+      'modification_connection_nominalization'
+    ) THEN 'syntax_concept'
+    WHEN gc.slug IN (
+      'plain_polite_register',
+      'casual_spoken_register',
+      'honorific_humble_language',
+      'social_in_out_relationships'
+    ) THEN 'register_concept'
+    WHEN gc.slug IN (
+      'sequence_connectors',
+      'contrast_connectors',
+      'cause_result_connectors',
+      'example_summary_topic_shift'
+    ) THEN 'discourse_marker'
+    WHEN gc.slug IN (
+      'collocations_and_idioms',
+      'noun_verb_collocations',
+      'noun_adjective_collocations',
+      'adverb_predicate_collocations',
+      'formulaic_scene_expressions'
+    ) THEN 'collocation'
+    WHEN cgrp.slug IN ('confusing_grammar_contrasts', 'error_diagnosis_correction')
+      THEN 'syntax_concept'
+    ELSE 'grammar_pattern'
+  END,
+  primary_taxonomy_node_id = tn.id,
+  status = CASE
+    WHEN cgrp.slug IN ('confusing_grammar_contrasts', 'error_diagnosis_correction')
+      THEN 'migrated'
+    WHEN tn.id IS NOT NULL THEN 'active'
+    ELSE 'deprecated'
+  END,
+  updated_at = NOW()
+FROM grammar_categories AS gc
+JOIN grammar_category_groups AS cgrp ON cgrp.id = gc.group_id
+LEFT JOIN taxonomy_nodes AS tn ON tn.legacy_category_id = gc.id
+WHERE gp.category_id = gc.id;
+
+UPDATE grammar_points
+SET
+  canonical_form = grammar_point,
+  sense_key = COALESCE(NULLIF(seed_key, ''), 'legacy:' || id::text),
+  status = CASE
+    WHEN primary_taxonomy_node_id IS NULL THEN 'deprecated'
+    ELSE status
+  END,
+  updated_at = NOW()
+WHERE canonical_form IS NULL
+   OR sense_key IS NULL
+   OR (status = 'active' AND primary_taxonomy_node_id IS NULL);
+
+ALTER TABLE grammar_points
+  ALTER COLUMN canonical_form SET NOT NULL,
+  ALTER COLUMN sense_key SET NOT NULL,
+  ALTER COLUMN point_type SET NOT NULL,
+  ALTER COLUMN status SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS grammar_points_sense_key_key
+  ON grammar_points (sense_key);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'grammar_points_point_type_check'
+  ) THEN
+    ALTER TABLE grammar_points
+      ADD CONSTRAINT grammar_points_point_type_check CHECK (
+        point_type IN (
+          'grammar_pattern',
+          'conjugation',
+          'sentence_pattern',
+          'syntax_concept',
+          'particle',
+          'collocation',
+          'register_concept',
+          'discourse_marker'
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'grammar_points_status_check'
+  ) THEN
+    ALTER TABLE grammar_points
+      ADD CONSTRAINT grammar_points_status_check CHECK (
+        status IN ('active', 'migrated', 'hidden', 'deprecated')
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'grammar_points_active_primary_check'
+  ) THEN
+    ALTER TABLE grammar_points
+      ADD CONSTRAINT grammar_points_active_primary_check CHECK (
+        status <> 'active' OR primary_taxonomy_node_id IS NOT NULL
+      );
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION sync_grammar_point_legacy_category()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.primary_taxonomy_node_id IS NOT NULL THEN
+    SELECT legacy_category_id
+    INTO NEW.category_id
+    FROM taxonomy_nodes
+    WHERE id = NEW.primary_taxonomy_node_id;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS grammar_points_sync_legacy_category ON grammar_points;
+
+CREATE TRIGGER grammar_points_sync_legacy_category
+BEFORE INSERT OR UPDATE OF primary_taxonomy_node_id, category_id ON grammar_points
+FOR EACH ROW
+EXECUTE FUNCTION sync_grammar_point_legacy_category();
+
+DELETE FROM grammar_point_taxonomy_tags
+USING grammar_points
+WHERE grammar_point_taxonomy_tags.grammar_point_id = grammar_points.id
+  AND grammar_points.is_mvp = TRUE;
+
+INSERT INTO grammar_point_taxonomy_tags (grammar_point_id, taxonomy_node_id)
+SELECT id, primary_taxonomy_node_id
+FROM grammar_points
+WHERE status = 'active'
+  AND primary_taxonomy_node_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+WITH secondary_tag_seed(seed_key, taxonomy_node_slug) AS (
+  VALUES
+    ('gp_wa', 'topic_contrast_particles'),
+    ('gp_ga', 'case_particles'),
+    ('gp_wo', 'case_particles'),
+    ('gp_ni', 'case_particles'),
+    ('gp_de', 'case_particles'),
+    ('gp_yori_comparison', 'case_particles'),
+    ('gp_hodo', 'adverbial_particles'),
+    ('gp_kurai', 'adverbial_particles'),
+    ('gp_dake', 'adverbial_particles'),
+    ('gp_shika_nai', 'adverbial_particles'),
+    ('gp_sae_particle', 'adverbial_particles'),
+    ('gp_bakari', 'adverbial_particles'),
+    ('gp_kana', 'sentence_final_particles'),
+    ('gp_yo_ne', 'sentence_final_particles'),
+    ('gp_ni_tsuite', 'compound_particles'),
+    ('gp_ni_yoru_to', 'compound_particles'),
+    ('gp_ni_taishite', 'compound_particles'),
+    ('gp_toshite_particle', 'compound_particles'),
+    ('gp_fuan_wo_idaku', 'noun_verb_collocations'),
+    ('gp_gimon_wo_motsu', 'noun_verb_collocations'),
+    ('gp_eikyo_wo_ukeru', 'noun_verb_collocations'),
+    ('gp_meiwaku_wo_kakeru', 'noun_verb_collocations'),
+    ('gp_yoyaku_wo_toru', 'noun_verb_collocations')
+)
+INSERT INTO grammar_point_taxonomy_tags (grammar_point_id, taxonomy_node_id)
+SELECT grammar_points.id, taxonomy_nodes.id
+FROM secondary_tag_seed
+JOIN grammar_points ON grammar_points.seed_key = secondary_tag_seed.seed_key
+JOIN taxonomy_nodes ON taxonomy_nodes.slug = secondary_tag_seed.taxonomy_node_slug
+WHERE grammar_points.status = 'active'
+ON CONFLICT DO NOTHING;
+
+WITH comparison_seed(slug, name_zh, summary, legacy_seed_key) AS (
+  VALUES
+    ('wa_vs_ga', 'は与が', '比较话题提示、主语标记与信息焦点。', 'gp_wa_vs_ga'),
+    ('ni_vs_de', 'に与で', '比较存在地点、到达点和动作发生地点。', 'gp_ni_vs_de'),
+    ('conditional_forms', 'たら、ば、と、なら', '比较四种常见条件表达的成立条件和语用限制。', 'gp_condition_contrast'),
+    ('kara_vs_node', 'から与ので', '比较直接主观的原因说明与较柔和客观的说明。', 'gp_reason_contrast'),
+    ('tame_ni_vs_you_ni', 'ために与ように', '比较可控目的与目标状态。', 'gp_purpose_contrast'),
+    ('sou_da_vs_rashii', 'そうだ与らしい', '比较眼前样态判断与间接信息来源。', 'gp_inference_contrast')
+)
+INSERT INTO comparison_sets (
+  slug,
+  name_zh,
+  summary,
+  status,
+  legacy_grammar_point_id
+)
+SELECT
+  comparison_seed.slug,
+  comparison_seed.name_zh,
+  comparison_seed.summary,
+  'active',
+  grammar_points.id
+FROM comparison_seed
+JOIN grammar_points ON grammar_points.seed_key = comparison_seed.legacy_seed_key
+ON CONFLICT (slug) DO UPDATE SET
+  name_zh = EXCLUDED.name_zh,
+  summary = EXCLUDED.summary,
+  status = EXCLUDED.status,
+  legacy_grammar_point_id = EXCLUDED.legacy_grammar_point_id,
+  updated_at = NOW();
+
+WITH comparison_member_seed(comparison_slug, grammar_seed_key, sort_order) AS (
+  VALUES
+    ('wa_vs_ga', 'gp_wa', 1),
+    ('wa_vs_ga', 'gp_ga', 2),
+    ('ni_vs_de', 'gp_ni', 1),
+    ('ni_vs_de', 'gp_de', 2),
+    ('conditional_forms', 'gp_tara', 1),
+    ('conditional_forms', 'gp_ba', 2),
+    ('conditional_forms', 'gp_to_condition', 3),
+    ('conditional_forms', 'gp_nara', 4),
+    ('kara_vs_node', 'gp_kara_reason', 1),
+    ('kara_vs_node', 'gp_node', 2),
+    ('tame_ni_vs_you_ni', 'gp_tame_ni', 1),
+    ('tame_ni_vs_you_ni', 'gp_you_ni_purpose', 2),
+    ('sou_da_vs_rashii', 'gp_sou_da', 1),
+    ('sou_da_vs_rashii', 'gp_rashii', 2)
+)
+INSERT INTO comparison_set_members (comparison_set_id, grammar_point_id, sort_order)
+SELECT comparison_sets.id, grammar_points.id, comparison_member_seed.sort_order
+FROM comparison_member_seed
+JOIN comparison_sets ON comparison_sets.slug = comparison_member_seed.comparison_slug
+JOIN grammar_points ON grammar_points.seed_key = comparison_member_seed.grammar_seed_key
+ON CONFLICT (comparison_set_id, grammar_point_id) DO UPDATE SET
+  sort_order = EXCLUDED.sort_order;
+
+WITH error_seed(code, name_zh, description, default_severity, legacy_seed_key) AS (
+  VALUES
+    ('connection_error', '接续错误', '词形或后续表达所要求的接续形式不正确。', 'high', 'gp_connection_error_te'),
+    ('particle_error', '助词错误', '助词与谓语、语义角色或场景关系不匹配。', 'high', 'gp_particle_error_ni_de'),
+    ('tense_mismatch', '时态错误', '时态、肯否或时间关系不一致。', 'high', 'gp_tense_error_past'),
+    ('register_mismatch', '语体不匹配', '表达的礼貌程度或社会关系与场景不匹配。', 'medium', 'gp_register_mismatch_error'),
+    ('literal_translation', '中文直译与不自然表达', '中文词序或搭配被直接搬入日语，造成不自然表达。', 'medium', 'gp_literal_translation_error')
+)
+INSERT INTO error_types (
+  code,
+  name_zh,
+  description,
+  default_severity,
+  status,
+  legacy_grammar_point_id
+)
+SELECT
+  error_seed.code,
+  error_seed.name_zh,
+  error_seed.description,
+  error_seed.default_severity,
+  'active',
+  grammar_points.id
+FROM error_seed
+JOIN grammar_points ON grammar_points.seed_key = error_seed.legacy_seed_key
+ON CONFLICT (code) DO UPDATE SET
+  name_zh = EXCLUDED.name_zh,
+  description = EXCLUDED.description,
+  default_severity = EXCLUDED.default_severity,
+  status = EXCLUDED.status,
+  legacy_grammar_point_id = EXCLUDED.legacy_grammar_point_id,
+  updated_at = NOW();
+
+COMMIT;
 
 WITH active_category_slugs(slug) AS (
   VALUES
@@ -1082,7 +1608,9 @@ WITH active_category_slugs(slug) AS (
   ('register_errors'),
   ('literal_translation_errors')
 )
-DELETE FROM grammar_categories
+UPDATE grammar_categories
+SET is_mvp = FALSE,
+    updated_at = NOW()
 WHERE is_mvp = TRUE
   AND slug NOT IN (SELECT slug FROM active_category_slugs);
 

@@ -5,17 +5,21 @@ import {
   INSERT_LEARNING_HISTORY_SQL,
   INSERT_USER_SENTENCE_SQL,
   SEARCH_GRAMMAR_POINTS_SQL,
+  SELECT_COMPARISON_SETS_SQL,
+  SELECT_ERROR_TYPES_SQL,
   SELECT_GRAMMAR_CATEGORY_GROUPS_SQL,
   SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL,
   SELECT_FAVORITES_SQL,
   SELECT_GRAMMAR_CATEGORIES_SQL,
   SELECT_GRAMMAR_PROGRESS_SQL,
   SELECT_GRAMMAR_POINT_DETAIL_SQL,
+  SELECT_KNOWLEDGE_DIMENSIONS_SQL,
   SELECT_REGISTER_TAGS_SQL,
   SELECT_REVIEW_ITEMS_SQL,
   SELECT_SCENE_TAGS_SQL,
   SELECT_SIMILAR_GRAMMAR_FOR_POINT_SQL,
   SELECT_TAG_BY_KIND_AND_NAME_SQL,
+  SELECT_TAXONOMY_NODES_SQL,
   UPSERT_FAVORITE_SQL,
   UPSERT_REVIEW_RECORD_FOR_CORRECT_SQL,
   UPSERT_REVIEW_RECORD_FOR_MISTAKE_SQL,
@@ -23,23 +27,41 @@ import {
 import { query } from "@/shared/db/query";
 import type {
   AIFeedbackBetterVersion,
+  ComparisonSet,
+  ComparisonSetMember,
+  GrammarErrorType,
   GrammarCategory,
   GrammarCategoryGroup,
   GrammarExample,
+  GrammarMigrationTarget,
   GrammarPointDetail,
+  GrammarPointStatus,
   GrammarPointSummary,
   GrammarProgressGroup,
+  GrammarPointType,
   GrammarReviewItem,
   GrammarTag,
+  GrammarTaxonomyTag,
+  KnowledgeDimension,
   Practicality,
   ReviewStatus,
   SimilarGrammarRelation,
   SpokenOrWritten,
+  TaxonomyNode,
+  TaxonomyStatus,
 } from "@/shared/types/api";
 
 type GrammarSummaryRow = {
   id: string;
   grammar_point: string;
+  point_type: string;
+  canonical_form: string;
+  sense_key: string;
+  form_group_slug: string | null;
+  status: string;
+  primary_category: unknown;
+  taxonomy_tags: unknown;
+  migration_target: unknown;
   reading: string | null;
   category_id: string | null;
   category_slug: string | null;
@@ -92,6 +114,50 @@ type GrammarCategoryGroupRow = {
   is_mvp: boolean;
 };
 
+type KnowledgeDimensionRow = {
+  id: string;
+  slug: string;
+  name_zh: string;
+  name_en: string;
+  description: string;
+  display_order: number | string;
+  status: string;
+};
+
+type TaxonomyNodeRow = {
+  id: string;
+  slug: string;
+  dimension_id: string;
+  dimension_slug: string;
+  dimension_name_zh: string;
+  dimension_name_en: string;
+  name_zh: string;
+  name_en: string;
+  description: string;
+  example_expressions: unknown;
+  display_order: number | string;
+  status: string;
+};
+
+type ComparisonSetRow = {
+  id: string;
+  slug: string;
+  name_zh: string;
+  summary: string;
+  status: string;
+  members: unknown;
+};
+
+type ErrorTypeRow = {
+  id: string;
+  code: string;
+  name_zh: string;
+  description: string;
+  parent_id: string | null;
+  default_severity: string;
+  status: string;
+};
+
 type TagRow = {
   name_en: string;
   name_zh: string;
@@ -133,7 +199,7 @@ type InsertIdRow = {
 
 type ReviewRow = GrammarSummaryRow & {
   review_record_id: string;
-  status: string;
+  review_status: string;
   mistake_count: number | string;
   next_review_at: string | Date | null;
   last_reviewed_at: string | Date | null;
@@ -214,6 +280,25 @@ function parseStringArray(value: unknown): string[] {
   return parseJsonArray(value).filter((item): item is string => typeof item === "string");
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function parseTags(value: unknown): GrammarTag[] {
   const tags: GrammarTag[] = [];
 
@@ -275,6 +360,135 @@ function parseReviewStatus(value: string): ReviewStatus {
     : "new";
 }
 
+function parseTaxonomyStatus(value: string): TaxonomyStatus {
+  return value === "hidden" || value === "deprecated" ? value : "active";
+}
+
+function parseGrammarPointStatus(value: string): GrammarPointStatus {
+  return value === "migrated" || value === "hidden" || value === "deprecated"
+    ? value
+    : "active";
+}
+
+function parseGrammarPointType(value: string): GrammarPointType {
+  return value === "conjugation" ||
+    value === "sentence_pattern" ||
+    value === "syntax_concept" ||
+    value === "particle" ||
+    value === "collocation" ||
+    value === "register_concept" ||
+    value === "discourse_marker"
+    ? value
+    : "grammar_pattern";
+}
+
+function parseTaxonomyTag(value: unknown): GrammarTaxonomyTag | null {
+  const record = parseJsonObject(value);
+  if (!record) {
+    return null;
+  }
+
+  const id = typeof record.id === "string" ? record.id : "";
+  const slug = typeof record.slug === "string" ? record.slug : "";
+  const dimensionId =
+    typeof record.dimensionId === "string" ? record.dimensionId : "";
+  const dimensionSlug =
+    typeof record.dimensionSlug === "string" ? record.dimensionSlug : "";
+  const dimensionNameZh =
+    typeof record.dimensionNameZh === "string" ? record.dimensionNameZh : "";
+  const dimensionNameEn =
+    typeof record.dimensionNameEn === "string" ? record.dimensionNameEn : "";
+  const nameZh = typeof record.nameZh === "string" ? record.nameZh : "";
+  const nameEn = typeof record.nameEn === "string" ? record.nameEn : "";
+
+  if (
+    !id ||
+    !slug ||
+    !dimensionId ||
+    !dimensionSlug ||
+    !dimensionNameZh ||
+    !dimensionNameEn ||
+    !nameZh ||
+    !nameEn
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    slug,
+    dimensionId,
+    dimensionSlug,
+    dimensionNameZh,
+    dimensionNameEn,
+    nameZh,
+    nameEn,
+    displayOrder: toInteger(
+      typeof record.displayOrder === "number" || typeof record.displayOrder === "string"
+        ? record.displayOrder
+        : undefined
+    ),
+  };
+}
+
+function parseTaxonomyTags(value: unknown): GrammarTaxonomyTag[] {
+  return parseJsonArray(value)
+    .map((item) => parseTaxonomyTag(item))
+    .filter((item): item is GrammarTaxonomyTag => item !== null);
+}
+
+function parseMigrationTarget(value: unknown): GrammarMigrationTarget | null {
+  const record = parseJsonObject(value);
+  if (!record) {
+    return null;
+  }
+
+  const kind = record.kind;
+  const slug = typeof record.slug === "string" ? record.slug : "";
+  const nameZh = typeof record.nameZh === "string" ? record.nameZh : "";
+
+  if ((kind !== "comparison_set" && kind !== "error_type") || !slug || !nameZh) {
+    return null;
+  }
+
+  return { kind, slug, nameZh };
+}
+
+function parseComparisonMembers(value: unknown): ComparisonSetMember[] {
+  return parseJsonArray(value).flatMap((item) => {
+    const record = parseJsonObject(item);
+    if (!record) {
+      return [];
+    }
+
+    const grammarPointId =
+      typeof record.grammarPointId === "string" ? record.grammarPointId : "";
+    const grammarPoint =
+      typeof record.grammarPoint === "string" ? record.grammarPoint : "";
+    const canonicalForm =
+      typeof record.canonicalForm === "string" ? record.canonicalForm : "";
+    const senseKey = typeof record.senseKey === "string" ? record.senseKey : "";
+
+    if (!grammarPointId || !grammarPoint || !canonicalForm || !senseKey) {
+      return [];
+    }
+
+    return [
+      {
+        grammarPointId,
+        grammarPoint,
+        canonicalForm,
+        senseKey,
+        sortOrder: toInteger(
+          typeof record.sortOrder === "number" || typeof record.sortOrder === "string"
+            ? record.sortOrder
+            : undefined
+        ),
+      },
+    ];
+  });
+}
+
 function mapTagRow(row: TagRow): GrammarTag {
   return {
     nameEn: row.name_en,
@@ -288,6 +502,14 @@ function mapSummaryRow(row: GrammarSummaryRow): GrammarPointSummary {
   return {
     id: row.id,
     grammarPoint: row.grammar_point,
+    pointType: parseGrammarPointType(row.point_type),
+    canonicalForm: row.canonical_form,
+    senseKey: row.sense_key,
+    formGroupSlug: row.form_group_slug,
+    status: parseGrammarPointStatus(row.status),
+    primaryCategory: parseTaxonomyTag(row.primary_category),
+    taxonomyTags: parseTaxonomyTags(row.taxonomy_tags),
+    migrationTarget: parseMigrationTarget(row.migration_target),
     reading: row.reading,
     categoryId: row.category_id,
     categorySlug: row.category_slug,
@@ -309,6 +531,73 @@ function mapSummaryRow(row: GrammarSummaryRow): GrammarPointSummary {
 }
 
 export class GrammarRepository {
+  async listKnowledgeDimensions(): Promise<KnowledgeDimension[]> {
+    const rows = await query<KnowledgeDimensionRow>(
+      SELECT_KNOWLEDGE_DIMENSIONS_SQL
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      nameZh: row.name_zh,
+      nameEn: row.name_en,
+      description: row.description,
+      displayOrder: toInteger(row.display_order),
+      status: parseTaxonomyStatus(row.status),
+    }));
+  }
+
+  async listTaxonomyNodes(): Promise<TaxonomyNode[]> {
+    const rows = await query<TaxonomyNodeRow>(SELECT_TAXONOMY_NODES_SQL);
+
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      dimensionId: row.dimension_id,
+      dimensionSlug: row.dimension_slug,
+      dimensionNameZh: row.dimension_name_zh,
+      dimensionNameEn: row.dimension_name_en,
+      nameZh: row.name_zh,
+      nameEn: row.name_en,
+      description: row.description,
+      exampleExpressions: parseStringArray(row.example_expressions),
+      displayOrder: toInteger(row.display_order),
+      status: parseTaxonomyStatus(row.status),
+    }));
+  }
+
+  async listComparisonSets(): Promise<ComparisonSet[]> {
+    const rows = await query<ComparisonSetRow>(SELECT_COMPARISON_SETS_SQL);
+
+    return rows.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      nameZh: row.name_zh,
+      summary: row.summary,
+      status: parseTaxonomyStatus(row.status),
+      members: parseComparisonMembers(row.members),
+    }));
+  }
+
+  async listErrorTypes(): Promise<GrammarErrorType[]> {
+    const rows = await query<ErrorTypeRow>(SELECT_ERROR_TYPES_SQL);
+
+    return rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      nameZh: row.name_zh,
+      description: row.description,
+      parentId: row.parent_id,
+      defaultSeverity:
+        row.default_severity === "low" ||
+        row.default_severity === "high" ||
+        row.default_severity === "critical"
+          ? row.default_severity
+          : "medium",
+      status: parseTaxonomyStatus(row.status),
+    }));
+  }
+
   async listCategoryGroups(): Promise<GrammarCategoryGroup[]> {
     const rows = await query<GrammarCategoryGroupRow>(
       SELECT_GRAMMAR_CATEGORY_GROUPS_SQL
@@ -375,21 +664,21 @@ export class GrammarRepository {
   async searchGrammarPoints(options?: {
     query?: string;
     categorySlug?: string;
-    groupSlug?: string;
+    dimensionSlug?: string;
     limit?: number;
     userId?: string;
   }): Promise<GrammarPointSummary[]> {
     const normalizedQuery = options?.query?.trim() ?? "";
     const normalizedLimit = Math.min(Math.max(options?.limit ?? 24, 1), 80);
     const categorySlug = options?.categorySlug?.trim() ?? "";
-    const groupSlug = options?.groupSlug?.trim() ?? "";
+    const dimensionSlug = options?.dimensionSlug?.trim() ?? "";
     const rows = await query<GrammarSummaryRow>(SEARCH_GRAMMAR_POINTS_SQL, [
       normalizedQuery,
       `%${normalizedQuery}%`,
       normalizedLimit,
       options?.userId ?? DEFAULT_GRAMMAR_USER_ID,
       categorySlug,
-      groupSlug,
+      dimensionSlug,
     ]);
 
     return rows.map((row) => mapSummaryRow(row));
@@ -561,7 +850,7 @@ export class GrammarRepository {
     return rows.map((row) => ({
       reviewRecordId: row.review_record_id,
       grammarPoint: mapSummaryRow(row),
-      status: parseReviewStatus(row.status),
+      status: parseReviewStatus(row.review_status),
       mistakeCount: toInteger(row.mistake_count),
       nextReviewAt: toIsoString(row.next_review_at),
       lastReviewedAt: toIsoString(row.last_reviewed_at),

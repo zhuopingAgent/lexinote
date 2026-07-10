@@ -113,7 +113,7 @@ export function GrammarProgressOverview({
                 文法学习地图
               </p>
               <p className="mt-2 max-w-[620px] text-sm leading-6 text-white/46">
-                先看学习进度，再按大类进入练习。当前重点：{focusTitle}。
+                先看学习进度，再按知识维度进入练习。当前重点：{focusTitle}。
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -210,7 +210,7 @@ export function GrammarProgressOverview({
                   disabled={!nextGroup}
                   className="inline-flex h-10 items-center justify-center rounded-full bg-accent px-4 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  查看建议大类
+                  查看建议维度
                 </button>
               )}
             </div>
@@ -224,15 +224,17 @@ export function GrammarProgressOverview({
         <div className="min-w-0">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-white/68">大类进度</p>
-              <p className="mt-1 text-xs text-white/34">点击大类即可筛选学习路径。</p>
+              <p className="text-sm font-semibold text-white/68">知识维度进度</p>
+              <p className="mt-1 text-xs text-white/34">
+                点击知识维度即可筛选学习路径。
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => onGroupSelect("")}
+              onClick={() => onGroupSelect("expression_function")}
               className="inline-flex h-9 items-center rounded-full border border-white/10 px-3 text-xs text-white/50 transition hover:border-white/20 hover:text-white/72"
             >
-              全部
+              表达功能
             </button>
           </div>
 
@@ -252,7 +254,7 @@ export function GrammarProgressOverview({
                     <button
                       key={group.slug}
                       type="button"
-                      aria-label={`选择第 ${index + 1} 个文法大类`}
+                      aria-label={`选择第 ${index + 1} 个知识维度`}
                       aria-pressed={isSelected}
                       onClick={() => onGroupSelect(group.slug)}
                       className={

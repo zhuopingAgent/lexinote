@@ -97,16 +97,22 @@ test("dictionary result actions can add a word into a collection and prevent dup
   expectNoBrowserErrors(browserErrors);
 });
 
-test("grammar taxonomy can filter a morphology category and open detail", async ({
+test("grammar taxonomy defaults to expression function and opens another dimension", async ({
   page,
 }) => {
   const browserErrors = createBrowserErrorCollector(page);
 
   await page.goto("/grammar");
-  await expect(page.getByRole("button", { name: "形态、活用与时间体系统" })).toBeVisible();
+  await expect(
+    page
+      .getByLabel("知识维度", { exact: true })
+      .getByRole("button", { name: "表达功能" })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("expression_function");
 
-  await page.getByRole("button", { name: "形态、活用与时间体系统" }).click();
-  await expect(page.getByText("系统学习词形变化、时态、否定、持续、完成和派生形。")).toBeVisible();
+  await page.getByRole("button", { name: "形态、活用与时间体" }).click();
+  await expect(page.getByText("组织词形变化、时态、否定、体和派生形。")).toBeVisible();
   await expect(page.getByRole("button", { name: "时态与否定" })).toBeVisible();
 
   await page.getByRole("button", { name: "时态与否定" }).click();
@@ -116,8 +122,8 @@ test("grammar taxonomy can filter a morphology category and open detail", async 
   await page.getByRole("link", { name: "〜た形" }).click();
   await expect(page).toHaveURL(/\/grammar\/[0-9a-f-]+$/);
   await expect(page.getByRole("heading", { name: "〜た形" })).toBeVisible();
-  await expect(page.getByText("形态、活用与时间体系统")).toBeVisible();
-  await expect(page.getByText("时态与否定")).toBeVisible();
+  await expect(page.getByText("形态、活用与时间体").first()).toBeVisible();
+  await expect(page.getByText("时态与否定").first()).toBeVisible();
   await expect(page.getByText("常见误区")).toBeVisible();
   await expect(page.getByText("昨日、映画を見ました。")).toBeVisible();
 
