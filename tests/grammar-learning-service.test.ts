@@ -39,6 +39,7 @@ const grammarPoint: GrammarPointDetail = {
       displayOrder: 7,
     },
   ],
+  curriculum: null,
   reading: "〜てもらえますか",
   categoryId: "22222222-2222-4222-8222-222222222222",
   categorySlug: "requests_permission_advice",
@@ -69,6 +70,17 @@ const grammarPoint: GrammarPointDetail = {
   notes: "日常礼貌请求非常实用。",
   jlptLevel: "N4",
   commonMistakes: ["句尾变成〜てもらえる？会明显变随便"],
+  connections: [
+    {
+      baseType: "verb",
+      requiredForm: "te_form",
+      pattern: "动词て形 + もらえますか",
+      notes: "一般礼貌请求。",
+      sortOrder: 1,
+    },
+  ],
+  prerequisites: [],
+  formSiblings: [],
   examples: [
     {
       id: "33333333-3333-4333-8333-333333333333",
@@ -227,6 +239,7 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
   return {
     listKnowledgeDimensions: vi.fn().mockResolvedValue([]),
     listTaxonomyNodes: vi.fn().mockResolvedValue([]),
+    listLearningStages: vi.fn().mockResolvedValue([]),
     listComparisonSets: vi.fn().mockResolvedValue([]),
     listErrorTypes: vi.fn().mockResolvedValue([]),
     listCategoryGroups: vi.fn(),
@@ -343,6 +356,7 @@ describe("GrammarLearningService", () => {
       query: "うちに",
       categorySlug: "time_and_sequence",
       groupSlug: "expressive_functions",
+      stageSlug: "functional_patterns",
       limit: 12,
     });
 
@@ -350,6 +364,7 @@ describe("GrammarLearningService", () => {
       query: "うちに",
       categorySlug: "time_and_sequence",
       dimensionSlug: "expression_function",
+      stageSlug: "functional_patterns",
       limit: 12,
       userId: DEFAULT_USER_ID,
     });
@@ -387,6 +402,27 @@ describe("GrammarLearningService", () => {
       status: "migrated",
     });
     expect(review.items[0].grammarPoint.id).toBe(tenseGrammarPoint.id);
+  });
+
+  it("resolves grammar details by stable sense key and logs the canonical ID", async () => {
+    const repository = createRepositoryMock(genericGrammarPoint);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.getGrammarPointDetail("gp_sou_da_hearsay");
+
+    expect(result.grammarPoint.id).toBe(genericGrammarPoint.id);
+    expect(repository.findGrammarPointById).toHaveBeenCalledWith(
+      "gp_sou_da_hearsay",
+      DEFAULT_USER_ID
+    );
+    expect(repository.logLearningHistory).toHaveBeenCalledWith({
+      userId: DEFAULT_USER_ID,
+      grammarPointId: genericGrammarPoint.id,
+      activityType: "view_grammar",
+    });
   });
 
   it("generates the hospital polite practice fallback for 〜てもらえますか", async () => {

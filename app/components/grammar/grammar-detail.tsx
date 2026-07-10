@@ -70,6 +70,11 @@ export function GrammarDetail({
               <SpokenOrWrittenBadge value={grammarPoint.spokenOrWritten} />
               <TagBadge tag={displayGrammarPointTypeLabel(grammarPoint.pointType)} />
               {grammarPoint.jlptLevel ? <TagBadge tag={grammarPoint.jlptLevel} /> : null}
+              {grammarPoint.curriculum ? (
+                <TagBadge
+                  tag={`${grammarPoint.curriculum.stage.nameZh} · 第 ${grammarPoint.curriculum.recommendedOrder} 项`}
+                />
+              ) : null}
             </div>
             <h1 className="mt-4 break-words text-[clamp(36px,6vw,58px)] leading-tight font-semibold text-white/84">
               {grammarPoint.grammarPoint}
@@ -119,6 +124,25 @@ export function GrammarDetail({
           </div>
         ) : null}
 
+        {grammarPoint.formSiblings.length > 0 ? (
+          <section className="mt-5 border-t border-white/8 pt-5">
+            <p className="text-sm font-semibold text-white/48">同形不同用法</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <TagBadge tag={grammarPoint.grammarPoint} />
+              {grammarPoint.formSiblings.map((sibling) => (
+                <Link
+                  key={sibling.id}
+                  href={`/grammar/${sibling.senseKey}`}
+                  title={sibling.coreMeaning}
+                  className="inline-flex min-h-8 items-center rounded-full border border-white/12 px-3 py-1 text-xs font-semibold text-white/58 transition hover:border-white/24 hover:text-white/82"
+                >
+                  {sibling.grammarPoint}
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <div className="mt-7 grid gap-4 md:grid-cols-[1.3fr_0.7fr]">
           <section className="rounded-[18px] border border-white/8 bg-[#15151599] p-5">
             <p className="text-sm font-semibold text-white/48">核心意思</p>
@@ -134,9 +158,26 @@ export function GrammarDetail({
 
           <section className="rounded-[18px] border border-white/8 bg-[#15151599] p-5">
             <p className="text-sm font-semibold text-white/48">接续</p>
-            <p className="mt-3 font-mono text-sm leading-7 text-white/72">
-              {grammarPoint.structure ?? "当前语法点暂无固定接续。"}
-            </p>
+            {grammarPoint.connections.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {grammarPoint.connections.map((connection) => (
+                  <div key={`${connection.sortOrder}-${connection.pattern}`}>
+                    <p className="font-mono text-sm leading-7 text-white/72">
+                      {connection.pattern}
+                    </p>
+                    {connection.notes ? (
+                      <p className="mt-1 text-xs leading-5 text-white/42">
+                        {connection.notes}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 font-mono text-sm leading-7 text-white/72">
+                {grammarPoint.structure ?? "当前语法点暂无固定接续。"}
+              </p>
+            )}
           </section>
         </div>
 
@@ -185,12 +226,32 @@ export function GrammarDetail({
           ))}
         </div>
 
-        {grammarPoint.notes ? (
+        {(grammarPoint.usage ?? grammarPoint.notes) ? (
           <p className="mt-6 rounded-[16px] border border-white/8 bg-white/5 px-4 py-3 text-sm leading-6 text-white/56">
-            {grammarPoint.notes}
+            <span className="mr-2 font-semibold text-white/66">使用说明</span>
+            {grammarPoint.usage ?? grammarPoint.notes}
           </p>
         ) : null}
       </section>
+
+      {grammarPoint.prerequisites.length > 0 ? (
+        <section className="mt-6 rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
+          <h2 className="text-lg font-semibold text-white/74">前置知识</h2>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {grammarPoint.prerequisites.map((prerequisite) => (
+              <Link
+                key={prerequisite.grammarPointId}
+                href={`/grammar/${prerequisite.senseKey}`}
+                className="inline-flex min-h-9 items-center rounded-full border border-white/12 px-3 py-1 text-sm text-white/60 transition hover:border-white/24 hover:text-white/82"
+              >
+                {prerequisite.relationType === "required" ? "必修" : "建议"}
+                <span className="mx-2 text-white/24">·</span>
+                {prerequisite.grammarPoint}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-6">
         <h2 className="text-lg font-semibold text-white/74">例句</h2>

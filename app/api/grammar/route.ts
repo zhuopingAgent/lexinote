@@ -14,6 +14,7 @@ export async function GET(request: Request) {
       categorySlug: url.searchParams.get("category") ?? undefined,
       groupSlug: url.searchParams.get("group") ?? undefined,
       dimensionSlug: url.searchParams.get("dimension") ?? undefined,
+      stageSlug: url.searchParams.get("stage") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
       userId: url.searchParams.get("userId") ?? undefined,
     });

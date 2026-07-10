@@ -54,6 +54,10 @@ export default async function globalSetup() {
         'nodes', (SELECT COUNT(*) FROM taxonomy_nodes),
         'points', (SELECT COUNT(*) FROM grammar_points),
         'pointTags', (SELECT COUNT(*) FROM grammar_point_taxonomy_tags),
+        'connections', (SELECT COUNT(*) FROM grammar_point_connections),
+        'prerequisites', (SELECT COUNT(*) FROM grammar_point_prerequisites),
+        'learningStages', (SELECT COUNT(*) FROM learning_stages),
+        'curriculumPlacements', (SELECT COUNT(*) FROM grammar_point_curriculum),
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
         'errorTypes', (SELECT COUNT(*) FROM error_types)
@@ -136,6 +140,10 @@ export default async function globalSetup() {
         'nodes', (SELECT COUNT(*) FROM taxonomy_nodes),
         'points', (SELECT COUNT(*) FROM grammar_points),
         'pointTags', (SELECT COUNT(*) FROM grammar_point_taxonomy_tags),
+        'connections', (SELECT COUNT(*) FROM grammar_point_connections),
+        'prerequisites', (SELECT COUNT(*) FROM grammar_point_prerequisites),
+        'learningStages', (SELECT COUNT(*) FROM learning_stages),
+        'curriculumPlacements', (SELECT COUNT(*) FROM grammar_point_curriculum),
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
         'errorTypes', (SELECT COUNT(*) FROM error_types)
@@ -155,6 +163,7 @@ export default async function globalSetup() {
         (SELECT COUNT(*) FROM grammar_points WHERE status = 'migrated') AS migrated_legacy_points,
         (SELECT COUNT(*) FROM comparison_sets WHERE status = 'active') AS active_comparison_sets,
         (SELECT COUNT(*) FROM error_types WHERE status = 'active') AS active_error_types,
+        (SELECT COUNT(*) FROM learning_stages WHERE status = 'active') AS active_learning_stages,
         (
           SELECT COUNT(*)
           FROM grammar_points
@@ -184,6 +193,164 @@ export default async function globalSetup() {
           ) duplicates
         ) AS duplicate_learning_units,
         (
+          SELECT COUNT(*)
+          FROM grammar_points gp
+          WHERE gp.status = 'active'
+            AND (
+              NULLIF(BTRIM(gp.core_meaning), '') IS NULL
+              OR NULLIF(BTRIM(gp.usage_notes), '') IS NULL
+              OR gp.primary_taxonomy_node_id IS NULL
+              OR NOT EXISTS (
+                SELECT 1
+                FROM grammar_point_connections connection
+                WHERE connection.grammar_point_id = gp.id
+              )
+              OR NOT EXISTS (
+                SELECT 1
+                FROM example_sentences example
+                WHERE example.grammar_point_id = gp.id
+              )
+            )
+        ) AS incomplete_active_learning_units,
+        (
+          SELECT COUNT(*)
+          FROM grammar_points gp
+          LEFT JOIN grammar_point_curriculum curriculum
+            ON curriculum.grammar_point_id = gp.id
+          WHERE gp.status = 'active'
+            AND curriculum.grammar_point_id IS NULL
+        ) AS active_without_curriculum,
+        (
+          SELECT COUNT(*)
+          FROM (
+            WITH RECURSIVE prerequisite_paths(origin_id, current_id, path, has_cycle) AS (
+              SELECT
+                relation.grammar_point_id,
+                relation.prerequisite_grammar_point_id,
+                ARRAY[relation.grammar_point_id, relation.prerequisite_grammar_point_id],
+                relation.grammar_point_id = relation.prerequisite_grammar_point_id
+              FROM grammar_point_prerequisites relation
+              UNION ALL
+              SELECT
+                prerequisite_paths.origin_id,
+                relation.prerequisite_grammar_point_id,
+                prerequisite_paths.path || relation.prerequisite_grammar_point_id,
+                relation.prerequisite_grammar_point_id = ANY(prerequisite_paths.path)
+              FROM prerequisite_paths
+              JOIN grammar_point_prerequisites relation
+                ON relation.grammar_point_id = prerequisite_paths.current_id
+              WHERE NOT prerequisite_paths.has_cycle
+            )
+            SELECT 1
+            FROM prerequisite_paths
+            WHERE has_cycle
+          ) cycles
+        ) AS prerequisite_cycles,
+        (
+          SELECT COUNT(*)
+          FROM grammar_point_prerequisites relation
+          JOIN grammar_point_curriculum dependent_curriculum
+            ON dependent_curriculum.grammar_point_id = relation.grammar_point_id
+          JOIN learning_stages dependent_stage
+            ON dependent_stage.id = dependent_curriculum.learning_stage_id
+          JOIN grammar_point_curriculum prerequisite_curriculum
+            ON prerequisite_curriculum.grammar_point_id = relation.prerequisite_grammar_point_id
+          JOIN learning_stages prerequisite_stage
+            ON prerequisite_stage.id = prerequisite_curriculum.learning_stage_id
+          WHERE (
+            prerequisite_stage.display_order,
+            prerequisite_curriculum.recommended_order
+          ) >= (
+            dependent_stage.display_order,
+            dependent_curriculum.recommended_order
+          )
+        ) AS prerequisite_order_violations,
+        (
+          SELECT COUNT(*)
+          FROM grammar_points
+          WHERE status = 'active'
+            AND form_group_slug IN (
+              'sou_da', 'rareru', 'to', 'ga', 'tte', 'te_iru', 'you_ni', 'bakari', 'tame'
+            )
+        ) AS normalized_polysemy_units,
+        (
+          SELECT COUNT(*)
+          FROM (
+            VALUES
+              ('〜そうだ', 2),
+              ('〜られる', 4),
+              ('〜と', 3),
+              ('が', 2),
+              ('〜って', 2),
+              ('〜ている', 3),
+              ('〜ように', 2)
+          ) expected(canonical_form, sense_count)
+          WHERE (
+            SELECT COUNT(*)
+            FROM grammar_points gp
+            WHERE gp.status = 'active'
+              AND gp.canonical_form = expected.canonical_form
+          ) <> expected.sense_count
+        ) AS polysemy_group_mismatches,
+        (
+          SELECT COUNT(*)
+          FROM (
+            SELECT 'wa_case_particle' AS violation
+            WHERE EXISTS (
+              SELECT 1
+              FROM grammar_points gp
+              JOIN grammar_point_taxonomy_tags tag ON tag.grammar_point_id = gp.id
+              JOIN taxonomy_nodes node ON node.id = tag.taxonomy_node_id
+              WHERE gp.seed_key = 'gp_wa' AND node.slug = 'case_particles'
+            )
+            UNION ALL
+            SELECT 'made_case_particle'
+            WHERE EXISTS (
+              SELECT 1
+              FROM grammar_points gp
+              JOIN grammar_point_taxonomy_tags tag ON tag.grammar_point_id = gp.id
+              JOIN taxonomy_nodes node ON node.id = tag.taxonomy_node_id
+              WHERE gp.canonical_form = 'まで' AND node.slug = 'case_particles'
+            )
+            UNION ALL
+            SELECT 'request_primary_or_tags'
+            WHERE EXISTS (
+              SELECT 1
+              FROM grammar_points gp
+              JOIN taxonomy_nodes primary_node ON primary_node.id = gp.primary_taxonomy_node_id
+              WHERE gp.seed_key IN ('gp_te_moraemasu_ka', 'gp_te_itadakemasu_ka')
+                AND (
+                  primary_node.slug <> 'requests_permission_advice'
+                  OR NOT EXISTS (
+                    SELECT 1
+                    FROM grammar_point_taxonomy_tags tag
+                    JOIN taxonomy_nodes node ON node.id = tag.taxonomy_node_id
+                    WHERE tag.grammar_point_id = gp.id
+                      AND node.slug = 'giving_receiving_benefit'
+                  )
+                )
+            )
+            UNION ALL
+            SELECT 'change_primary_or_basic_tag'
+            WHERE EXISTS (
+              SELECT 1
+              FROM grammar_points gp
+              JOIN taxonomy_nodes primary_node ON primary_node.id = gp.primary_taxonomy_node_id
+              WHERE gp.seed_key IN ('gp_ninaru_change', 'gp_nisuru_change')
+                AND (
+                  primary_node.slug <> 'change_start_continuation_end'
+                  OR NOT EXISTS (
+                    SELECT 1
+                    FROM grammar_point_taxonomy_tags tag
+                    JOIN taxonomy_nodes node ON node.id = tag.taxonomy_node_id
+                    WHERE tag.grammar_point_id = gp.id
+                      AND node.slug = 'basic_sentence_patterns'
+                  )
+                )
+            )
+          ) violations
+        ) AS content_accuracy_violations,
+        (
           SELECT
             (SELECT COUNT(*) FROM favorites f JOIN grammar_points gp ON gp.id = f.grammar_point_id WHERE gp.seed_key = 'gp_wa_vs_ga')
             + (SELECT COUNT(*) FROM review_records rr JOIN grammar_points gp ON gp.id = rr.grammar_point_id WHERE gp.seed_key = 'gp_wa_vs_ga')
@@ -195,14 +362,22 @@ export default async function globalSetup() {
     const integrity = grammarIntegrity.rows[0];
     if (
       Number(integrity?.active_dimensions) !== 7 ||
-      Number(integrity?.active_learning_units) !== 144 ||
+      Number(integrity?.active_learning_units) !== 153 ||
       Number(integrity?.migrated_legacy_points) !== 11 ||
       Number(integrity?.active_comparison_sets) !== 6 ||
       Number(integrity?.active_error_types) !== 5 ||
+      Number(integrity?.active_learning_stages) !== 5 ||
       Number(integrity?.active_without_primary) !== 0 ||
       Number(integrity?.primary_category_mismatch) !== 0 ||
       Number(integrity?.dangling_taxonomy_tags) !== 0 ||
       Number(integrity?.duplicate_learning_units) !== 0 ||
+      Number(integrity?.incomplete_active_learning_units) !== 0 ||
+      Number(integrity?.active_without_curriculum) !== 0 ||
+      Number(integrity?.prerequisite_cycles) !== 0 ||
+      Number(integrity?.prerequisite_order_violations) !== 0 ||
+      Number(integrity?.normalized_polysemy_units) !== 22 ||
+      Number(integrity?.polysemy_group_mismatches) !== 0 ||
+      Number(integrity?.content_accuracy_violations) !== 0 ||
       Number(integrity?.preserved_legacy_references) !== 5
     ) {
       throw new Error(`Grammar domain integrity check failed: ${JSON.stringify(integrity)}`);

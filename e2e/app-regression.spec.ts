@@ -127,6 +127,17 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByText("常见误区")).toBeVisible();
   await expect(page.getByText("昨日、映画を見ました。")).toBeVisible();
 
+  await page.goto("/grammar/gp_sou_da");
+  await expect(page.getByRole("heading", { name: "〜そうだ（样态）" })).toBeVisible();
+  await expect(page.getByText("同形不同用法")).toBeVisible();
+  await page
+    .getByTitle("转述从别人或媒体获得的信息，不表示说话人眼前的观察。")
+    .click();
+  await expect(page).toHaveURL(/\/grammar\/gp_sou_da_hearsay$/);
+  await expect(page.getByRole("heading", { name: "〜そうだ（传闻）" })).toBeVisible();
+  await expect(page.getByText("普通形 + そうだ")).toBeVisible();
+  await expect(page.getByText("天気予報によると、明日は雨が降るそうです。")).toBeVisible();
+
   expectNoBrowserErrors(browserErrors);
 });
 

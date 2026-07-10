@@ -80,8 +80,8 @@
 - Lookup responses include result metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness; the dictionary UI uses this for status tags.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 - Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
-- Grammar learning tables, 7 knowledge dimensions, 46 knowledge taxonomy nodes, 144 active learning units, 6 comparison sets, 5 error types, and 11 migrated legacy compatibility records are created and seeded by `shared/db/sql/schema.sql`.
-- Grammar seed migrations are key-based and repeatable. E2E global setup applies the schema twice and verifies stable record counts plus taxonomy integrity before loading fixtures.
+- Grammar learning tables, 7 knowledge dimensions, 46 knowledge taxonomy nodes, 153 active learning units, 6 comparison sets, 5 error types, 5 learning stages, and 11 migrated legacy compatibility records are created and seeded by `shared/db/sql/schema.sql`.
+- Grammar seed migrations are key-based and repeatable. E2E global setup applies the schema twice and verifies stable record counts, active-unit content completeness, curriculum coverage, prerequisite acyclicity, polysemous senses, and taxonomy integrity before loading fixtures.
 - Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
 - Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.
 

@@ -136,6 +136,41 @@ describe("grammar domain seed", () => {
     expect(secondaryTagBlock).toContain("('gp_yoyaku_wo_toru', 'noun_verb_collocations')");
   });
 
+  it("splits polysemous forms into stable senses with structured connections", () => {
+    const sql = readSchemaSql();
+    const senseBlock = extractBlock(
+      sql,
+      "WITH sense_seed",
+      "INSERT INTO grammar_points"
+    );
+
+    expect(senseBlock).toContain("gp_sou_da_hearsay");
+    expect(senseBlock).toContain("gp_rareru_honorific");
+    expect(senseBlock).toContain("gp_rareru_spontaneous");
+    expect(senseBlock).toContain("gp_to_quotation");
+    expect(senseBlock).toContain("gp_to_case_particle");
+    expect(senseBlock).toContain("gp_tte_topic");
+    expect(senseBlock).toContain("gp_te_iru_result_state");
+    expect(senseBlock).toContain("gp_te_iru_habitual");
+    expect(senseBlock).toContain("gp_you_ni_instruction");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS grammar_point_connections");
+    expect(sql).toContain("'gp_sou_da_hearsay', 'clause', 'plain_form'");
+    expect(sql).toContain("'gp_sou_da', 'verb', 'masu_stem'");
+  });
+
+  it("seeds configurable learning stages and cycle-safe prerequisites", () => {
+    const sql = readSchemaSql();
+
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS learning_stages");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS grammar_point_curriculum");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS grammar_point_prerequisites");
+    expect(sql).toContain("grammar prerequisite cycle detected");
+    expect(sql).toContain("('gp_te_iru', 'gp_te_form', 'required')");
+    expect(sql).toContain("('gp_ta_bakari', 'gp_ta_form', 'required')");
+    expect(sql).toContain("('gp_te_moraemasu_ka', 'gp_te_morau', 'required')");
+    expect(sql.match(/\('(?:foundations|conjugation|functional_patterns|voice_aspect_benefit|natural_advanced_use)'/g)).toHaveLength(5);
+  });
+
   it("keeps all legacy seed records and their examples for ID compatibility", () => {
     const sql = readSchemaSql();
     const grammarBlock = extractBlock(sql, "WITH grammar_seed", ")\nINSERT INTO grammar_points");

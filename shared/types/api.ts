@@ -125,6 +125,55 @@ export type GrammarTaxonomyTag = Pick<
   | "displayOrder"
 >;
 
+export type GrammarConnectionBaseType =
+  | "verb"
+  | "i_adjective"
+  | "na_adjective"
+  | "noun"
+  | "clause";
+
+export type GrammarConnection = {
+  baseType: GrammarConnectionBaseType;
+  requiredForm: string;
+  pattern: string;
+  notes: string;
+  sortOrder: number;
+};
+
+export type GrammarPrerequisiteRelation = "required" | "recommended";
+
+export type GrammarPrerequisite = {
+  grammarPointId: string;
+  grammarPoint: string;
+  canonicalForm: string;
+  senseKey: string;
+  relationType: GrammarPrerequisiteRelation;
+};
+
+export type LearningStage = {
+  id: string;
+  slug: string;
+  nameZh: string;
+  description: string;
+  displayOrder: number;
+  status: TaxonomyStatus;
+};
+
+export type GrammarCurriculumPlacement = {
+  stage: LearningStage;
+  level: number;
+  recommendedOrder: number;
+};
+
+export type GrammarFormSibling = {
+  id: string;
+  grammarPoint: string;
+  canonicalForm: string;
+  senseKey: string;
+  coreMeaning: string;
+  status: GrammarPointStatus;
+};
+
 export type ComparisonSetMember = {
   grammarPointId: string;
   grammarPoint: string;
@@ -168,6 +217,7 @@ export type GrammarPointSummary = {
   status: GrammarPointStatus;
   primaryCategory: GrammarTaxonomyTag | null;
   taxonomyTags: GrammarTaxonomyTag[];
+  curriculum: GrammarCurriculumPlacement | null;
   migrationTarget?: GrammarMigrationTarget | null;
   reading?: string | null;
   categoryId: string | null;
@@ -211,9 +261,13 @@ export type SimilarGrammarRelation = {
 };
 
 export type GrammarPointDetail = GrammarPointSummary & {
+  usage?: string | null;
   notes?: string | null;
   jlptLevel?: string | null;
   commonMistakes: string[];
+  connections: GrammarConnection[];
+  prerequisites: GrammarPrerequisite[];
+  formSiblings: GrammarFormSibling[];
   examples: GrammarExample[];
   similarGrammar: SimilarGrammarRelation[];
 };
@@ -229,6 +283,7 @@ export type GrammarDetailResponse = {
 export type GrammarTaxonomyResponse = {
   knowledgeDimensions: KnowledgeDimension[];
   taxonomyNodes: TaxonomyNode[];
+  learningStages: LearningStage[];
   comparisonSets: ComparisonSet[];
   errorTypes: GrammarErrorType[];
   categoryGroups: GrammarCategoryGroup[];

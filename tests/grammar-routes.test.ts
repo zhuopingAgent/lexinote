@@ -79,6 +79,14 @@ describe("grammar API routes", () => {
     getTaxonomyMock.mockResolvedValue({
       knowledgeDimensions,
       taxonomyNodes,
+      learningStages: Array.from({ length: 5 }, (_, index) => ({
+        id: `55555555-5555-4555-8555-${String(index + 1).padStart(12, "0")}`,
+        slug: `stage_${index + 1}`,
+        nameZh: `阶段 ${index + 1}`,
+        description: "阶段说明。",
+        displayOrder: index + 1,
+        status: "active",
+      })),
       comparisonSets: Array.from({ length: 6 }, (_, index) => ({
         id: `33333333-3333-4333-8333-${String(index + 1).padStart(12, "0")}`,
         slug: `comparison_${index + 1}`,
@@ -118,6 +126,7 @@ describe("grammar API routes", () => {
       ])
     );
     expect(body.taxonomyNodes).toHaveLength(46);
+    expect(body.learningStages).toHaveLength(5);
     expect(body.comparisonSets).toHaveLength(6);
     expect(body.errorTypes).toHaveLength(5);
     expect(body.categories).toHaveLength(18);
@@ -177,6 +186,7 @@ describe("grammar API routes", () => {
       categorySlug: "time_and_sequence",
       groupSlug: "expressive_functions",
       dimensionSlug: undefined,
+      stageSlug: undefined,
       limit: "12",
       userId: undefined,
     });
