@@ -1,17 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { CollectionIcon, SearchIcon } from "@/app/components/icons";
 import { getErrorMessage } from "@/app/lib/api-client";
 import type { CollectionSummary, DictionaryEntry } from "@/shared/types/api";
 
 type DictionaryEntryActionsProps = {
   entry: DictionaryEntry;
-  isPrimary: boolean;
   canAddToCollection: boolean;
   addDisabledReason?: string;
   collections: CollectionSummary[];
   isCollectionsLoading: boolean;
-  onSelectEntry: (entry: DictionaryEntry) => void;
   onStartRetryWithEntry: (entry: DictionaryEntry) => void;
   onEnsureCollectionsLoaded: () => Promise<void>;
   onAddEntryToCollection: (
@@ -23,12 +22,10 @@ type DictionaryEntryActionsProps = {
 
 export function DictionaryEntryActions({
   entry,
-  isPrimary,
   canAddToCollection,
   addDisabledReason,
   collections,
   isCollectionsLoading,
-  onSelectEntry,
   onStartRetryWithEntry,
   onEnsureCollectionsLoaded,
   onAddEntryToCollection,
@@ -94,37 +91,30 @@ export function DictionaryEntryActions({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => onSelectEntry(entry)}
-          disabled={isPrimary}
-          aria-label={`${isPrimary ? "当前词条" : "选择这个词条"} ${entry.word} ${entry.pronunciation}`}
-          className="inline-flex h-9 items-center justify-center rounded-full border border-white/10 px-3 text-sm text-white/58 transition hover:border-white/18 hover:bg-white/5 hover:text-white/72 disabled:cursor-default disabled:border-white/8 disabled:text-white/30"
+          onClick={() => void onTogglePicker()}
+          disabled={isPreparingCollections || isCollectionsLoading}
+          aria-expanded={isPickerOpen}
+          aria-label={`${isPickerOpen ? "收起 collection" : "加入 collection"} ${entry.word} ${entry.pronunciation}`}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-45"
         >
-          {isPrimary ? "当前词条" : "选择这个词条"}
+          <CollectionIcon className="size-4" />
+          {isPickerOpen ? "收起单词本" : "加入单词本"}
         </button>
         <button
           type="button"
           onClick={() => onStartRetryWithEntry(entry)}
           aria-label={`按此读音重查 ${entry.word} ${entry.pronunciation}`}
-          className="inline-flex h-9 items-center justify-center rounded-full border border-white/10 px-3 text-sm text-white/58 transition hover:border-white/18 hover:bg-white/5 hover:text-white/72"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
         >
-          按此读音重查
-        </button>
-        <button
-          type="button"
-          onClick={() => void onTogglePicker()}
-          disabled={isPreparingCollections || isCollectionsLoading}
-          aria-expanded={isPickerOpen}
-          aria-label={`${isPickerOpen ? "收起 collection" : "加入 collection"} ${entry.word} ${entry.pronunciation}`}
-          className="inline-flex h-9 items-center justify-center rounded-full border border-white/10 px-3 text-sm text-white/58 transition hover:border-white/18 hover:bg-white/5 hover:text-white/72 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {isPickerOpen ? "收起 collection" : "加入 collection"}
+          <SearchIcon className="size-4" />
+          补充语境
         </button>
       </div>
 
       {isPickerOpen ? (
-        <div className="rounded-[14px] border border-white/8 bg-[#15151599] p-3">
+        <div className="border-t border-border pt-3">
           {isPreparingCollections || isCollectionsLoading ? (
-            <p className="text-sm leading-6 text-white/42">正在加载 collections...</p>
+            <p className="text-sm leading-6 text-muted">正在加载单词本...</p>
           ) : collections.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {collections.map((collection) => (
@@ -133,7 +123,7 @@ export function DictionaryEntryActions({
                   type="button"
                   onClick={() => void onSelectCollection(collection.collectionId)}
                   disabled={busyCollectionId !== null}
-                  className="inline-flex h-9 items-center justify-center rounded-full bg-white/8 px-3 text-sm text-white/66 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-surface-strong px-3 text-sm text-foreground transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {busyCollectionId === collection.collectionId
                     ? "添加中..."
@@ -142,14 +132,14 @@ export function DictionaryEntryActions({
               ))}
             </div>
           ) : (
-            <p className="text-sm leading-6 text-white/42">
-              还没有 collection，先创建一个再回来添加。
+            <p className="text-sm leading-6 text-muted">
+              还没有单词本，先创建一个再回来添加。
             </p>
           )}
         </div>
       ) : null}
 
-      {notice ? <p className="text-sm leading-6 text-white/42">{notice}</p> : null}
+      {notice ? <p className="text-sm leading-6 text-muted">{notice}</p> : null}
     </div>
   );
 }

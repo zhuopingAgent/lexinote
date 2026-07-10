@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
 import { DictionaryEntryActions } from "@/app/components/dictionary-entry-actions";
+import { DictionaryResultSelector } from "@/app/components/dictionary-result-selector";
 import { HistoryList } from "@/app/components/history-list";
 import { OverviewList } from "@/app/components/overview-list";
 import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
@@ -20,18 +21,34 @@ import { useCollections } from "@/app/hooks/use-collections";
 import { useLookupFlow } from "@/app/hooks/use-lookup-flow";
 import { useOverviewWords } from "@/app/hooks/use-overview-words";
 import { parseAppView, type AppView } from "@/app/lib/app-view";
+import type { SearchHistoryItem } from "@/app/lib/search-history";
 import {
   buildLookupStatusBadges,
   getLookupEntryCollectionState,
 } from "@/app/lib/lookup-view";
 
-const SIDEBAR_ITEMS = [
-  { label: "辞書", icon: BookIcon, view: "dictionary" as AppView },
-  { label: "全覧", icon: StarIcon, view: "overview" as AppView },
-  { label: "履歴", icon: HistoryIcon, view: "history" as AppView },
+const VIEW_TABS = [
+  {
+    label: "辞書",
+    displayLabel: "查询",
+    icon: BookIcon,
+    view: "dictionary" as AppView,
+  },
+  {
+    label: "全覧",
+    displayLabel: "全部词条",
+    icon: StarIcon,
+    view: "overview" as AppView,
+  },
+  {
+    label: "履歴",
+    displayLabel: "历史",
+    icon: HistoryIcon,
+    view: "history" as AppView,
+  },
   {
     label: "Collection",
-    mobileLabel: "単語帳",
+    displayLabel: "单词本",
     icon: CollectionIcon,
     view: "collections" as AppView,
   },
@@ -49,6 +66,7 @@ function getRequestedView() {
 
 export default function Home() {
   const [activeView, setActiveView] = useState<AppView>("dictionary");
+  const [isContextFieldOpen, setIsContextFieldOpen] = useState(false);
   const statusId = useId();
   const {
     word,
@@ -78,12 +96,10 @@ export default function Home() {
     hasMultipleResults,
     resultDifferenceOverview,
     resultDifferenceNotes,
-    resultPanelWidthClass,
     onOpenHistoryItem,
     onClearHistory,
     onSubmit,
     onRetrySubmit,
-    onToggleRetryPanel,
     onCancelRetry,
     onSelectResultEntry,
     onStartRetryWithEntry,
@@ -129,6 +145,14 @@ export default function Home() {
     onDismissAiApiError: onDismissCollectionAiApiError,
   } = useCollections(activeView);
   const lookupStatusBadges = buildLookupStatusBadges(result);
+  const primaryEntry = resultEntries[0] ?? null;
+  const primaryWordCard = wordCardsData[0] ?? null;
+  const primaryCollectionState = primaryEntry
+    ? getLookupEntryCollectionState(primaryEntry, result)
+    : {
+        canAddToCollection: false,
+        addDisabledReason: "当前词条信息不完整。",
+      };
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -139,6 +163,11 @@ export default function Home() {
       window.clearTimeout(timer);
     };
   }, []);
+
+  function handleOpenHistoryItem(item: SearchHistoryItem) {
+    onOpenHistoryItem(item);
+    setIsContextFieldOpen(Boolean(item.context.trim()));
+  }
 
   const statusMessage =
     activeView === "overview"
@@ -192,483 +221,397 @@ export default function Home() {
       />
       <AppHeader navItems={TOP_NAV_ITEMS} />
 
-      <div className="flex flex-1 flex-col md:grid md:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-white/10 bg-[#1e1e1e80] md:block">
-          <div className="px-4 py-4">
-            <nav className="space-y-1" aria-label="Sidebar">
-              {SIDEBAR_ITEMS.map((item) => {
-                const Icon = item.icon;
+      <nav className="border-b border-border bg-surface-soft" aria-label="词典功能">
+        <div className="mx-auto flex w-full max-w-[1180px] gap-1 overflow-x-auto px-[clamp(16px,4vw,40px)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {VIEW_TABS.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.view === activeView;
 
-                return (
+            return (
+              <button
+                key={item.label}
+                type="button"
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => setActiveView(item.view)}
+                className={
+                  isActive
+                    ? "inline-flex h-12 shrink-0 items-center gap-2 border-b-2 border-accent px-3 text-sm font-semibold text-foreground"
+                    : "inline-flex h-12 shrink-0 items-center gap-2 border-b-2 border-transparent px-3 text-sm font-medium text-muted transition hover:text-foreground"
+                }
+              >
+                <Icon className="size-4 shrink-0" />
+                <span>{item.displayLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <section className="flex-1 px-[clamp(16px,4vw,40px)] py-[clamp(24px,3vw,36px)]">
+        <p id={statusId} className="sr-only" aria-live="polite" aria-atomic="true">
+          {statusMessage}
+        </p>
+
+        <div className="mx-auto w-full max-w-[1000px]">
+          {activeView === "overview" ? (
+            <OverviewList
+              words={overviewWords}
+              query={overviewQuery}
+              nextCursor={overviewNextCursor}
+              isLoading={isOverviewLoading}
+              isLoadingMore={isOverviewLoadingMore}
+              error={overviewError}
+              collections={collections}
+              isCollectionsLoading={isCollectionsLoading}
+              onQueryChange={setOverviewQuery}
+              onLoadMore={onLoadMoreOverviewWords}
+              onEnsureCollectionsLoaded={ensureCollectionsLoaded}
+              onAddWordToCollection={onAddOverviewWordToCollection}
+            />
+          ) : activeView === "collections" ? (
+            <CollectionPanel
+              collections={collections}
+              collectionName={collectionName}
+              editingCollectionId={editingCollectionId}
+              editingCollectionName={editingCollectionName}
+              editingCollectionAutoFilterEnabled={
+                editingCollectionAutoFilterEnabled
+              }
+              editingCollectionAutoFilterCriteria={
+                editingCollectionAutoFilterCriteria
+              }
+              error={collectionError}
+              isLoading={isCollectionsLoading}
+              isCreating={isCreatingCollection}
+              busyCollectionId={busyCollectionId}
+              onCollectionNameChange={setCollectionName}
+              onCreateCollection={onCreateCollection}
+              onStartEditing={onStartEditingCollection}
+              onEditingCollectionNameChange={setEditingCollectionName}
+              onEditingCollectionAutoFilterEnabledChange={
+                setEditingCollectionAutoFilterEnabled
+              }
+              onEditingCollectionAutoFilterCriteriaChange={
+                setEditingCollectionAutoFilterCriteria
+              }
+              onCancelEditing={onCancelEditingCollection}
+              onSaveEditing={onSaveCollectionUpdate}
+              onResyncCollection={onResyncCollection}
+              onDeleteCollection={onDeleteCollection}
+            />
+          ) : activeView === "history" ? (
+            <HistoryList
+              items={historyItems}
+              onOpenItem={handleOpenHistoryItem}
+              onClear={onClearHistory}
+            />
+          ) : (
+            <div>
+              <header className="mx-auto w-full max-w-[720px]">
+                <h1 className="text-3xl leading-tight font-semibold text-foreground">
+                  辞書
+                </h1>
+                <p className="mt-2 hidden text-sm leading-6 text-muted sm:block">
+                  查询日语单词、读音、释义和自然例句。
+                </p>
+              </header>
+
+              <form
+                onSubmit={onSubmit}
+                aria-describedby={statusId}
+                className="mx-auto mt-5 w-full max-w-[720px]"
+              >
+                <div className="flex gap-2">
+                  <label className="relative min-w-0 flex-1">
+                    <span className="sr-only">日语词</span>
+                    <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted" />
+                    <input
+                      type="search"
+                      value={word}
+                      onChange={(event) => setWord(event.target.value)}
+                      placeholder="输入日语单词或假名"
+                      aria-label="日语词"
+                      className="h-12 w-full appearance-none rounded-lg border border-border bg-surface pr-4 pl-12 text-base text-foreground outline-none transition placeholder:text-muted focus:border-foreground/40 focus:ring-2 focus:ring-accent-soft"
+                    />
+                  </label>
                   <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => {
-                      if (item.view) {
-                        setActiveView(item.view);
-                      }
-                    }}
-                    aria-current={item.view === activeView ? "page" : undefined}
-                    disabled={!item.view}
-                    className={
-                      item.view === activeView
-                        ? "flex h-12 w-full items-center gap-3 rounded-[10px] bg-white/10 px-4 text-left text-white/70"
-                        : item.view
-                          ? "flex h-12 w-full items-center gap-3 rounded-[10px] px-4 text-left text-white/40 transition hover:bg-white/5 hover:text-white/60"
-                          : "flex h-12 w-full items-center gap-3 rounded-[10px] px-4 text-left text-white/20"
-                    }
+                    type="submit"
+                    aria-label={isLoading ? "查询中" : "查询"}
+                    disabled={!canSubmit}
+                    className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    <Icon className="size-5 shrink-0" />
-                    <span className="text-base font-medium tracking-[-0.02em]">
-                      {item.label}
+                    <SearchIcon className="size-4" />
+                    <span className="hidden sm:inline">
+                      {isLoading ? "查询中" : "查询"}
                     </span>
                   </button>
-                );
-              })}
-            </nav>
-          </div>
-        </aside>
+                </div>
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-white/10 px-4 py-3 md:hidden">
-            <div className="flex gap-1.5 overflow-x-auto pb-1 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {SIDEBAR_ITEMS.map((item) => {
-                const Icon = item.icon;
-
-                return (
+                <div className="mt-3">
                   <button
-                    key={item.label}
                     type="button"
-                    aria-label={item.label}
-                    onClick={() => {
-                      if (item.view) {
-                        setActiveView(item.view);
-                      }
-                    }}
-                    disabled={!item.view}
-                    className={
-                      item.view === activeView
-                        ? "inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/10 px-3 text-sm text-white/70"
-                        : item.view
-                          ? "inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/10 px-3 text-sm text-white/45"
-                          : "inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/6 px-3 text-sm text-white/22"
-                    }
+                    aria-expanded={isContextFieldOpen}
+                    onClick={() => setIsContextFieldOpen((isOpen) => !isOpen)}
+                    className="inline-flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted transition hover:bg-surface-soft hover:text-foreground"
                   >
-                    <Icon className="size-4 shrink-0" />
-                    <span>{item.mobileLabel ?? item.label}</span>
+                    {isContextFieldOpen
+                      ? "收起语境"
+                      : searchContextDraft.trim()
+                        ? "查看已添加语境"
+                        : "+ 添加语境"}
                   </button>
-                );
-              })}
-            </div>
-          </div>
 
-          <section className="flex-1 px-[clamp(16px,4vw,40px)] py-[clamp(32px,4vw,48px)]">
-            <p id={statusId} className="sr-only" aria-live="polite" aria-atomic="true">
-              {statusMessage}
-            </p>
+                  {isContextFieldOpen ? (
+                    <label className="mt-2 block">
+                      <span className="sr-only">查询语境</span>
+                      <input
+                        type="text"
+                        value={searchContextDraft}
+                        onChange={(event) =>
+                          setSearchContextDraft(event.target.value)
+                        }
+                        placeholder="例如：不安を抱く、希望例句偏日常会话"
+                        aria-label="查询语境"
+                        className="h-11 w-full rounded-lg border border-border bg-surface px-4 text-sm text-foreground outline-none transition placeholder:text-muted focus:border-foreground/40 focus:ring-2 focus:ring-accent-soft"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              </form>
 
-            <div
-              className={`mx-auto w-full ${
-                hasMultipleResults ? "max-w-[1000px]" : "max-w-[848px]"
-              }`}
-            >
-              {activeView === "overview" ? (
-                <OverviewList
-                  words={overviewWords}
-                  query={overviewQuery}
-                  nextCursor={overviewNextCursor}
-                  isLoading={isOverviewLoading}
-                  isLoadingMore={isOverviewLoadingMore}
-                  error={overviewError}
-                  collections={collections}
-                  isCollectionsLoading={isCollectionsLoading}
-                  onQueryChange={setOverviewQuery}
-                  onLoadMore={onLoadMoreOverviewWords}
-                  onEnsureCollectionsLoaded={ensureCollectionsLoaded}
-                  onAddWordToCollection={onAddOverviewWordToCollection}
-                />
-              ) : activeView === "collections" ? (
-                <CollectionPanel
-                  collections={collections}
-                  collectionName={collectionName}
-                  editingCollectionId={editingCollectionId}
-                  editingCollectionName={editingCollectionName}
-                  editingCollectionAutoFilterEnabled={
-                    editingCollectionAutoFilterEnabled
-                  }
-                  editingCollectionAutoFilterCriteria={
-                    editingCollectionAutoFilterCriteria
-                  }
-                  error={collectionError}
-                  isLoading={isCollectionsLoading}
-                  isCreating={isCreatingCollection}
-                  busyCollectionId={busyCollectionId}
-                  onCollectionNameChange={setCollectionName}
-                  onCreateCollection={onCreateCollection}
-                  onStartEditing={onStartEditingCollection}
-                  onEditingCollectionNameChange={setEditingCollectionName}
-                  onEditingCollectionAutoFilterEnabledChange={
-                    setEditingCollectionAutoFilterEnabled
-                  }
-                  onEditingCollectionAutoFilterCriteriaChange={
-                    setEditingCollectionAutoFilterCriteria
-                  }
-                  onCancelEditing={onCancelEditingCollection}
-                  onSaveEditing={onSaveCollectionUpdate}
-                  onResyncCollection={onResyncCollection}
-                  onDeleteCollection={onDeleteCollection}
-                />
-              ) : activeView === "history" ? (
-                <HistoryList
-                  items={historyItems}
-                  onOpenItem={onOpenHistoryItem}
-                  onClear={onClearHistory}
-                />
-              ) : (
-                <>
-                  <div>
-                    <form
-                      onSubmit={onSubmit}
-                      aria-describedby={statusId}
-                      className="mx-auto w-full max-w-[672px]"
+              {!isLoading && !hasResult && !error && historyItems.length > 0 ? (
+                <section className="mx-auto mt-8 w-full max-w-[720px]">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-foreground">
+                      最近查询
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setActiveView("history")}
+                      className="inline-flex h-9 items-center rounded-md px-2 text-xs font-medium text-muted transition hover:bg-surface-soft hover:text-foreground"
                     >
-                      <label className="mb-3 block">
-                        <span className="mb-2 block text-sm text-white/45">
-                          查询语境（可选）
-                        </span>
-                        <input
-                          type="text"
-                          value={searchContextDraft}
-                          onChange={(event) => setSearchContextDraft(event.target.value)}
-                          placeholder="例如：不安を抱く / 希望例句偏日常会话"
-                          aria-label="查询语境"
-                          className="h-[clamp(46px,5vw,48px)] w-full rounded-[clamp(12px,2vw,14px)] border border-white/15 bg-[#1e1e1e99] px-4 text-sm tracking-[-0.01em] text-white/72 outline-none placeholder:text-white/28 focus:border-white/30 focus:ring-2 focus:ring-white/10"
-                        />
-                      </label>
-                      <label className="relative block">
-                        <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-white/35" />
-                        <input
-                          type="search"
-                          value={word}
-                          onChange={(event) => setWord(event.target.value)}
-                          placeholder="日本語の単語を入力してください..."
-                          aria-label="日语词"
-                          className="h-[clamp(48px,5vw,50px)] w-full rounded-[clamp(12px,2vw,14px)] border border-white/20 bg-[#1e1e1ecc] pl-12 pr-4 text-sm tracking-[-0.01em] text-white/78 outline-none placeholder:text-white/35 focus:border-white/30 focus:ring-2 focus:ring-white/10"
-                        />
-                      </label>
-                      <button type="submit" disabled={!canSubmit} className="sr-only">
-                        开始查询
-                      </button>
-                    </form>
+                      查看全部
+                    </button>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {historyItems.slice(0, 6).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleOpenHistoryItem(item)}
+                        className="inline-flex min-h-10 items-center rounded-lg border border-border bg-surface px-3 text-sm text-foreground transition hover:border-foreground/30"
+                      >
+                        {item.searchedWord}
+                        <span className="ml-2 text-xs text-muted">
+                          {item.result.entry.pronunciation}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-                  {error ? (
-                    <div
-                      role="alert"
-                      className="mt-8 rounded-2xl border border-danger/30 bg-danger-soft/80 px-5 py-4 text-danger"
-                    >
-                      <p className="text-sm font-semibold">查询失败</p>
-                      <p className="mt-1 text-sm leading-6">{error}</p>
+              {error ? (
+                <div
+                  role="alert"
+                  className="mx-auto mt-6 w-full max-w-[720px] rounded-lg border border-danger/30 bg-danger-soft px-5 py-4 text-danger"
+                >
+                  <p className="text-sm font-semibold">查询失败</p>
+                  <p className="mt-1 text-sm leading-6">{error}</p>
+                </div>
+              ) : null}
+
+              {isLoading || hasResult ? (
+                <div className="mx-auto mt-6 flex w-full max-w-[720px] flex-col gap-4">
+                  {showsLookupWordHint || showsContextHint ? (
+                    <div className="border-l-2 border-accent pl-3">
+                      {showsContextHint ? (
+                        <p className="text-sm leading-6 text-muted">
+                          {hasMultipleResults
+                            ? `已参考语境「${activeContext}」展示更相关的候选结果`
+                            : `已参考语境「${activeContext}」优先展示更匹配的结果`}
+                        </p>
+                      ) : null}
+                      {showsLookupWordHint ? (
+                        <p className="text-sm leading-6 text-muted">
+                          已按原形「{result?.lookupWord}」查询
+                        </p>
+                      ) : null}
+                      {result?.lookupReason ? (
+                        <p className="mt-1 text-xs leading-5 text-muted">
+                          {result?.lookupReason}
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
+                  {lookupStatusBadges.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {lookupStatusBadges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-md border border-border bg-surface-soft px-2.5 py-1 text-xs leading-5 text-muted"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {isLoading && !hasResult ? <WordCardSkeleton /> : null}
 
-                  {isLoading || hasResult ? (
-                    <div
-                      className={
-                        showsLookupWordHint || showsContextHint
-                          ? "mt-[clamp(14px,2vw,18px)] flex flex-col items-center gap-3"
-                          : "mt-[clamp(32px,4vw,40px)] flex flex-col items-center gap-4"
-                      }
-                    >
-                      {showsLookupWordHint || showsContextHint ? (
-                        <div className="flex flex-col items-center gap-1.5">
-                          {showsContextHint ? (
-                            <p className="text-center text-sm leading-6 text-white/45">
-                              {hasMultipleResults
-                                ? `已参考语境「${activeContext}」展示更相关的候选结果`
-                                : `已参考语境「${activeContext}」优先展示更匹配的结果`}
-                            </p>
-                          ) : null}
-                          {showsLookupWordHint ? (
-                            <p className="text-center text-sm leading-6 text-white/45">
-                              已按原形「{result?.lookupWord}」查询
-                            </p>
-                          ) : null}
-                          {result?.lookupReason ? (
-                            <p className="max-w-[32rem] text-center text-xs leading-5 text-white/32">
-                              {result?.lookupReason}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {lookupStatusBadges.length > 0 ? (
-                        <div className="flex flex-wrap justify-center gap-2">
-                          {lookupStatusBadges.map((badge) => (
-                            <span
-                              key={badge}
-                              className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs leading-5 text-white/42"
-                            >
-                              {badge}
-                            </span>
+                  {hasResult && primaryWordCard && primaryEntry ? (
+                    <>
+                      <DictionaryResultSelector
+                        entries={resultEntries}
+                        selectedPronunciation={
+                          result?.entry.pronunciation ?? primaryEntry.pronunciation
+                        }
+                        onSelectEntry={onSelectResultEntry}
+                      />
+                      <WordCard
+                        word={primaryWordCard}
+                        actions={
+                          <DictionaryEntryActions
+                            entry={primaryEntry}
+                            canAddToCollection={
+                              primaryCollectionState.canAddToCollection
+                            }
+                            addDisabledReason={
+                              primaryCollectionState.addDisabledReason
+                            }
+                            collections={collections}
+                            isCollectionsLoading={isCollectionsLoading}
+                            onStartRetryWithEntry={onStartRetryWithEntry}
+                            onEnsureCollectionsLoaded={ensureCollectionsLoaded}
+                            onAddEntryToCollection={
+                              onAddDictionaryEntryToCollection
+                            }
+                          />
+                        }
+                      />
+                    </>
+                  ) : null}
+
+                  {hasMultipleResults && resultDifferenceNotes.length > 0 ? (
+                    <details className="rounded-lg border border-border bg-surface">
+                      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-foreground">
+                        各结果之间的区别
+                      </summary>
+                      <div className="border-t border-border px-4 py-3">
+                        {resultDifferenceOverview ? (
+                          <p className="text-sm leading-6 text-muted">
+                            {resultDifferenceOverview}
+                          </p>
+                        ) : null}
+                        <div className="mt-3 divide-y divide-border">
+                          {resultDifferenceNotes.map((note) => (
+                            <div key={note.key} className="py-3 first:pt-0 last:pb-0">
+                              <p className="text-sm font-medium text-foreground">
+                                {note.title}
+                              </p>
+                              <p className="mt-1 text-sm leading-6 text-muted">
+                                {note.description}
+                              </p>
+                            </div>
                           ))}
                         </div>
-                      ) : null}
-                      {hasMultipleResults && wordCardsData.length > 0 ? (
-                        <div className="w-full max-w-[960px]">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <p className="text-sm leading-6 text-white/45">
-                              共找到 {wordCardsData.length} 个本地结果，已并列展示。
-                            </p>
-                            <p className="hidden text-xs leading-5 text-white/28 sm:block">
-                              左右滑动可查看全部结果
-                            </p>
-                          </div>
-
-                          <div className="flex gap-4 overflow-x-auto pb-2 pr-1 [scrollbar-width:thin]">
-                            {wordCardsData.map((wordCard, index) => {
-                              const entry = resultEntries[index];
-                              const collectionState = entry
-                                ? getLookupEntryCollectionState(entry, result)
-                                : {
-                                    canAddToCollection: false,
-                                    addDisabledReason: "当前词条信息不完整。",
-                                  };
-
-                              return (
-                                <div
-                                  key={`${wordCard.word}-${wordCard.reading}-${index}`}
-                                  className="basis-[86%] shrink-0 sm:basis-[390px] lg:basis-[420px]"
-                                >
-                                  <WordCard
-                                    word={wordCard}
-                                    actions={
-                                      entry ? (
-                                        <DictionaryEntryActions
-                                          entry={entry}
-                                          isPrimary={
-                                            result?.entry.pronunciation ===
-                                            entry.pronunciation
-                                          }
-                                          canAddToCollection={
-                                            collectionState.canAddToCollection
-                                          }
-                                          addDisabledReason={
-                                            collectionState.addDisabledReason
-                                          }
-                                          collections={collections}
-                                          isCollectionsLoading={isCollectionsLoading}
-                                          onSelectEntry={onSelectResultEntry}
-                                          onStartRetryWithEntry={
-                                            onStartRetryWithEntry
-                                          }
-                                          onEnsureCollectionsLoaded={
-                                            ensureCollectionsLoaded
-                                          }
-                                          onAddEntryToCollection={
-                                            onAddDictionaryEntryToCollection
-                                          }
-                                        />
-                                      ) : null
-                                    }
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : wordCardsData[0] ? (
-                        <WordCard
-                          word={wordCardsData[0]}
-                          actions={
-                            resultEntries[0] ? (
-                              <DictionaryEntryActions
-                                entry={resultEntries[0]}
-                                isPrimary
-                                canAddToCollection={
-                                  getLookupEntryCollectionState(resultEntries[0], result)
-                                    .canAddToCollection
-                                }
-                                addDisabledReason={
-                                  getLookupEntryCollectionState(resultEntries[0], result)
-                                    .addDisabledReason
-                                }
-                                collections={collections}
-                                isCollectionsLoading={isCollectionsLoading}
-                                onSelectEntry={onSelectResultEntry}
-                                onStartRetryWithEntry={onStartRetryWithEntry}
-                                onEnsureCollectionsLoaded={ensureCollectionsLoaded}
-                                onAddEntryToCollection={
-                                  onAddDictionaryEntryToCollection
-                                }
-                              />
-                            ) : null
-                          }
-                        />
-                      ) : (
-                        <WordCardSkeleton />
-                      )}
-
-                      {hasMultipleResults && resultDifferenceNotes.length > 0 ? (
-                        <div className="w-full max-w-[960px]">
-                          <div className="rounded-[clamp(14px,2vw,16px)] border border-white/10 bg-[#1e1e1eb3] p-[clamp(16px,2.4vw,20px)]">
-                            <div className="flex flex-col gap-3">
-                              <div>
-                                <p className="text-sm font-medium text-white/68">
-                                  各结果之间的区别
-                                </p>
-                                {resultDifferenceOverview ? (
-                                  <p className="mt-1 text-sm leading-6 text-white/40">
-                                    {resultDifferenceOverview}
-                                  </p>
-                                ) : null}
-                              </div>
-
-                              <div className="space-y-2.5">
-                                {resultDifferenceNotes.map((note) => (
-                                  <div
-                                    key={note.key}
-                                    className="rounded-[14px] border border-white/8 bg-[#15151599] px-4 py-3"
-                                  >
-                                    <p className="text-sm font-medium text-white/66">
-                                      {note.title}
-                                    </p>
-                                    <p className="mt-1 text-sm leading-6 text-white/42">
-                                      {note.description}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {hasResult ? (
-                        <div className={`w-full ${resultPanelWidthClass}`}>
-                          <div className="rounded-[clamp(14px,2vw,16px)] border border-white/10 bg-[#1e1e1eb3] p-[clamp(16px,2.4vw,20px)]">
-                            <div className="flex flex-col gap-3">
-                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-white/65">
-                                    对当前结果不满意？
-                                  </p>
-                                  <p className="mt-1 text-sm leading-6 text-white/38">
-                                    补充你想要的解释方向、场景或例句风格，再重新查询一次。
-                                  </p>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={onToggleRetryPanel}
-                                  disabled={isLoading}
-                                  className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-white/12 px-4 text-sm text-white/62 transition hover:border-white/20 hover:bg-white/5 hover:text-white/78 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {isRetryPanelOpen ? "收起补充说明" : "重新查询"}
-                                </button>
-                              </div>
-
-                              {isRetryPanelOpen ? (
-                                <form onSubmit={onRetrySubmit} className="space-y-3">
-                                  {hasMultipleResults ? (
-                                    <fieldset className="space-y-2">
-                                      <legend className="text-sm text-white/48">
-                                        选择要重查的词条
-                                      </legend>
-                                      <div className="grid gap-2 sm:grid-cols-2">
-                                        {resultEntries.map((entry, index) => (
-                                          <label
-                                            key={`${entry.word}-${entry.pronunciation}-${index}`}
-                                            className={
-                                              selectedRetryPronunciation ===
-                                              entry.pronunciation
-                                                ? "cursor-pointer rounded-[14px] border border-white/20 bg-white/8 px-4 py-3"
-                                                : "cursor-pointer rounded-[14px] border border-white/10 bg-[#15151599] px-4 py-3 transition hover:border-white/16 hover:bg-white/5"
-                                            }
-                                          >
-                                            <input
-                                              type="radio"
-                                              name="retry-entry"
-                                              value={entry.pronunciation}
-                                              checked={
-                                                selectedRetryPronunciation ===
-                                                entry.pronunciation
-                                              }
-                                              onChange={(event) =>
-                                                setSelectedRetryPronunciation(
-                                                  event.target.value
-                                                )
-                                              }
-                                              className="sr-only"
-                                            />
-                                            <p className="text-sm font-medium text-white/68">
-                                              {entry.pronunciation}
-                                            </p>
-                                            <p className="mt-1 text-sm leading-6 text-white/40">
-                                              {entry.meaningZh
-                                                .split(/[；;。]/)[0]
-                                                .trim() || "当前词条"}
-                                            </p>
-                                          </label>
-                                        ))}
-                                      </div>
-                                    </fieldset>
-                                  ) : null}
-
-                                  <label className="block">
-                                    <span className="mb-2 block text-sm text-white/48">
-                                      补充说明
-                                    </span>
-                                    <textarea
-                                      value={retryContext}
-                                      onChange={(event) =>
-                                        setRetryContext(event.target.value)
-                                      }
-                                      placeholder="例如：希望释义更简单一点；例句偏日常会话；顺便解释它和相近词的区别。"
-                                      aria-label="重新查询补充说明"
-                                      autoFocus
-                                      rows={4}
-                                      disabled={isLoading}
-                                      className="min-h-28 w-full resize-y rounded-[14px] border border-white/12 bg-[#151515cc] px-4 py-3 text-sm leading-6 text-white/76 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                                    />
-                                  </label>
-
-                                  <div className="flex flex-wrap items-center gap-3">
-                                    <button
-                                      type="submit"
-                                      disabled={!canRetrySubmit}
-                                      className="inline-flex h-10 items-center justify-center rounded-full bg-white/10 px-4 text-sm font-medium text-white/74 transition hover:bg-white/14 disabled:cursor-not-allowed disabled:opacity-45"
-                                    >
-                                      {isLoading ? "重新查询中..." : "按补充说明重新查询"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={onCancelRetry}
-                                      disabled={isLoading}
-                                      className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/44 transition hover:border-white/18 hover:text-white/62 disabled:cursor-not-allowed disabled:opacity-45"
-                                    >
-                                      取消
-                                    </button>
-                                  </div>
-                                </form>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
+                      </div>
+                    </details>
                   ) : null}
-                </>
-              )}
-            </div>
-          </section>
-        </div>
-      </div>
 
-      <footer className="border-t border-white/10">
-        <div className="mx-auto flex min-h-[clamp(72px,8vw,84px)] w-full max-w-[1160px] items-center justify-center px-[clamp(16px,3vw,24px)] py-5 text-center text-xs leading-6 text-white/40 sm:text-sm md:py-0">
-          日本語学習辞書 - Japanese Learning Dictionary
+                  {isRetryPanelOpen ? (
+                    <section className="rounded-lg border border-border bg-surface p-5">
+                      <h2 className="text-base font-semibold text-foreground">
+                        补充语境重新查询
+                      </h2>
+                      <form onSubmit={onRetrySubmit} className="mt-4 space-y-4">
+                        {hasMultipleResults ? (
+                          <fieldset className="space-y-2">
+                            <legend className="text-sm font-medium text-muted">
+                              选择要重查的词条
+                            </legend>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {resultEntries.map((entry, index) => (
+                                <label
+                                  key={`${entry.word}-${entry.pronunciation}-${index}`}
+                                  className={
+                                    selectedRetryPronunciation ===
+                                    entry.pronunciation
+                                      ? "cursor-pointer rounded-lg border border-accent/35 bg-accent-soft px-4 py-3"
+                                      : "cursor-pointer rounded-lg border border-border bg-surface-soft px-4 py-3 transition hover:border-foreground/30"
+                                  }
+                                >
+                                  <input
+                                    type="radio"
+                                    name="retry-entry"
+                                    value={entry.pronunciation}
+                                    checked={
+                                      selectedRetryPronunciation ===
+                                      entry.pronunciation
+                                    }
+                                    onChange={(event) =>
+                                      setSelectedRetryPronunciation(
+                                        event.target.value
+                                      )
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <p className="text-sm font-medium text-foreground">
+                                    {entry.pronunciation}
+                                  </p>
+                                  <p className="mt-1 truncate text-sm text-muted">
+                                    {entry.meaningZh
+                                      .split(/[；;。]/)[0]
+                                      .trim() || "当前词条"}
+                                  </p>
+                                </label>
+                              ))}
+                            </div>
+                          </fieldset>
+                        ) : null}
+
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-medium text-muted">
+                            补充说明
+                          </span>
+                          <textarea
+                            value={retryContext}
+                            onChange={(event) => setRetryContext(event.target.value)}
+                            placeholder="例如：希望释义更简单；例句偏日常会话；解释和相近词的区别。"
+                            aria-label="重新查询补充说明"
+                            autoFocus
+                            rows={4}
+                            disabled={isLoading}
+                            className="min-h-28 w-full resize-y rounded-lg border border-border bg-surface-soft px-4 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted focus:border-foreground/40 focus:ring-2 focus:ring-accent-soft disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+                        </label>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={!canRetrySubmit}
+                            className="inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            {isLoading ? "重新查询中..." : "按补充说明重新查询"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onCancelRetry}
+                            disabled={isLoading}
+                            className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-medium text-muted transition hover:bg-surface-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </form>
+                    </section>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
-      </footer>
+      </section>
     </main>
   );
 }
