@@ -88,6 +88,8 @@
 - Grammar seed migrations are key-based and repeatable. E2E global setup applies both grammar SQL files twice and verifies stable record counts, three examples for every expanded unit, active-unit content completeness, comparison member integrity, legacy feedback migration, module and curriculum coverage, prerequisite acyclicity/order, polysemous senses, and taxonomy integrity before loading fixtures.
 - Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
 - Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.
+- Adaptive grammar practice stores sessions, exercises, attempts, normalized attempt issues, mastery evidence, and per-skill learner state. The old generate/submit endpoints remain compatibility APIs, while `/api/practice/sessions` is the primary product flow.
+- Active practice responses intentionally hide expected features, reference answers, complete hint ladders, and grammar examples until a correct attempt or explicit reveal.
 
 ## Quality Checks
 

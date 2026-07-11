@@ -165,6 +165,34 @@ describe("grammar domain seed", () => {
     expect(sql).toContain("('tense_mismatch', 'tense_aspect_error')");
   });
 
+  it("seeds the redesigned practice domain with stable blueprints and scenarios", () => {
+    const sql = readSchemaSql();
+    const blueprintBlock = extractBlock(
+      sql,
+      "WITH blueprint_seed",
+      "INSERT INTO exercise_blueprints"
+    );
+    const scenarioBlock = extractBlock(
+      sql,
+      "WITH scenario_seed",
+      "INSERT INTO scenario_templates"
+    );
+
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS practice_sessions");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS exercise_instances");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS practice_attempts");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS mastery_evidence");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS learner_skill_states");
+    expect(blueprintBlock.match(/^\s+\($/gm)).toHaveLength(6);
+    expect(blueprintBlock).toContain("'meaning_choice'");
+    expect(blueprintBlock).toContain("'contextual_response'");
+    expect(scenarioBlock.match(/^\s*\('[a-z_]+',/gm)).toHaveLength(10);
+    expect(scenarioBlock).toContain("'hospital', '医院'");
+    expect(scenarioBlock).toContain("'workplace', '公司'");
+    expect(sql).toContain("UNIQUE (user_id, client_session_key)");
+    expect(sql).toContain("UNIQUE (practice_session_id, sequence_number)");
+  });
+
   it("uses stable keys and conflict-safe associations for repeatable migrations", () => {
     const sql = readSchemaSql();
 

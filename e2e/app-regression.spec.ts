@@ -169,6 +169,246 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   expectNoBrowserErrors(browserErrors);
 });
 
+test("practice sessions hide answers, support retry and hints, and preserve hospital feedback", async ({
+  page,
+}) => {
+  const grammarResponse = await page.request.get(
+    `/api/grammar?${new URLSearchParams({ query: "〜てもらえますか", limit: "20" })}`
+  );
+  expect(grammarResponse.ok()).toBe(true);
+  const grammarSearch = (await grammarResponse.json()) as {
+    items: Array<{ id: string; grammarPoint: string; coreMeaning: string }>;
+  };
+  const grammarPoint = grammarSearch.items.find(
+    (item) => item.grammarPoint === "〜てもらえますか"
+  );
+  expect(grammarPoint).toBeDefined();
+
+  const createResponse = await page.request.post("/api/practice/sessions", {
+    data: {
+      clientSessionKey: `e2e-practice-${Date.now()}`,
+      grammarPointId: grammarPoint?.id,
+      entryMode: "focus",
+      preferredScene: "hospital",
+      preferredRegister: "polite",
+      plannedExerciseCount: 5,
+    },
+  });
+  expect(createResponse.status()).toBe(201);
+  const first = (await createResponse.json()) as {
+    session: { id: string; status: string };
+    progress: { current: number; total: number };
+    exercise: {
+      id: string;
+      sequenceNumber: number;
+      responseMode: "choice" | "text";
+      prompt: string;
+      context: { sceneLabel: string; registerLabel: string };
+      options: Array<{ id: string; label: string }>;
+      grammarPoint: Record<string, unknown>;
+    };
+  };
+  expect(first.progress).toEqual(expect.objectContaining({ current: 1, total: 5 }));
+  expect(first.exercise.responseMode).toBe("choice");
+  expect(first.exercise.context).toEqual(
+    expect.objectContaining({ sceneLabel: "医院", registerLabel: "一般礼貌" })
+  );
+  expect(first.exercise.grammarPoint).not.toHaveProperty("examples");
+  expect(first.exercise).not.toHaveProperty("referenceAnswers");
+  expect(first.exercise).not.toHaveProperty("expectedFeatures");
+  expect(first.exercise).not.toHaveProperty("hintLadder");
+
+  const correctOption = first.exercise.options.find(
+    (option) => option.label === grammarPoint?.coreMeaning
+  );
+  const wrongOption = first.exercise.options.find(
+    (option) => option.id !== correctOption?.id
+  );
+  expect(correctOption).toBeDefined();
+  expect(wrongOption).toBeDefined();
+
+  const wrongResponse = await page.request.post(
+    `/api/practice/exercises/${first.exercise.id}/attempts`,
+    { data: { selectedOptionId: wrongOption?.id } }
+  );
+  expect(wrongResponse.ok()).toBe(true);
+  const wrong = (await wrongResponse.json()) as {
+    feedback: { correctedSentence: string | null; betterVersions: unknown[] };
+    canRetry: boolean;
+    referenceAnswers: unknown[];
+  };
+  expect(wrong.canRetry).toBe(true);
+  expect(wrong.referenceAnswers).toEqual([]);
+  expect(wrong.feedback.correctedSentence).toBeNull();
+  expect(wrong.feedback.betterVersions).toEqual([]);
+
+  const hintResponse = await page.request.post(
+    `/api/practice/exercises/${first.exercise.id}/hints`,
+    { data: {} }
+  );
+  expect(hintResponse.ok()).toBe(true);
+  await expect(hintResponse.json()).resolves.toEqual(
+    expect.objectContaining({ hintsRevealed: 1, hint: expect.any(String) })
+  );
+
+  const correctResponse = await page.request.post(
+    `/api/practice/exercises/${first.exercise.id}/attempts`,
+    { data: { selectedOptionId: correctOption?.id } }
+  );
+  expect(correctResponse.ok()).toBe(true);
+  const correct = (await correctResponse.json()) as {
+    exerciseCompleted: boolean;
+    referenceAnswers: unknown[];
+    evidence: { attemptNumber: number; independent: boolean };
+  };
+  expect(correct.exerciseCompleted).toBe(true);
+  expect(correct.referenceAnswers.length).toBeGreaterThan(0);
+  expect(correct.evidence).toEqual(
+    expect.objectContaining({ attemptNumber: 2, independent: false })
+  );
+
+  const secondResponse = await page.request.post(
+    `/api/practice/sessions/${first.session.id}/next`,
+    { data: {} }
+  );
+  expect(secondResponse.ok()).toBe(true);
+  const second = (await secondResponse.json()) as {
+    exercise: { id: string; sequenceNumber: number; exerciseType: string; prompt: string };
+  };
+  expect(second.exercise).toEqual(
+    expect.objectContaining({ sequenceNumber: 2, exerciseType: "form_repair" })
+  );
+  expect(second.exercise.prompt).toContain("接续或活用问题");
+
+  const repairResponse = await page.request.post(
+    `/api/practice/exercises/${second.exercise.id}/attempts`,
+    { data: { answer: "すみません、もう一度説明してもらえますか。" } }
+  );
+  expect(repairResponse.ok()).toBe(true);
+  await expect(repairResponse.json()).resolves.toEqual(
+    expect.objectContaining({ exerciseCompleted: true })
+  );
+
+  const thirdResponse = await page.request.post(
+    `/api/practice/sessions/${first.session.id}/next`,
+    { data: {} }
+  );
+  expect(thirdResponse.ok()).toBe(true);
+  const third = (await thirdResponse.json()) as {
+    exercise: {
+      id: string;
+      sequenceNumber: number;
+      exerciseType: string;
+      prompt: string;
+      options: Array<{ id: string; label: string }>;
+    };
+  };
+  expect(third.exercise).toEqual(
+    expect.objectContaining({ sequenceNumber: 3, exerciseType: "contrast_choice" })
+  );
+  const contrastAnswer = third.exercise.options.find(
+    (option) => option.label === "〜てもらえますか"
+  );
+  expect(contrastAnswer).toBeDefined();
+  const contrastResponse = await page.request.post(
+    `/api/practice/exercises/${third.exercise.id}/attempts`,
+    { data: { selectedOptionId: contrastAnswer?.id } }
+  );
+  expect(contrastResponse.ok()).toBe(true);
+  await expect(contrastResponse.json()).resolves.toEqual(
+    expect.objectContaining({ exerciseCompleted: true })
+  );
+
+  const fourthResponse = await page.request.post(
+    `/api/practice/sessions/${first.session.id}/next`,
+    { data: {} }
+  );
+  expect(fourthResponse.ok()).toBe(true);
+  const fourth = (await fourthResponse.json()) as {
+    exercise: { id: string; sequenceNumber: number; exerciseType: string; prompt: string };
+  };
+  expect(fourth.exercise).toEqual(
+    expect.objectContaining({ sequenceNumber: 4, exerciseType: "register_rewrite" })
+  );
+  expect(fourth.exercise.prompt).toContain("説明してもらえる？");
+
+  const registerResponse = await page.request.post(
+    `/api/practice/exercises/${fourth.exercise.id}/attempts`,
+    { data: { answer: "先生、もう一度説明してもらえる？" } }
+  );
+  expect(registerResponse.ok()).toBe(true);
+  const registerFeedback = (await registerResponse.json()) as {
+    feedback: {
+      issues: Array<{ errorTypeCode: string; correction: string }>;
+      correctedSentence: string | null;
+      explanation: string;
+    };
+    referenceAnswers: unknown[];
+  };
+  expect(registerFeedback.feedback.issues).toEqual([
+    expect.objectContaining({
+      errorTypeCode: "register_mismatch",
+      correction: "",
+    }),
+  ]);
+  expect(registerFeedback.feedback.correctedSentence).toBeNull();
+  expect(registerFeedback.feedback.explanation).not.toContain("いただけますか");
+  expect(registerFeedback.referenceAnswers).toEqual([]);
+
+  const reviewBeforeRevealResponse = await page.request.get("/api/review/today");
+  expect(reviewBeforeRevealResponse.ok()).toBe(true);
+  const reviewBeforeReveal = (await reviewBeforeRevealResponse.json()) as {
+    items: Array<{
+      grammarPoint: { id: string };
+      mistakeCount: number;
+    }>;
+  };
+  const mistakeCountBeforeReveal = reviewBeforeReveal.items.find(
+    (item) => item.grammarPoint.id === grammarPoint?.id
+  )?.mistakeCount;
+  expect(mistakeCountBeforeReveal).toBe(1);
+
+  const revealResponse = await page.request.post(
+    `/api/practice/exercises/${fourth.exercise.id}/reveal`,
+    { data: {} }
+  );
+  expect(revealResponse.ok()).toBe(true);
+  const reveal = (await revealResponse.json()) as {
+    referenceAnswers: Array<{ jp: string }>;
+    evidence: { score: number; independent: boolean };
+  };
+  expect(reveal.referenceAnswers[0]?.jp).toBe(
+    "すみません、もう一度説明していただけますか。"
+  );
+  expect(reveal.evidence).toEqual(
+    expect.objectContaining({ score: 0.2, independent: false })
+  );
+
+  const reviewAfterRevealResponse = await page.request.get("/api/review/today");
+  expect(reviewAfterRevealResponse.ok()).toBe(true);
+  const reviewAfterReveal = (await reviewAfterRevealResponse.json()) as {
+    items: Array<{
+      grammarPoint: { id: string };
+      mistakeCount: number;
+    }>;
+  };
+  expect(
+    reviewAfterReveal.items.find(
+      (item) => item.grammarPoint.id === grammarPoint?.id
+    )?.mistakeCount
+  ).toBe(mistakeCountBeforeReveal);
+
+  await page.goto(`/practice?grammarId=${grammarPoint?.id}`);
+  await expect(page.getByText("第 1 / 5 题", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "〜てもらえますか", exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("练习设置");
+  await expect(page.locator("body")).not.toContainText("daily_life");
+  await expect(page.locator("body")).not.toContainText("polite");
+});
+
 test("structured fallback feedback feeds multidimensional review", async ({ page }) => {
   const taxonomyResponse = await page.request.get("/api/grammar/taxonomy");
   expect(taxonomyResponse.ok()).toBe(true);

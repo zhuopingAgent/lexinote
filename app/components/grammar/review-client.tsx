@@ -231,7 +231,7 @@ export function ReviewClient() {
                     : null}
                 </div>
                 <Link
-                  href={`/practice?grammarId=${item.grammarPoint.id}`}
+                  href={`/practice?grammarId=${item.grammarPoint.id}&mode=review`}
                   className="inline-flex h-10 items-center justify-center rounded-full bg-accent px-4 text-sm font-semibold text-black transition hover:bg-accent-strong"
                 >
                   再练一次

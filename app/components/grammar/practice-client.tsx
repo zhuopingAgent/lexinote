@@ -1,139 +1,139 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
-import type {
-  GrammarDetailResponse,
-  GrammarPointDetail,
-  GrammarTag,
-  GrammarTaxonomyResponse,
-  PracticeGenerateResponse,
-  PracticeLevel,
-  PracticeSubmitResponse,
-} from "@/shared/types/grammar";
 import { FeedbackPanel } from "@/app/components/grammar/feedback-panel";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
-import { PracticePrompt } from "@/app/components/grammar/practice-prompt";
-import { SentenceInput } from "@/app/components/grammar/sentence-input";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 import {
   getErrorMessage,
   isAiQuotaExhaustedError,
   readJson,
 } from "@/app/lib/api-client";
+import {
+  PRACTICE_EXERCISE_LABELS,
+  PRACTICE_SKILL_LABELS,
+} from "@/features/grammar-learning/domain/practice";
+import type { PracticeReferenceAnswer } from "@/shared/types/grammar";
+import type {
+  PracticeAttemptResponse,
+  PracticeHintResponse,
+  PracticeRevealResponse,
+  PracticeSessionEntryMode,
+  PracticeSessionResponse,
+} from "@/shared/types/practice";
 
-const PRACTICE_REGISTER_OPTIONS = [
-  { value: "casual", label: "随便" },
-  { value: "polite", label: "一般礼貌" },
-  { value: "business", label: "正式 / 商务" },
-] as const;
+const DIFFICULTY_LABELS = {
+  1: "基础识别",
+  2: "受限应用",
+  3: "综合运用",
+  4: "新场景迁移",
+} as const;
 
-const PRACTICE_LEVEL_OPTIONS = [
-  { value: 3, label: "中译日" },
-  { value: 4, label: "语体转换" },
-  { value: 5, label: "易混对比" },
-] as const;
+type PracticeClientProps = {
+  grammarPointId?: string;
+  entryMode: PracticeSessionEntryMode;
+};
 
-function findInitialTag(tags: GrammarTag[], preferred: string, fallback?: string) {
+function ReferenceAnswers({ answers }: { answers: PracticeReferenceAnswer[] }) {
+  if (answers.length === 0) {
+    return null;
+  }
+
   return (
-    tags.find((tag) => tag.nameEn === preferred)?.nameEn ??
-    (fallback ? tags.find((tag) => tag.nameEn === fallback)?.nameEn : undefined) ??
-    tags[0]?.nameEn ??
-    ""
+    <section className="border-t border-border pt-6" aria-label="参考答案">
+      <h2 className="text-base font-semibold text-foreground">参考表达</h2>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {answers.map((answer) => (
+          <article
+            key={`${answer.jp}-${answer.zh}`}
+            className="rounded-lg border border-border bg-surface-soft p-4"
+          >
+            <p className="text-base leading-7 text-foreground">{answer.jp}</p>
+            <p className="mt-2 text-sm leading-6 text-muted">{answer.zh}</p>
+            {answer.noteZh ? (
+              <p className="mt-2 text-xs leading-5 text-foreground/45">
+                {answer.noteZh}
+              </p>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
-function normalizePracticeRegisterTag(registerTag?: string | null) {
-  if (registerTag === "casual" || registerTag === "rough") {
-    return "casual";
-  }
-
-  if (
-    registerTag === "business" ||
-    registerTag === "formal" ||
-    registerTag === "written" ||
-    registerTag === "customer" ||
-    registerTag === "academic" ||
-    registerTag === "news"
-  ) {
-    return "business";
-  }
-
-  return "polite";
+function LoadingState() {
+  return (
+    <div className="mx-auto w-full max-w-[960px]" aria-label="正在准备练习">
+      <div className="h-2 animate-pulse rounded bg-foreground/10" />
+      <div className="mt-8 grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="h-52 animate-pulse rounded-lg border border-border bg-surface" />
+        <div className="h-80 animate-pulse rounded-lg border border-border bg-surface" />
+      </div>
+    </div>
+  );
 }
 
-export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) {
-  const [grammarPoint, setGrammarPoint] = useState<GrammarPointDetail | null>(null);
-  const [sceneTags, setSceneTags] = useState<GrammarTag[]>([]);
-  const [sceneTag, setSceneTag] = useState("");
-  const [registerTag, setRegisterTag] = useState("");
-  const [level, setLevel] = useState<PracticeLevel>(3);
-  const [practice, setPractice] = useState<PracticeGenerateResponse | null>(null);
-  const [sentence, setSentence] = useState("");
-  const [feedback, setFeedback] = useState<PracticeSubmitResponse | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
+export function PracticeClient({
+  grammarPointId,
+  entryMode,
+}: PracticeClientProps) {
+  const clientInstanceIdRef = useRef<string | null>(null);
+  const [runNumber, setRunNumber] = useState(0);
+  const [sessionData, setSessionData] = useState<PracticeSessionResponse | null>(
+    null
+  );
+  const [answer, setAnswer] = useState("");
+  const [selectedOptionId, setSelectedOptionId] = useState("");
+  const [attempt, setAttempt] = useState<PracticeAttemptResponse | null>(null);
+  const [hints, setHints] = useState<string[]>([]);
+  const [referenceAnswers, setReferenceAnswers] = useState<
+    PracticeReferenceAnswer[]
+  >([]);
+  const [isRevealed, setIsRevealed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const generationRef = useRef(0);
+  const [isActing, setIsActing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
 
-  const hasGrammarPointId = Boolean(grammarPointId?.trim());
-  const selectedScene = useMemo(
-    () => sceneTags.find((tag) => tag.nameEn === sceneTag),
-    [sceneTags, sceneTag]
-  );
-  const selectedRegister = useMemo(
-    () =>
-      PRACTICE_REGISTER_OPTIONS.find((option) => option.value === registerTag) ??
-      PRACTICE_REGISTER_OPTIONS[1],
-    [registerTag]
-  );
+  const exercise = sessionData?.exercise ?? null;
+  const summary = sessionData?.summary ?? null;
+  const canAdvance = Boolean(attempt?.exerciseCompleted || isRevealed);
 
   useEffect(() => {
-    if (!grammarPointId) {
-      setIsLoading(false);
-      return;
-    }
-
     const controller = new AbortController();
+    clientInstanceIdRef.current ??= globalThis.crypto.randomUUID();
+    const sessionKey = `practice:${entryMode}:${grammarPointId ?? "recommended"}:${clientInstanceIdRef.current}:${runNumber}`;
 
-    async function loadPracticeData() {
+    async function startSession() {
       setIsLoading(true);
-      setLoadError(null);
-
+      setError(null);
       try {
-        const [detail, taxonomy] = await Promise.all([
-          fetch(`/api/grammar/${grammarPointId}`, {
-            signal: controller.signal,
-          }).then((response) => readJson<GrammarDetailResponse>(response)),
-          fetch("/api/grammar/taxonomy", {
-            signal: controller.signal,
-          }).then((response) => readJson<GrammarTaxonomyResponse>(response)),
-        ]);
-
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setGrammarPoint(detail.grammarPoint);
-        setSceneTags(taxonomy.sceneTags);
-        setSceneTag(
-          detail.grammarPoint.grammarPoint === "〜てもらえますか"
-            ? findInitialTag(taxonomy.sceneTags, "hospital", "daily_life")
-            : findInitialTag(
-                taxonomy.sceneTags,
-                detail.grammarPoint.sceneTags[0]?.nameEn ?? "daily_life"
-              )
-        );
-        setRegisterTag(
-          normalizePracticeRegisterTag(detail.grammarPoint.registerTags[0]?.nameEn)
-        );
-      } catch (error) {
+        const response = await fetch("/api/practice/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          signal: controller.signal,
+          body: JSON.stringify({
+            clientSessionKey: sessionKey,
+            grammarPointId,
+            entryMode,
+            plannedExerciseCount: 5,
+          }),
+        }).then((result) => readJson<PracticeSessionResponse>(result));
         if (!controller.signal.aborted) {
-          setLoadError(getErrorMessage(error, "练习数据加载失败，请稍后再试。"));
+          setSessionData(response);
+        }
+      } catch (requestError) {
+        if (!controller.signal.aborted) {
+          if (isAiQuotaExhaustedError(requestError)) {
+            setAiApiErrorMessage(requestError.message);
+          }
+          setError(
+            getErrorMessage(requestError, "练习准备失败，请稍后再试。")
+          );
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -142,276 +142,463 @@ export function PracticeClient({ grammarPointId }: { grammarPointId?: string }) 
       }
     }
 
-    void loadPracticeData();
+    void startSession();
+    return () => controller.abort();
+  }, [entryMode, grammarPointId, runNumber]);
 
-    return () => {
-      controller.abort();
-    };
-  }, [grammarPointId]);
-
-  function resetGeneratedPractice() {
-    generationRef.current += 1;
-    setPractice(null);
-    setSentence("");
-    setFeedback(null);
-    setActionError(null);
-    setAiApiErrorMessage(null);
-    setIsGenerating(false);
+  function resetExerciseState() {
+    setAnswer("");
+    setSelectedOptionId("");
+    setAttempt(null);
+    setHints([]);
+    setReferenceAnswers([]);
+    setIsRevealed(false);
+    setError(null);
   }
 
-  async function generatePractice() {
-    if (!grammarPoint) {
+  function restartSession() {
+    resetExerciseState();
+    setSessionData(null);
+    setIsLoading(true);
+    setRunNumber((current) => current + 1);
+  }
+
+  async function submitAttempt() {
+    if (
+      !exercise ||
+      (exercise.responseMode === "text" && !answer.trim()) ||
+      (exercise.responseMode === "choice" && !selectedOptionId)
+    ) {
       return;
     }
 
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const nextSceneTag = sceneTag;
-    const nextRegisterTag = registerTag;
-    const nextLevel = level;
-
-    setIsGenerating(true);
-    setActionError(null);
-    setFeedback(null);
-    setPractice(null);
-    setSentence("");
-
+    setIsActing(true);
+    setError(null);
     try {
-      const nextPractice = await fetch("/api/practice/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-        body: JSON.stringify({
-          grammarPointId: grammarPoint.id,
-          sceneTag: nextSceneTag,
-          registerTag: nextRegisterTag,
-          level: nextLevel,
-        }),
-      }).then((response) => readJson<PracticeGenerateResponse>(response));
-
-      if (generationRef.current === generation) {
-        setPractice(nextPractice);
-        setAiApiErrorMessage(null);
-      }
-    } catch (error) {
-      if (generationRef.current === generation) {
-        if (isAiQuotaExhaustedError(error)) {
-          setAiApiErrorMessage(error.message);
+      const response = await fetch(
+        `/api/practice/exercises/${exercise.id}/attempts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            answer: exercise.responseMode === "text" ? answer : undefined,
+            selectedOptionId:
+              exercise.responseMode === "choice" ? selectedOptionId : undefined,
+          }),
         }
-        setActionError(getErrorMessage(error, "练习生成失败，请稍后再试。"));
+      ).then((result) => readJson<PracticeAttemptResponse>(result));
+      setAttempt(response);
+      setReferenceAnswers(response.referenceAnswers);
+      setAiApiErrorMessage(null);
+    } catch (requestError) {
+      if (isAiQuotaExhaustedError(requestError)) {
+        setAiApiErrorMessage(requestError.message);
       }
+      setError(getErrorMessage(requestError, "提交失败，请稍后再试。"));
     } finally {
-      if (generationRef.current === generation) {
-        setIsGenerating(false);
-      }
+      setIsActing(false);
     }
   }
 
-  async function submitSentence() {
-    if (!grammarPoint || !sentence.trim()) {
+  async function revealHint() {
+    if (!exercise) {
       return;
     }
-
-    setIsSubmitting(true);
-    setActionError(null);
-
+    setIsActing(true);
+    setError(null);
     try {
-      const nextFeedback = await fetch("/api/practice/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          grammarPointId: grammarPoint.id,
-          sentence,
-          sceneTag,
-          registerTag,
-          promptText: practice?.prompt,
-        }),
-      }).then((response) => readJson<PracticeSubmitResponse>(response));
-      setFeedback(nextFeedback);
-      setAiApiErrorMessage(null);
-    } catch (error) {
-      if (isAiQuotaExhaustedError(error)) {
-        setAiApiErrorMessage(error.message);
+      const response = await fetch(
+        `/api/practice/exercises/${exercise.id}/hints`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }
+      ).then((result) => readJson<PracticeHintResponse>(result));
+      if (response.hint) {
+        setHints((current) => [...current, response.hint as string]);
       }
-      setActionError(getErrorMessage(error, "句子反馈失败，请稍后再试。"));
+      setSessionData((current) =>
+        current?.exercise
+          ? {
+              ...current,
+              exercise: {
+                ...current.exercise,
+                hintsRevealed: response.hintsRevealed,
+                hasMoreHints: response.hasMoreHints,
+              },
+            }
+          : current
+      );
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, "提示加载失败，请稍后再试。"));
     } finally {
-      setIsSubmitting(false);
+      setIsActing(false);
     }
   }
 
-  if (!hasGrammarPointId) {
-    return (
-      <div className="mx-auto w-full max-w-[760px] rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
-        <p className="text-base font-medium text-white/62">还没有选择语法点</p>
-        <Link
-          href="/grammar"
-          className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong"
-        >
-          去选择
-        </Link>
-      </div>
-    );
+  async function revealAnswer() {
+    if (!exercise) {
+      return;
+    }
+    setIsActing(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/practice/exercises/${exercise.id}/reveal`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }
+      ).then((result) => readJson<PracticeRevealResponse>(result));
+      setReferenceAnswers(response.referenceAnswers);
+      setIsRevealed(true);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, "答案加载失败，请稍后再试。"));
+    } finally {
+      setIsActing(false);
+    }
+  }
+
+  async function nextExercise() {
+    if (!sessionData) {
+      return;
+    }
+    setIsActing(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/practice/sessions/${sessionData.session.id}/next`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: "{}",
+        }
+      ).then((result) => readJson<PracticeSessionResponse>(result));
+      resetExerciseState();
+      setSessionData(response);
+    } catch (requestError) {
+      if (isAiQuotaExhaustedError(requestError)) {
+        setAiApiErrorMessage(requestError.message);
+      }
+      setError(getErrorMessage(requestError, "下一题加载失败，请稍后再试。"));
+    } finally {
+      setIsActing(false);
+    }
   }
 
   if (isLoading) {
+    return <LoadingState />;
+  }
+
+  if (error && !sessionData) {
     return (
-      <div className="mx-auto grid w-full max-w-[1100px] gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="h-72 animate-pulse rounded-[18px] border border-white/10 bg-[#1e1e1eb3]" />
-        <div className="h-72 animate-pulse rounded-[18px] border border-white/10 bg-[#1e1e1eb3]" />
+      <div className="mx-auto w-full max-w-[720px] rounded-lg border border-danger/30 bg-danger-soft p-5 text-sm leading-6 text-danger">
+        {error}
       </div>
     );
   }
 
-  if (loadError || !grammarPoint) {
+  if (!sessionData) {
+    return null;
+  }
+
+  if (summary) {
     return (
-      <div
-        role="alert"
-        className="mx-auto w-full max-w-[760px] rounded-[18px] border border-danger/30 bg-danger-soft/80 px-5 py-4 text-sm leading-6 text-danger"
-      >
-        {loadError ?? "未找到这个语法点。"}
+      <div className="mx-auto w-full max-w-[820px]">
+        <section className="rounded-lg border border-border bg-surface p-6 sm:p-8">
+          <p className="text-sm font-semibold text-accent-strong">本组完成</p>
+          <h1 className="mt-2 text-3xl font-semibold text-foreground">
+            {summary.grammarPoint.grammarPoint}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted">
+            已完成 {summary.completedExerciseCount} 道练习。结果按具体语法用法和能力维度记录，不会因多重分类重复计算。
+          </p>
+          <div className="mt-7 divide-y divide-border border-y border-border">
+            {summary.skillSummaries.map((skill) => (
+              <div
+                key={skill.skillDimension}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-4"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-foreground/85">
+                    {PRACTICE_SKILL_LABELS[skill.skillDimension]}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {skill.evidenceCount} 次有效作答
+                  </p>
+                </div>
+                <p className="text-lg font-semibold text-foreground">
+                  {Math.round(skill.averageScore * 100)}%
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={restartSession}
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong"
+            >
+              再练一组
+            </button>
+            <Link
+              href="/grammar"
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-border px-5 text-sm font-semibold text-muted transition hover:border-foreground/30 hover:text-foreground"
+            >
+              返回文法
+            </Link>
+          </div>
+        </section>
       </div>
     );
   }
+
+  if (!exercise) {
+    return <LoadingState />;
+  }
+
+  const progressPercent = Math.min(
+    100,
+    (sessionData.progress.current / sessionData.progress.total) * 100
+  );
+  const canSubmit =
+    !attempt &&
+    (exercise.responseMode === "text" ? Boolean(answer.trim()) : Boolean(selectedOptionId));
 
   return (
-    <div className="mx-auto grid w-full max-w-[1120px] gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+    <div className="mx-auto w-full max-w-[1040px]">
       <AiApiErrorModal
         message={aiApiErrorMessage}
         onClose={() => setAiApiErrorMessage(null)}
       />
-      <aside className="space-y-5">
-        <section className="rounded-[18px] border border-white/10 bg-[#1e1e1eb3] p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <PracticalityBadge practicality={grammarPoint.practicality} />
-            {grammarPoint.primaryCategory ? (
-              <>
-                <TagBadge tag={grammarPoint.primaryCategory.dimensionNameZh} />
-                <TagBadge tag={grammarPoint.primaryCategory.nameZh} />
-              </>
-            ) : grammarPoint.migrationTarget ? (
-              <TagBadge tag={grammarPoint.migrationTarget.nameZh} />
-            ) : null}
+
+      <header className="mb-6">
+        <div className="flex items-center justify-between gap-4 text-xs text-muted">
+          <span>
+            第 {sessionData.progress.current} / {sessionData.progress.total} 题
+          </span>
+          <span>{PRACTICE_SKILL_LABELS[exercise.skillDimension]}</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded bg-foreground/10">
+          <div
+            className="h-full bg-accent transition-[width] duration-300"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </header>
+
+      <div className="grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="rounded-lg border border-border bg-surface p-5 lg:sticky lg:top-24">
+          <div className="flex flex-wrap gap-2">
+            <PracticalityBadge practicality={exercise.grammarPoint.practicality} />
+            <TagBadge tag={exercise.context.sceneLabel} tone="scene" />
           </div>
-          <h1 className="mt-4 break-words text-3xl leading-tight font-semibold text-white/82">
-            {grammarPoint.grammarPoint}
+          <h1 className="mt-4 break-words text-2xl font-semibold leading-tight text-foreground">
+            {exercise.grammarPoint.grammarPoint}
           </h1>
-          <p className="mt-3 text-sm leading-6 text-white/54">
-            {grammarPoint.coreMeaning}
-          </p>
-          {grammarPoint.structure ? (
-            <p className="mt-4 rounded-[12px] border border-white/8 bg-[#15151599] px-3 py-2 font-mono text-xs leading-5 text-white/54">
-              {grammarPoint.structure}
+          {exercise.grammarPoint.primaryCategory ? (
+            <p className="mt-3 text-sm leading-6 text-muted">
+              {exercise.grammarPoint.primaryCategory.nameZh}
             </p>
           ) : null}
+          <dl className="mt-5 divide-y divide-border border-y border-border text-sm">
+            <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
+              <dt className="text-muted">语体</dt>
+              <dd className="text-foreground/75">{exercise.context.registerLabel}</dd>
+            </div>
+            <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
+              <dt className="text-muted">题型</dt>
+              <dd className="text-foreground/75">
+                {PRACTICE_EXERCISE_LABELS[exercise.exerciseType]}
+              </dd>
+            </div>
+            <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
+              <dt className="text-muted">难度</dt>
+              <dd className="text-foreground/75">
+                {DIFFICULTY_LABELS[exercise.difficulty]}
+              </dd>
+            </div>
+          </dl>
           <Link
-            href={`/grammar/${grammarPoint.id}`}
-            className="mt-5 inline-flex h-10 items-center justify-center rounded-full border border-white/12 px-4 text-sm text-white/58 transition hover:border-white/22 hover:text-white/74"
+            href={`/grammar/${exercise.grammarPoint.id}`}
+            className="mt-5 inline-flex text-sm font-semibold text-accent-strong hover:text-accent"
           >
-            查看详情
+            查看语法说明
           </Link>
-        </section>
+        </aside>
 
-        <section className="rounded-[18px] border border-white/10 bg-[#1e1e1eb3] p-5">
-          <h2 className="text-lg font-semibold text-white/74">练习设置</h2>
-          <div className="mt-4 space-y-4">
-            <label className="block">
-              <span className="text-sm text-white/42">场景</span>
-              <select
-                value={sceneTag}
-                onChange={(event) => {
-                  setSceneTag(event.target.value);
-                  resetGeneratedPractice();
-                }}
-                className="mt-2 h-11 w-full rounded-[12px] border border-white/12 bg-[#151515cc] px-3 text-sm text-white/70 outline-none focus:border-white/26 focus:ring-2 focus:ring-white/10"
-              >
-                {sceneTags.map((tag) => (
-                  <option key={tag.nameEn} value={tag.nameEn}>
-                    {tag.nameZh}
-                  </option>
-                ))}
-              </select>
-            </label>
+        <section
+          aria-label="当前练习"
+          className="rounded-lg border border-border bg-surface p-5 sm:p-7"
+        >
+          <div className="border-b border-border pb-5">
+            <p className="text-xs font-semibold text-muted">
+              {exercise.context.speakerRole} → {exercise.context.listenerRole}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-foreground/60">
+              {exercise.context.knownContext}；需要表达“{exercise.context.requiredDetail}”。
+            </p>
+          </div>
 
-            <label className="block">
-              <span className="text-sm text-white/42">语体</span>
-              <select
-                value={registerTag}
-                onChange={(event) => {
-                  setRegisterTag(event.target.value);
-                  resetGeneratedPractice();
-                }}
-                className="mt-2 h-11 w-full rounded-[12px] border border-white/12 bg-[#151515cc] px-3 text-sm text-white/70 outline-none focus:border-white/26 focus:ring-2 focus:ring-white/10"
-              >
-                {PRACTICE_REGISTER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-white/42">等级</span>
-              <select
-                value={level}
-                onChange={(event) => {
-                  setLevel(Number(event.target.value) as PracticeLevel);
-                  resetGeneratedPractice();
-                }}
-                className="mt-2 h-11 w-full rounded-[12px] border border-white/12 bg-[#151515cc] px-3 text-sm text-white/70 outline-none focus:border-white/26 focus:ring-2 focus:ring-white/10"
-              >
-                {PRACTICE_LEVEL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={generatePractice}
-              disabled={isGenerating}
-              className="inline-flex h-11 w-full items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+          <section className="py-6" aria-labelledby="practice-task-title">
+            <p className="text-xs font-semibold text-accent-strong">
+              {PRACTICE_EXERCISE_LABELS[exercise.exerciseType]}
+            </p>
+            <h2
+              id="practice-task-title"
+              className="mt-3 text-xl font-semibold leading-8 text-foreground"
             >
-              {isGenerating ? "生成中" : practice ? "重新生成练习" : "生成练习"}
-            </button>
-          </div>
+              {exercise.prompt}
+            </h2>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {selectedScene ? <TagBadge tag={selectedScene} tone="scene" /> : null}
-            <TagBadge tag={selectedRegister.label} tone="register" />
-          </div>
-        </section>
-      </aside>
+            {exercise.responseMode === "choice" ? (
+              <fieldset className="mt-6 grid gap-3" disabled={Boolean(attempt) || isActing}>
+                <legend className="sr-only">选择答案</legend>
+                {exercise.options.map((option) => {
+                  const selected = selectedOptionId === option.id;
+                  return (
+                    <label
+                      key={option.id}
+                      className={`grid min-h-12 cursor-pointer grid-cols-[20px_minmax(0,1fr)] items-center gap-3 rounded-lg border px-4 py-3 text-sm leading-6 transition ${
+                        selected
+                          ? "border-accent/60 bg-accent-soft text-foreground"
+                          : "border-border bg-surface-soft text-foreground/75 hover:border-foreground/30"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="practice-option"
+                        value={option.id}
+                        checked={selected}
+                        onChange={() => setSelectedOptionId(option.id)}
+                        className="size-4 accent-[var(--accent)]"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </fieldset>
+            ) : (
+              <label className="mt-6 block">
+                <span className="text-sm font-semibold text-foreground/75">
+                  你的回答
+                </span>
+                <textarea
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  disabled={Boolean(attempt) || isActing}
+                  autoFocus
+                  rows={5}
+                  placeholder="用日语完成这次沟通"
+                  className="mt-3 min-h-32 w-full resize-y rounded-lg border border-border bg-surface-strong px-4 py-3 text-base leading-7 text-foreground outline-none placeholder:text-muted/60 focus:border-foreground/45 focus:ring-2 focus:ring-foreground/10 disabled:opacity-60"
+                />
+              </label>
+            )}
 
-      <div className="space-y-5">
-        {actionError ? (
-          <div
-            role="alert"
-            className="rounded-[18px] border border-danger/30 bg-danger-soft/80 px-5 py-4 text-sm leading-6 text-danger"
-          >
-            {actionError}
-          </div>
-        ) : null}
+            {hints.length > 0 ? (
+              <div className="mt-5 border-l-2 border-accent/50 pl-4">
+                <p className="text-xs font-semibold text-muted">提示</p>
+                <ol className="mt-2 space-y-2 text-sm leading-6 text-foreground/65">
+                  {hints.map((hint, index) => (
+                    <li key={`${index}-${hint}`}>{index + 1}. {hint}</li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
 
-        <PracticePrompt practice={practice} isLoading={isGenerating} />
+            {error ? (
+              <p
+                role="alert"
+                className="mt-5 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm leading-6 text-danger"
+              >
+                {error}
+              </p>
+            ) : null}
 
-        {practice ? (
-          <SentenceInput
-            value={sentence}
-            isSubmitting={isSubmitting}
-            autoFocus
-            onChange={setSentence}
-            onSubmit={submitSentence}
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
+              <button
+                type="button"
+                onClick={revealHint}
+                disabled={isActing || !exercise.hasMoreHints || canAdvance}
+                className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-muted transition hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {exercise.hasMoreHints ? "给我一点提示" : "提示已用完"}
+              </button>
+
+              {!attempt ? (
+                <button
+                  type="button"
+                  onClick={submitAttempt}
+                  disabled={isActing || !canSubmit}
+                  className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isActing ? "检查中" : "提交答案"}
+                </button>
+              ) : attempt.canRetry ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttempt(null);
+                    setSelectedOptionId("");
+                    setError(null);
+                  }}
+                  disabled={isActing}
+                  className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:opacity-50"
+                >
+                  修改后再试
+                </button>
+              ) : canAdvance ? (
+                <button
+                  type="button"
+                  onClick={nextExercise}
+                  disabled={isActing}
+                  className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:opacity-50"
+                >
+                  {isActing ? "准备中" : "下一题"}
+                </button>
+              ) : null}
+            </div>
+          </section>
+
+          <FeedbackPanel
+            feedback={attempt?.feedback ?? null}
+            isLoading={false}
+            embedded
           />
-        ) : null}
 
-        <FeedbackPanel feedback={feedback} isLoading={isSubmitting} />
+          {attempt?.canReveal && !isRevealed ? (
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={revealAnswer}
+                disabled={isActing}
+                className="text-sm font-semibold text-muted transition hover:text-foreground disabled:opacity-50"
+              >
+                放弃本题并查看参考答案
+              </button>
+            </div>
+          ) : null}
+
+          <div className={referenceAnswers.length > 0 ? "mt-6" : ""}>
+            <ReferenceAnswers answers={referenceAnswers} />
+          </div>
+
+          {isRevealed ? (
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={nextExercise}
+                disabled={isActing}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:opacity-50"
+              >
+                {isActing ? "准备中" : "下一题"}
+              </button>
+            </div>
+          ) : null}
+        </section>
       </div>
     </div>
   );

@@ -15,14 +15,14 @@
   - `app/page.tsx`: multi-view client shell for dictionary lookup, overview, local history, and collection management
   - `app/grammar/page.tsx`: grammar learning workbench with search, knowledge-taxonomy browsing, curriculum-stage browsing, and grammar cards
   - `app/grammar/[grammarPointId]/page.tsx`: grammar detail view with examples, usage tags, similar grammar, favorites, and practice entry
-  - `app/practice/page.tsx`: grammar scenario practice generation and sentence feedback flow
+  - `app/practice/page.tsx`: adaptive grammar practice session with retry, hints, reveal, and skill summary
   - `app/favorites/page.tsx`: saved grammar points
   - `app/review/page.tsx`: mistake-book and review records
   - `app/collections/detail/page.tsx`: collection detail page
   - `app/collections/add/page.tsx`: collection add-word page
   - `app/collections/words/detail/page.tsx`: word detail page scoped to a collection
   - `app/api/grammar/*`: grammar search, detail, and taxonomy endpoints
-  - `app/api/practice/*`: grammar practice generation and sentence feedback endpoints
+  - `app/api/practice/*`: adaptive practice-session endpoints plus legacy generation and sentence-feedback endpoints
   - `app/api/favorites/route.ts`: grammar favorite list/toggle endpoint
   - `app/api/review/today/route.ts`: grammar review endpoint
   - `app/auth/two-factor/page.tsx`: TOTP challenge page for deployment access protection
@@ -42,8 +42,7 @@
     and response text extraction shared by feature clients
   - `shared/auth/`: Basic Auth-adjacent two-factor helpers, TOTP verification, and signed 2FA session cookies
   - `shared/db/`: centralized PostgreSQL access and SQL
-  - `shared/types/`: domain DTOs split across `grammar.ts`, `dictionary.ts`, and
-    `collections.ts`; `api.ts` remains the compatibility barrel
+  - `shared/types/`: domain DTOs split across `grammar.ts`, `practice.ts`, `dictionary.ts`, and `collections.ts`; `api.ts` remains the compatibility barrel
   - `shared/utils/`: app-level errors
 - `types/`: local ambient typings
 - Root configs: `next.config.ts`, `tsconfig.json`, `eslint.config.mjs`, `postcss.config.mjs`
@@ -170,6 +169,7 @@
 - `app/api/review/today/route.ts`
 - `features/grammar-learning/`
 - `shared/db/sql/grammar.sql.ts`
+- `shared/db/sql/practice.sql.ts`
 - grammar tables and compatibility seed data in `shared/db/sql/schema.sql`
 - expanded grammar learning content in `shared/db/sql/grammar-content.sql`
 
@@ -177,20 +177,25 @@
 
 1. `/grammar` fetches grammar taxonomy and paginated `GET /api/grammar` search results. Users can browse either the seven knowledge dimensions or the five-stage, nineteen-module curriculum; query and filter changes reset pagination and invalidate stale initial or load-more requests.
 2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]` by UUID or stable `sense_key`, render structured connections, same-form senses, prerequisites, curriculum placement, examples, tags, mistakes, and similar grammar, then log view history against the canonical UUID.
-3. `/practice?grammarId=...` fetches grammar detail plus taxonomy, lets the user choose scene, register, and practice level, then calls `POST /api/practice/generate`. Comparison practice uses structured decision rules attached through normalized comparison members.
-4. Practice generation uses Vercel AI Gateway when `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` is available and deterministic fallback output otherwise.
-5. User sentence submission calls `POST /api/practice/submit`, stores `user_sentences`, stores `ai_feedback`, updates `review_records`, and logs learning history.
-6. `/favorites` uses `GET /api/favorites`; detail pages toggle favorites through `POST`/`DELETE /api/favorites`.
-7. `/review` uses `GET /api/review/today` to show due mistakes and retry links.
+3. `/practice?grammarId=...` immediately creates a five-exercise session through `POST /api/practice/sessions`; plain `/practice` selects a recommended due or curriculum grammar sense. The client no longer requires scene/register/type configuration before learning starts.
+4. `PracticeSessionService` selects one of six skill dimensions, assigns a real difficulty from learner evidence, rotates structured scenario details, and persists an `exercise_instance`. Deterministic choice tasks use grammar senses and normalized comparison members; AI only realizes text for an already-fixed plan.
+5. Attempts call `POST /api/practice/exercises/[exerciseId]/attempts`. Each attempt stores normalized issues, mastery evidence, and a per-sense/per-skill learner state. Text attempts also use the legacy sentence-feedback path so `user_sentences`, `ai_feedback`, `review_records`, and learning history remain connected.
+6. Hints are revealed one at a time. Active-exercise responses omit expected features, examples, reference answers, and unrevealed hints; answers are returned only after success or `POST .../reveal`.
+7. `POST /api/practice/sessions/[sessionId]/next` advances after success/reveal and returns a skill summary when the planned exercise count is complete. Legacy `POST /api/practice/generate` and `/submit` remain available.
+8. `/favorites` uses `GET /api/favorites`; detail pages toggle favorites through `POST`/`DELETE /api/favorites`.
+9. `/review` uses `GET /api/review/today` to show due mistakes and retry links.
 
 ### Important Rules
 
-- Keep route handlers thin and put grammar behavior in `GrammarLearningService`.
+- Keep route handlers thin. General grammar behavior belongs in `GrammarLearningService`; session orchestration belongs in `PracticeSessionService`; planning, deterministic exercise construction, and feedback disclosure rules belong in pure domain modules.
 - Treat `taxonomy_dimensions` and `taxonomy_nodes` as the knowledge taxonomy. Only the seven active knowledge dimensions belong there; comparison sets and error types are separate domain objects.
 - `grammar_points.primary_taxonomy_node_id` is the primary-category source of truth. The legacy category tables and response fields remain only for backward compatibility.
 - One active `grammar_points` row is one teachable sense. Polysemous surface forms share `canonical_form` and `form_group_slug` but keep distinct `sense_key`, meaning, connection, usage, and examples.
 - `grammar_point_connections` stores generation-ready connection rules; `grammar_point_prerequisites` stores required/recommended dependency edges and rejects cycles; `learning_stages`, `learning_modules`, and `grammar_point_curriculum` provide database-configured level, module placement, and dependency-aware recommended order.
 - `comparison_set_members` is the canonical relation between a comparison card and grammar senses. `comparison_sets` stores decision rules, connection/register differences, interchangeable boundaries, minimal pairs, and learner mistakes.
+- Keep `practice_sessions` -> `exercise_instances` -> `practice_attempts` as the exercise lifecycle. `mastery_evidence` records every scored attempt/reveal, while `learner_skill_states` has exactly one aggregate row per user, concrete grammar sense, and skill dimension.
+- Exercise type and difficulty are separate concepts. The planner owns both; the AI prompt cannot override them.
+- Never return hidden `expected_features`, the full hint ladder, reference answers, corrections, or grammar examples for an active unanswered exercise.
 - `ai_feedback_issues` normalizes one or more feedback issues against stable `error_types`; legacy feedback columns remain readable. Review aggregation uses the latest feedback per concrete sense and groups it by sense, error type, scenario, and register without traversing taxonomy tags.
 - Keep migrated comparison/error grammar-point IDs readable from detail, favorites, practice, and review flows; normal grammar search only lists active learning units.
 - Keep grammar search ordering stable for offset pagination, and preserve abort/generation guards when filters reset or more results are appended.
@@ -221,7 +226,7 @@
 1. `npm run test:e2e` runs Playwright against a production-style local server on `127.0.0.1:3100`.
 2. `playwright.config.ts` starts the app with `npm run build && npm run start`, points it at the E2E database, and clears deployment Basic Auth and 2FA secrets.
 3. `e2e/global-setup.mjs` validates `E2E_DATABASE_URL`, applies `schema.sql` and `grammar-content.sql` twice to verify idempotency and grammar-domain integrity, then truncates user-facing fixture tables and loads `e2e/fixtures.sql`.
-4. The desktop regression suite covers lookup, history, overview, grammar curriculum, collections, duplicate prevention, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
+4. The desktop regression suite covers lookup, history, overview, grammar curriculum, adaptive practice sessions, answer disclosure, hospital-register fallback, collections, duplicate prevention, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
 5. The mobile suite verifies navigation and no horizontal overflow on a narrow viewport.
 
 ### Important Rules

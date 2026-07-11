@@ -69,7 +69,9 @@ export default async function globalSetup() {
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
         'errorTypes', (SELECT COUNT(*) FROM error_types),
-        'errorAliases', (SELECT COUNT(*) FROM error_type_aliases)
+        'errorAliases', (SELECT COUNT(*) FROM error_type_aliases),
+        'exerciseBlueprints', (SELECT COUNT(*) FROM exercise_blueprints),
+        'scenarioTemplates', (SELECT COUNT(*) FROM scenario_templates)
       ) AS snapshot
     `);
     await pool.query(`
@@ -163,7 +165,9 @@ export default async function globalSetup() {
         'comparisonSets', (SELECT COUNT(*) FROM comparison_sets),
         'comparisonMembers', (SELECT COUNT(*) FROM comparison_set_members),
         'errorTypes', (SELECT COUNT(*) FROM error_types),
-        'errorAliases', (SELECT COUNT(*) FROM error_type_aliases)
+        'errorAliases', (SELECT COUNT(*) FROM error_type_aliases),
+        'exerciseBlueprints', (SELECT COUNT(*) FROM exercise_blueprints),
+        'scenarioTemplates', (SELECT COUNT(*) FROM scenario_templates)
       ) AS snapshot
     `);
 
@@ -180,6 +184,8 @@ export default async function globalSetup() {
         (SELECT COUNT(*) FROM grammar_points WHERE status = 'migrated') AS migrated_legacy_points,
         (SELECT COUNT(*) FROM comparison_sets WHERE status = 'active') AS active_comparison_sets,
         (SELECT COUNT(*) FROM error_types WHERE status = 'active') AS active_error_types,
+        (SELECT COUNT(*) FROM exercise_blueprints WHERE status = 'active') AS active_exercise_blueprints,
+        (SELECT COUNT(*) FROM scenario_templates WHERE status = 'active') AS active_scenario_templates,
         (SELECT COUNT(*) FROM learning_stages WHERE status = 'active') AS active_learning_stages,
         (SELECT COUNT(*) FROM learning_modules WHERE status = 'active') AS active_learning_modules,
         (
@@ -527,6 +533,8 @@ export default async function globalSetup() {
       Number(integrity?.migrated_legacy_points) !== 11 ||
       Number(integrity?.active_comparison_sets) !== 27 ||
       Number(integrity?.active_error_types) !== 10 ||
+      Number(integrity?.active_exercise_blueprints) !== 6 ||
+      Number(integrity?.active_scenario_templates) !== 10 ||
       Number(integrity?.active_learning_stages) !== 5 ||
       Number(integrity?.active_learning_modules) !== 19 ||
       Number(integrity?.empty_active_learning_modules) !== 0 ||
@@ -558,6 +566,12 @@ export default async function globalSetup() {
 
     await pool.query(`
       TRUNCATE TABLE
+        practice_attempt_issues,
+        mastery_evidence,
+        practice_attempts,
+        exercise_instances,
+        practice_sessions,
+        learner_skill_states,
         auto_filter_jobs,
         collection_words,
         collections,
