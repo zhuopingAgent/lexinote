@@ -175,7 +175,7 @@
 
 ### Runtime Flow
 
-1. `/grammar` fetches grammar taxonomy and paginated `GET /api/grammar` search results. Users can browse either the seven knowledge dimensions or the five-stage, nineteen-module curriculum; query and filter changes reset pagination and invalidate stale initial or load-more requests.
+1. `/grammar` fetches its initial navigation taxonomy, progress, and first search page through `GET /api/grammar/bootstrap` to avoid three separate cold-start requests and keep the first payload scoped to the fields the homepage renders. Query and filter changes then use paginated `GET /api/grammar` search results. Users can browse either the seven knowledge dimensions or the five-stage, nineteen-module curriculum; query and filter changes reset pagination and invalidate stale initial or load-more requests.
 2. Grammar detail pages fetch `GET /api/grammar/[grammarPointId]` by UUID or stable `sense_key`, render structured connections, same-form senses, prerequisites, curriculum placement, examples, tags, mistakes, and similar grammar, then log view history against the canonical UUID.
 3. `/practice?grammarId=...` immediately creates a five-exercise session through `POST /api/practice/sessions`; plain `/practice` selects a recommended due or curriculum grammar sense. The client no longer requires scene/register/type configuration before learning starts.
 4. `PracticeSessionService` selects one of six skill dimensions, assigns a real difficulty from learner evidence, rotates structured scenario details, and persists an `exercise_instance`. Deterministic choice tasks use grammar senses and normalized comparison members; AI only realizes text for an already-fixed plan.

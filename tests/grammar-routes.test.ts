@@ -4,6 +4,7 @@ const getTaxonomyMock = vi.fn();
 const searchGrammarPointsMock = vi.fn();
 const getGrammarPointDetailMock = vi.fn();
 const getProgressMock = vi.fn();
+const getBootstrapMock = vi.fn();
 
 vi.mock("@/features/grammar-learning/application/GrammarLearningService", () => ({
   GrammarLearningService: class {
@@ -11,6 +12,7 @@ vi.mock("@/features/grammar-learning/application/GrammarLearningService", () => 
     searchGrammarPoints = searchGrammarPointsMock;
     getGrammarPointDetail = getGrammarPointDetailMock;
     getProgress = getProgressMock;
+    getBootstrap = getBootstrapMock;
   },
 }));
 
@@ -30,6 +32,7 @@ describe("grammar API routes", () => {
     searchGrammarPointsMock.mockReset();
     getGrammarPointDetailMock.mockReset();
     getProgressMock.mockReset();
+    getBootstrapMock.mockReset();
   });
 
   it("returns seven knowledge dimensions with comparisons and errors separated", async () => {
@@ -262,6 +265,71 @@ describe("grammar API routes", () => {
     expect(getProgressMock).toHaveBeenCalledWith(
       "00000000-0000-0000-0000-000000000001"
     );
+  });
+
+  it("returns grammar homepage bootstrap data in one request", async () => {
+    getBootstrapMock.mockResolvedValue({
+      taxonomy: {
+        knowledgeDimensions: [{ slug: "expression_function", nameZh: "表达功能" }],
+        taxonomyNodes: [],
+        learningStages: [],
+        learningModules: [],
+      },
+      progress: {
+        totalGrammarPoints: 339,
+        startedCount: 12,
+        masteredCount: 4,
+        reviewCount: 3,
+        favoriteCount: 8,
+        groupProgress: [],
+      },
+      search: {
+        items: [
+          {
+            id: grammarPointId,
+            grammarPoint: "〜てもらえますか",
+            coreMeaning: "请求对方为自己做某事。",
+          },
+        ],
+      },
+    });
+
+    const { GET } = await import("@/app/api/grammar/bootstrap/route");
+    const response = await GET(
+      new Request(
+        "http://localhost/api/grammar/bootstrap?dimension=expression_function&limit=37"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      progress: { totalGrammarPoints: 339 },
+      search: {
+        items: [
+          {
+            grammarPoint: "〜てもらえますか",
+          },
+        ],
+      },
+      taxonomy: {
+        knowledgeDimensions: [
+          {
+            slug: "expression_function",
+          },
+        ],
+      },
+    });
+    expect(getBootstrapMock).toHaveBeenCalledWith({
+      query: undefined,
+      categorySlug: undefined,
+      groupSlug: undefined,
+      dimensionSlug: "expression_function",
+      stageSlug: undefined,
+      moduleSlug: undefined,
+      limit: "37",
+      offset: undefined,
+      userId: undefined,
+    });
   });
 
   it("returns grammar detail with examples, mistakes, and similar grammar", async () => {

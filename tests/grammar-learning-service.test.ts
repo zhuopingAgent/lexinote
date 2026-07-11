@@ -295,10 +295,10 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
     listLearningModules: vi.fn().mockResolvedValue([]),
     listComparisonSets: vi.fn().mockResolvedValue([]),
     listErrorTypes: vi.fn().mockResolvedValue([]),
-    listCategoryGroups: vi.fn(),
-    listCategories: vi.fn(),
-    listSceneTags: vi.fn(),
-    listRegisterTags: vi.fn(),
+    listCategoryGroups: vi.fn().mockResolvedValue([]),
+    listCategories: vi.fn().mockResolvedValue([]),
+    listSceneTags: vi.fn().mockResolvedValue([]),
+    listRegisterTags: vi.fn().mockResolvedValue([]),
     findTag: vi.fn().mockImplementation((_kind: string, nameEn?: string) =>
       Promise.resolve(
         nameEn
@@ -319,6 +319,7 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
     removeFavorite: vi.fn().mockResolvedValue(undefined),
     listFavorites: vi.fn().mockResolvedValue([grammarPoint]),
     listReviewItems: vi.fn().mockResolvedValue([]),
+    getProgress: vi.fn().mockResolvedValue([]),
     getReviewAggregations: vi.fn().mockResolvedValue({
       grammarPoints: [],
       errorTypes: [],
@@ -410,6 +411,54 @@ describe("GrammarLearningService", () => {
     );
     expect(result.comparisonSets).toHaveLength(1);
     expect(result.errorTypes).toHaveLength(1);
+  });
+
+  it("caches taxonomy data within one service instance", async () => {
+    const repository = createRepositoryMock();
+    repository.listKnowledgeDimensions.mockResolvedValue([
+      {
+        id: "dimension",
+        slug: "expression_function",
+        nameZh: "表达功能",
+        nameEn: "Expression function",
+        description: "",
+        displayOrder: 1,
+        status: "active",
+      },
+    ]);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    await service.getTaxonomy();
+    await service.getTaxonomy();
+
+    expect(repository.listKnowledgeDimensions).toHaveBeenCalledTimes(1);
+    expect(repository.listTaxonomyNodes).toHaveBeenCalledTimes(1);
+    expect(repository.listLearningStages).toHaveBeenCalledTimes(1);
+    expect(repository.listLearningModules).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a lightweight taxonomy payload for bootstrap", async () => {
+    const repository = createRepositoryMock();
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    await service.getBootstrap({ limit: 37 });
+
+    expect(repository.listKnowledgeDimensions).toHaveBeenCalledTimes(1);
+    expect(repository.listTaxonomyNodes).toHaveBeenCalledTimes(1);
+    expect(repository.listLearningStages).toHaveBeenCalledTimes(1);
+    expect(repository.listLearningModules).toHaveBeenCalledTimes(1);
+    expect(repository.listComparisonSets).not.toHaveBeenCalled();
+    expect(repository.listErrorTypes).not.toHaveBeenCalled();
+    expect(repository.listCategoryGroups).not.toHaveBeenCalled();
+    expect(repository.listCategories).not.toHaveBeenCalled();
+    expect(repository.listSceneTags).not.toHaveBeenCalled();
+    expect(repository.listRegisterTags).not.toHaveBeenCalled();
   });
 
   it("maps legacy category groups to the new dimension filter with AND semantics", async () => {

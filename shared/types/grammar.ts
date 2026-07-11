@@ -339,6 +339,17 @@ export type GrammarTaxonomyResponse = {
   registerTags: GrammarTag[];
 };
 
+export type GrammarNavigationTaxonomyResponse = Pick<
+  GrammarTaxonomyResponse,
+  "knowledgeDimensions" | "taxonomyNodes" | "learningStages" | "learningModules"
+>;
+
+export type GrammarBootstrapResponse = {
+  progress: GrammarProgressResponse;
+  search: GrammarSearchResponse;
+  taxonomy: GrammarNavigationTaxonomyResponse;
+};
+
 export type PracticeLevel = 1 | 2 | 3 | 4 | 5;
 
 export type PracticeReferenceAnswer = {

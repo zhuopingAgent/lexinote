@@ -4,6 +4,8 @@ import { DEFAULT_GRAMMAR_USER_ID } from "@/shared/db/sql/grammar.sql";
 import type {
   GrammarDetailResponse,
   GrammarFavoritesResponse,
+  GrammarBootstrapResponse,
+  GrammarNavigationTaxonomyResponse,
   GrammarProgressResponse,
   GrammarReviewResponse,
   GrammarSearchResponse,
@@ -32,6 +34,7 @@ const LEGACY_GROUP_DIMENSION_MAP: Record<string, string> = {
   discourse_connection_organization: "discourse_organization",
   lexical_collocations_constructions: "collocation_construction",
 };
+const TAXONOMY_CACHE_MS = 5 * 60 * 1000;
 
 function normalizeUserId(userId?: string) {
   const normalized = userId?.trim() || DEFAULT_GRAMMAR_USER_ID;
@@ -146,12 +149,44 @@ function hasMistake(feedback: PracticeSubmitResponse) {
 }
 
 export class GrammarLearningService {
+  private taxonomyCache: {
+    expiresAt: number;
+    promise: Promise<GrammarTaxonomyResponse>;
+  } | null = null;
+  private navigationTaxonomyCache: {
+    expiresAt: number;
+    promise: Promise<GrammarNavigationTaxonomyResponse>;
+  } | null = null;
+
   constructor(
     private readonly repository: GrammarRepository,
     private readonly aiClient: GrammarAiClient
   ) {}
 
   async getTaxonomy(): Promise<GrammarTaxonomyResponse> {
+    const now = Date.now();
+
+    if (this.taxonomyCache && this.taxonomyCache.expiresAt > now) {
+      return this.taxonomyCache.promise;
+    }
+
+    const promise = this.loadTaxonomy().catch((error) => {
+      if (this.taxonomyCache?.promise === promise) {
+        this.taxonomyCache = null;
+      }
+
+      throw error;
+    });
+
+    this.taxonomyCache = {
+      expiresAt: now + TAXONOMY_CACHE_MS,
+      promise,
+    };
+
+    return promise;
+  }
+
+  private async loadTaxonomy(): Promise<GrammarTaxonomyResponse> {
     const [
       knowledgeDimensions,
       taxonomyNodes,
@@ -187,6 +222,74 @@ export class GrammarLearningService {
       categories,
       sceneTags,
       registerTags,
+    };
+  }
+
+  async getNavigationTaxonomy(): Promise<GrammarNavigationTaxonomyResponse> {
+    const now = Date.now();
+
+    if (this.navigationTaxonomyCache && this.navigationTaxonomyCache.expiresAt > now) {
+      return this.navigationTaxonomyCache.promise;
+    }
+
+    const promise = this.loadNavigationTaxonomy().catch((error) => {
+      if (this.navigationTaxonomyCache?.promise === promise) {
+        this.navigationTaxonomyCache = null;
+      }
+
+      throw error;
+    });
+
+    this.navigationTaxonomyCache = {
+      expiresAt: now + TAXONOMY_CACHE_MS,
+      promise,
+    };
+
+    return promise;
+  }
+
+  private async loadNavigationTaxonomy(): Promise<GrammarNavigationTaxonomyResponse> {
+    const [
+      knowledgeDimensions,
+      taxonomyNodes,
+      learningStages,
+      learningModules,
+    ] = await Promise.all([
+      this.repository.listKnowledgeDimensions(),
+      this.repository.listTaxonomyNodes(),
+      this.repository.listLearningStages(),
+      this.repository.listLearningModules(),
+    ]);
+
+    return {
+      knowledgeDimensions,
+      taxonomyNodes,
+      learningStages,
+      learningModules,
+    };
+  }
+
+  async getBootstrap(options?: {
+    query?: string;
+    categorySlug?: string;
+    groupSlug?: string;
+    dimensionSlug?: string;
+    stageSlug?: string;
+    moduleSlug?: string;
+    limit?: unknown;
+    offset?: unknown;
+    userId?: string;
+  }): Promise<GrammarBootstrapResponse> {
+    const [taxonomy, progress, search] = await Promise.all([
+      this.getNavigationTaxonomy(),
+      this.getProgress(options?.userId),
+      this.searchGrammarPoints(options),
+    ]);
+
+    return {
+      progress,
+      search,
+      taxonomy,
     };
   }
 
