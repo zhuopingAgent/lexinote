@@ -82,6 +82,62 @@ const context: PracticeContext = {
   registerLabel: "一般礼貌",
 };
 
+const existenceGrammarPoint = {
+  ...grammarPoint,
+  id: "99999999-9999-4999-8999-999999999999",
+  grammarPoint: "Aがあります",
+  pointType: "sentence_pattern",
+  canonicalForm: "Aがあります",
+  senseKey: "gp_a_ga_arimasu",
+  coreMeaning: "表示有某物或无生命事物存在。",
+  naturalTranslation: "有 A。",
+  structure: "地点に + 名词が + あります",
+  commonMistakes: ["存在地点应使用「に」，不要误用「で」。"],
+  connections: [
+    {
+      baseType: "noun",
+      requiredForm: "plain_form",
+      pattern: "地点に + 名词が + あります",
+      notes: "存在地点使用「に」。",
+      sortOrder: 1,
+    },
+  ],
+  examples: [
+    {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      jp: "机の上に資料があります。",
+      zh: "桌子上有资料。",
+      difficulty: 1,
+      naturalnessScore: 5,
+      notes: "说明物品存在。",
+    },
+    {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      jp: "近くに駅があります。",
+      zh: "附近有车站。",
+      difficulty: 1,
+      naturalnessScore: 5,
+      notes: "说明设施存在。",
+    },
+  ],
+} satisfies GrammarPointDetail;
+
+const dailyLifePlanContext: PracticeContext = {
+  sceneSlug: "daily_life",
+  sceneLabel: "日常生活",
+  speakerRole: "学习者",
+  listenerRole: "不熟悉的人",
+  socialDistance: "unfamiliar",
+  hierarchy: "equal",
+  requestBurden: "low",
+  medium: "spoken",
+  communicativeGoal: "表达计划",
+  knownContext: "双方已经知道当前话题",
+  requiredDetail: "两次",
+  registerPreset: "polite",
+  registerLabel: "一般礼貌",
+};
+
 function skillState(
   skillDimension: PracticeSkillState["skillDimension"],
   estimate: number
@@ -266,6 +322,66 @@ describe("redesigned practice domain", () => {
     expect(register.prompt).not.toContain("polite");
   });
 
+  it("turns fallback translation metadata into one concrete Chinese sentence", () => {
+    const exercise = buildPlannedExerciseFallback({
+      grammarPoint: existenceGrammarPoint,
+      skillDimension: "contextual_production",
+      exerciseType: "guided_translation",
+      difficulty: 2,
+      context: dailyLifePlanContext,
+      generationSeed: "clear-existence-task",
+    });
+
+    expect(exercise.prompt).toContain("请把下面这句中文翻译成自然日语");
+    expect(exercise.prompt).toContain("这周还有两次会议。");
+    expect(exercise.prompt).toContain("一般礼貌");
+    expect(exercise.prompt).not.toContain("表达计划，并提到");
+    expect(exercise.prompt).not.toContain("双方已经知道当前话题");
+    expect(exercise.referenceAnswers).toEqual([
+      expect.objectContaining({
+        jp: "今週は会議があと二回あります。",
+        zh: "这周还有两次会议。",
+      }),
+      expect.objectContaining({
+        jp: "今週はまだ会議が二回あります。",
+        zh: "这周还有两次会议。",
+      }),
+    ]);
+    expect(
+      isPlannedExerciseSafe({
+        ...exercise,
+        exerciseType: "guided_translation",
+        grammarPoint: existenceGrammarPoint.grammarPoint,
+      })
+    ).toBe(true);
+  });
+
+  it("builds a real repair sentence for placeholder existence patterns", () => {
+    const exercise = buildPlannedExerciseFallback({
+      grammarPoint: existenceGrammarPoint,
+      skillDimension: "form_connection",
+      exerciseType: "form_repair",
+      difficulty: 2,
+      context: dailyLifePlanContext,
+      generationSeed: "clear-existence-repair",
+    });
+
+    expect(
+      ["机の上で資料があります。", "近くで駅があります。"].some((sentence) =>
+        exercise.prompt.includes(sentence)
+      )
+    ).toBe(true);
+    expect(exercise.prompt).toContain("请保留原意");
+    expect(exercise.prompt).not.toContain("読みますAがあります");
+    expect(exercise.prompt).not.toContain("表达计划");
+    expect(exercise.referenceAnswers).toHaveLength(1);
+    expect(exercise.referenceAnswers[0]?.jp).toBe(
+      exercise.prompt.includes("机の上で資料があります。")
+        ? "机の上に資料があります。"
+        : "近くに駅があります。"
+    );
+  });
+
   it("rejects generated translation tasks that contain a candidate Japanese answer", () => {
     const referenceAnswers = [
       {
@@ -286,6 +402,16 @@ describe("redesigned practice domain", () => {
     ).toBe(false);
     expect(
       isPlannedExerciseSafe({
+        prompt:
+          "请把这个中文意图表达成自然日语：表达计划，并提到“两次”。必须使用「Aがあります」。",
+        referenceAnswers,
+        hints: [],
+        exerciseType: "guided_translation",
+        grammarPoint: "Aがあります",
+      })
+    ).toBe(false);
+    expect(
+      isPlannedExerciseSafe({
         prompt: "请介绍目的地，并用一般礼貌体表达：東京です。",
         referenceAnswers: [
           { jp: "大阪です。", zh: "是大阪。", noteZh: "礼貌判断句。" },
@@ -297,7 +423,8 @@ describe("redesigned practice domain", () => {
     ).toBe(false);
     expect(
       isPlannedExerciseSafe({
-        prompt: "请用日语确认车站附近是否有车，必须使用「Aがあります」并保持一般礼貌。",
+        prompt:
+          "请把下面这句中文翻译成自然日语：“车站附近有车吗？”要求使用「Aがあります」并保持一般礼貌。",
         referenceAnswers,
         hints: ["先确定存在的地点和物品。"],
         exerciseType: "guided_translation",

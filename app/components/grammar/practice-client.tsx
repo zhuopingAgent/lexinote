@@ -36,6 +36,34 @@ type PracticeClientProps = {
   entryMode: PracticeSessionEntryMode;
 };
 
+function PracticeTaskPrompt({ prompt }: { prompt: string }) {
+  const quotedCue = prompt.match(/^([\s\S]*)：“([^”]+)”$/);
+  if (!quotedCue) {
+    return (
+      <span className="text-xl font-semibold leading-8 text-foreground">
+        {prompt}
+      </span>
+    );
+  }
+  const instruction = /[。？！!?]$/.test(quotedCue[1])
+    ? quotedCue[1]
+    : `${quotedCue[1]}。`;
+
+  return (
+    <>
+      <span className="block text-base font-medium leading-7 text-foreground/68">
+        {instruction}
+      </span>
+      <span
+        lang="zh-CN"
+        className="mt-4 block border-l-2 border-accent pl-4 text-xl font-semibold leading-8 text-foreground"
+      >
+        {quotedCue[2]}
+      </span>
+    </>
+  );
+}
+
 function ReferenceAnswers({ answers }: { answers: PracticeReferenceAnswer[] }) {
   if (answers.length === 0) {
     return null;
@@ -443,9 +471,11 @@ export function PracticeClient({
             <p className="text-xs font-semibold text-muted">
               {exercise.context.speakerRole} → {exercise.context.listenerRole}
             </p>
-            <p className="mt-2 text-sm leading-6 text-foreground/60">
-              {exercise.context.knownContext}；需要表达“{exercise.context.requiredDetail}”。
-            </p>
+            {exercise.context.knownContext !== "双方已经知道当前话题" ? (
+              <p className="mt-2 text-sm leading-6 text-foreground/60">
+                {exercise.context.knownContext}
+              </p>
+            ) : null}
           </div>
 
           <section className="py-6" aria-labelledby="practice-task-title">
@@ -454,9 +484,9 @@ export function PracticeClient({
             </p>
             <h2
               id="practice-task-title"
-              className="mt-3 text-xl font-semibold leading-8 text-foreground"
+              className="mt-3"
             >
-              {exercise.prompt}
+              <PracticeTaskPrompt prompt={exercise.prompt} />
             </h2>
 
             {exercise.responseMode === "choice" ? (

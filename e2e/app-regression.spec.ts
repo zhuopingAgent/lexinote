@@ -407,6 +407,7 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("练习设置");
+  await expect(page.locator("body")).not.toContainText("需要表达");
   await expect(page.locator("body")).not.toContainText("daily_life");
   await expect(page.locator("body")).not.toContainText("polite");
 });

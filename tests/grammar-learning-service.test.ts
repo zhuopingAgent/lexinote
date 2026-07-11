@@ -632,7 +632,8 @@ describe("GrammarLearningService", () => {
 
     expect(result.source).toBe("fallback");
     expect(result.prompt).not.toContain("駅近くに車がありますか");
-    expect(result.prompt).toContain("确认信息");
+    expect(result.prompt).toContain("车站附近有一家便利店。");
+    expect(result.prompt).not.toContain("确认信息，并提到");
   });
 
   it("uses low reasoning for premium teacher sentence feedback", async () => {
