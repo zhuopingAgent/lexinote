@@ -10,6 +10,7 @@ import type {
   PracticeIntent,
   PracticeItemV2,
 } from "@/features/grammar-learning/domain/practiceV2";
+import { findPracticeSpecialization } from "@/features/grammar-learning/domain/practiceSpecializations";
 
 export type FallbackSupport = {
   id: string;
@@ -112,9 +113,19 @@ function references(grammarPoint: GrammarPointDetail): PracticeReferenceAnswer[]
   }));
 }
 
-function hints(grammarPoint: GrammarPointDetail): PracticeHint[] {
+function hints(intent: PracticeIntent, grammarPoint: GrammarPointDetail): PracticeHint[] {
+  const emphasis = findPracticeSpecialization(intent.specializationId)?.hintEmphasis
+    .slice(0, 2)
+    .join("、");
   return [
-    { level: "semantic_hint", content: `先确认核心意思：${grammarPoint.coreMeaning}`, revealsForm: false, revealsAnswer: false },
+    {
+      level: "semantic_hint",
+      content: emphasis
+        ? `先确认核心意思，并留意：${emphasis}。`
+        : `先确认核心意思：${grammarPoint.coreMeaning}`,
+      revealsForm: false,
+      revealsAnswer: false,
+    },
     { level: "form_hint", content: `接续要求：${grammarPoint.connections[0]?.pattern ?? grammarPoint.structure ?? "查看语法说明中的接续"}`, revealsForm: true, revealsAnswer: false },
   ];
 }
@@ -138,7 +149,7 @@ function base(input: {
       assessedDimensions: answerContract.assessedDimensions,
       scoringNotes: input.intent.requiredEvidence,
     },
-    hints: hints(input.grammarPoint),
+    hints: hints(input.intent, input.grammarPoint),
     generationMetadata: buildEmptyGenerationMetadata({
       generationSource: "fallback",
       fallbackReason: input.fallbackReason,

@@ -412,6 +412,12 @@ export type AIFeedbackIssue = {
   explanation: string;
   correction: string;
   relatedGrammarPointId: string | null;
+  role?: "root" | "secondary";
+  confidence?: number;
+  evidenceSpan?: string | null;
+  affectedDimensions?: Array<
+    "grammar" | "meaning" | "naturalness" | "register" | "contextFit"
+  >;
 };
 
 export type AIFeedbackResult = {
@@ -482,9 +488,32 @@ export type GrammarReviewAggregations = {
   registers: GrammarReviewAggregateItem[];
 };
 
+export type GrammarObjectiveRecommendation = {
+  grammarPointId: string;
+  grammarPoint: string;
+  coreMeaning: string;
+  senseKey: string;
+  learningObjective:
+    | "meaning"
+    | "form_connection"
+    | "grammar_selection"
+    | "register_control"
+    | "collocation_naturalness"
+    | "discourse_function";
+  estimate: number;
+  confidence: number;
+  attempts: number;
+  assistedAttempts: number;
+  exposureCount: number;
+  recentErrorCodes: string[];
+  nextReviewAt: string | null;
+  reasonZh: string;
+};
+
 export type GrammarReviewResponse = {
   items: GrammarReviewItem[];
   aggregations: GrammarReviewAggregations;
+  objectiveRecommendations?: GrammarObjectiveRecommendation[];
 };
 
 export type GrammarProgressGroup = {

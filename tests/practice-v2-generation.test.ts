@@ -133,6 +133,30 @@ describe("practice V2 prompt contracts", () => {
       })?.exerciseType).toBe(raw.exercise_type);
     }
   });
+
+  it("uses the generated references as the item answer contract", () => {
+    const intent = translationIntent();
+    const item = parsePracticeItemV2({
+      exercise_type: "guided_translation",
+      instruction_zh: "请翻译完整句子。",
+      prompt: "请翻译：这周还有两次会议。",
+      chinese_sentence: "这周还有两次会议。",
+      reference_answers: [{
+        jp: "今週は会議があと二回あります。",
+        zh: "这周还有两次会议。",
+        note_zh: "使用存在句。",
+      }],
+      hints: [],
+    }, {
+      intent,
+      grammarPoint,
+      answerContract: buildAnswerContract({ intent, grammarPoint }),
+      metadata: buildEmptyGenerationMetadata(),
+    });
+    expect(item?.answerContract.allowedVariants).toEqual([
+      "今週は会議があと二回あります。",
+    ]);
+  });
 });
 
 describe("practice V2 validators and fallback", () => {
@@ -333,5 +357,39 @@ describe("practice V2 validators and fallback", () => {
     expect(wrong.correctedSentence).toBe("すみません、もう一度説明していただけますか。");
     const accepted = await client.evaluateSentence({ grammarPoint: requestPoint, sentence: "すみません、もう一度説明していただけますか。", sceneTag: "hospital", registerTag: "polite", answerContract: item.answerContract });
     expect(accepted.isCorrect).toBe(true);
+  });
+
+  it("accepts a validated natural equivalent even when AI feedback is overly strict", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const requester = vi.fn(async () => JSON.stringify({
+      is_correct: false,
+      grammar_score: 2,
+      meaning_score: 3,
+      naturalness_score: 3,
+      register_score: 3,
+      scene_fit_score: 3,
+      issues: [{
+        error_type_code: "unnatural_expression",
+        severity: "low",
+        explanation: "模型误判。",
+        correction: "",
+      }],
+      explanation_zh: "模型误判。",
+      next_hint_zh: "重写。",
+    }));
+    const client = new GrammarAiClient(requester as never);
+    const intent = translationIntent();
+    const item = buildLocalFallbackV2({ intent, grammarPoint, fallbackReason: "TEST" });
+    const sentence = item.answerContract.allowedVariants[0];
+    const feedback = await client.evaluateSentence({
+      grammarPoint,
+      sentence,
+      sceneTag: "daily_life",
+      registerTag: "polite",
+      answerContract: item.answerContract,
+    });
+    expect(feedback.isCorrect).toBe(true);
+    expect(feedback.issues).toEqual([]);
+    expect(feedback.explanation).toContain("这句可以");
   });
 });

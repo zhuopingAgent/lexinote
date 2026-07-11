@@ -105,7 +105,29 @@ export type PracticeExerciseRow = {
 export type PracticePlannerHistoryRow = {
   is_correct: boolean | null;
   issues: unknown;
+  hint_count: number | string | null;
+  evidence_kind: string | null;
+  attempt_number: number | string | null;
+  exposure_count: number | string;
+  assisted_count: number | string;
+  objective_attempt_count: number | string;
+  last_practiced_at: string | Date | null;
   prerequisite_ready: boolean;
+  prerequisite_level: string;
+};
+
+export type PracticeObjectiveStateRow = {
+  grammar_point_id: string;
+  sense_key: string;
+  learning_objective: string;
+  estimate: number | string;
+  confidence: number | string;
+  attempts: number | string;
+  assisted_attempts: number | string;
+  exposure_count: number | string;
+  recent_error_codes: unknown;
+  last_practiced_at: string | Date | null;
+  next_review_at: string | Date | null;
 };
 
 export type PracticeSkillStateRow = {

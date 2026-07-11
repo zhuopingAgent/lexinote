@@ -326,6 +326,7 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
       scenarios: [],
       registers: [],
     }),
+    listObjectiveRecommendations: vi.fn().mockResolvedValue([]),
   };
 }
 

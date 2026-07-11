@@ -107,6 +107,7 @@ export type PracticeExercise = {
     | "respond";
   transferLevel?: "reproduction" | "near_transfer" | "far_transfer";
   scaffoldLevel?: "options" | "semantic_hint" | "form_hint" | "partial_sentence" | "none";
+  selectionReasonZh?: string;
   grammarPoint: PracticeGrammarPoint;
 };
 
@@ -119,6 +120,20 @@ export type PracticeSkillState = {
   lastPracticedAt: string | null;
   nextReviewAt: string | null;
   recentErrorCodes: string[];
+};
+
+export type PracticeObjectiveState = {
+  grammarPointId: string;
+  senseKey: string;
+  learningObjective: NonNullable<PracticeExercise["learningObjective"]>;
+  estimate: number;
+  confidence: number;
+  attempts: number;
+  assistedAttempts: number;
+  exposureCount: number;
+  recentErrorCodes: string[];
+  lastPracticedAt: string | null;
+  nextReviewAt: string | null;
 };
 
 export type PracticeMasteryEvidence = {
@@ -207,4 +222,22 @@ export type PracticeSessionSummary = {
     estimate: number;
     confidence: number;
   }>;
+  nextRecommendation?: {
+    learningObjective: NonNullable<PracticeExercise["learningObjective"]>;
+    reasonZh: string;
+  } | null;
+};
+
+export type PracticeGenerationMetrics = {
+  generatedItemCount: number;
+  aiGeneratedItemCount: number;
+  firstPassValidationRate: number;
+  repairRate: number;
+  fallbackRate: number;
+  generationLatency: number;
+  duplicateContextRate: number;
+  answerLeakCount: number;
+  ambiguousChoiceCount: number;
+  validationErrorCounts: Record<string, number>;
+  fallbackReasonCounts: Record<string, number>;
 };

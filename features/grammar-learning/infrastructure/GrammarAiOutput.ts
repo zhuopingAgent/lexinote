@@ -207,6 +207,15 @@ function parseFeedbackIssues(
     const relatedId = sanitizeText(
       record.related_grammar_point_id ?? record.relatedGrammarPointId
     );
+    const confidenceValue = Number(record.confidence);
+    const affectedDimensions = parseStringArray(
+      record.affected_dimensions ?? record.affectedDimensions
+    ).filter(
+      (dimension): dimension is NonNullable<AIFeedbackIssue["affectedDimensions"]>[number] =>
+        ["grammar", "meaning", "naturalness", "register", "contextFit"].includes(
+          dimension
+        )
+    );
     issues.set(errorTypeCode, {
       errorTypeCode,
       severity: normalizeFeedbackSeverity(record.severity),
@@ -214,10 +223,28 @@ function parseFeedbackIssues(
         sanitizeText(record.explanation) || fallbackExplanation,
       correction: sanitizeText(record.correction) || fallbackCorrection,
       relatedGrammarPointId: relatedId === grammarPointId ? relatedId : null,
+      role:
+        record.role === "root" || record.role === "secondary"
+          ? record.role
+          : undefined,
+      confidence: Number.isFinite(confidenceValue)
+        ? Math.min(1, Math.max(0, confidenceValue))
+        : undefined,
+      evidenceSpan:
+        sanitizeText(record.evidence_span ?? record.evidenceSpan) || null,
+      affectedDimensions,
     });
   }
 
-  return Array.from(issues.values());
+  const parsedIssues = Array.from(issues.values()).sort((left, right) =>
+    left.role === right.role ? 0 : left.role === "root" ? -1 : 1
+  );
+  return parsedIssues.map((issue, index) => ({
+    ...issue,
+    role: index === 0 ? "root" : "secondary",
+    confidence: issue.confidence ?? 0.8,
+    affectedDimensions: issue.affectedDimensions ?? [],
+  }));
 }
 
 export function parseFeedbackOutput(

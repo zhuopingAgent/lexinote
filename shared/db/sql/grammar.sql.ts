@@ -656,6 +656,10 @@ export const INSERT_AI_FEEDBACK_SQL = `
       explanation,
       correction,
       related_grammar_point_id,
+      role,
+      confidence,
+      evidence_span,
+      affected_dimensions,
       sort_order
     )
     SELECT
@@ -665,6 +669,13 @@ export const INSERT_AI_FEEDBACK_SQL = `
       issue.item ->> 'explanation',
       COALESCE(issue.item ->> 'correction', ''),
       NULLIF(issue.item ->> 'relatedGrammarPointId', '')::uuid,
+      COALESCE(
+        NULLIF(issue.item ->> 'role', ''),
+        CASE WHEN issue.ordinality = 1 THEN 'root' ELSE 'secondary' END
+      ),
+      NULLIF(issue.item ->> 'confidence', '')::numeric,
+      NULLIF(issue.item ->> 'evidenceSpan', ''),
+      COALESCE(issue.item -> 'affectedDimensions', '[]'::jsonb),
       issue.ordinality::integer
     FROM inserted_feedback
     CROSS JOIN LATERAL jsonb_array_elements($13::jsonb)
@@ -676,6 +687,10 @@ export const INSERT_AI_FEEDBACK_SQL = `
       explanation = EXCLUDED.explanation,
       correction = EXCLUDED.correction,
       related_grammar_point_id = EXCLUDED.related_grammar_point_id,
+      role = EXCLUDED.role,
+      confidence = EXCLUDED.confidence,
+      evidence_span = EXCLUDED.evidence_span,
+      affected_dimensions = EXCLUDED.affected_dimensions,
       sort_order = EXCLUDED.sort_order
     RETURNING ai_feedback_id
   )
@@ -964,6 +979,43 @@ export const SELECT_REVIEW_AGGREGATIONS_SQL = `
       '[]'::jsonb
     )
   ) AS aggregations;
+`;
+
+export const SELECT_OBJECTIVE_RECOMMENDATIONS_SQL = `
+  SELECT
+    learner_objective_states.grammar_point_id::text,
+    grammar_points.grammar_point,
+    grammar_points.core_meaning,
+    learner_objective_states.sense_key,
+    learner_objective_states.learning_objective,
+    learner_objective_states.estimate::float8,
+    learner_objective_states.confidence::float8,
+    learner_objective_states.attempts,
+    learner_objective_states.assisted_attempts,
+    learner_objective_states.exposure_count,
+    learner_objective_states.recent_error_codes,
+    learner_objective_states.next_review_at
+  FROM learner_objective_states
+  JOIN grammar_points
+    ON grammar_points.id = learner_objective_states.grammar_point_id
+  WHERE learner_objective_states.user_id = $1::uuid
+    AND grammar_points.status = 'active'
+    AND (
+      learner_objective_states.next_review_at IS NULL
+      OR learner_objective_states.next_review_at <= NOW()
+      OR learner_objective_states.estimate < 0.72
+      OR learner_objective_states.exposure_count > 0
+    )
+  ORDER BY
+    (learner_objective_states.next_review_at <= NOW()) DESC NULLS LAST,
+    learner_objective_states.exposure_count DESC,
+    CASE
+      WHEN learner_objective_states.attempts = 0 THEN 0
+      ELSE learner_objective_states.assisted_attempts::numeric / learner_objective_states.attempts
+    END DESC,
+    learner_objective_states.estimate ASC,
+    learner_objective_states.confidence ASC
+  LIMIT 8;
 `;
 
 export const SELECT_GRAMMAR_PROGRESS_SQL = `

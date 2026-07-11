@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type {
   GrammarReviewAggregations,
   GrammarReviewItem,
+  GrammarObjectiveRecommendation,
   GrammarReviewResponse,
 } from "@/shared/types/grammar";
 import {
@@ -16,9 +17,13 @@ import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 import { getErrorMessage, readJson } from "@/app/lib/api-client";
 import { formatShortDateTime } from "@/app/lib/date";
+import { PRACTICE_OBJECTIVE_LABELS } from "@/features/grammar-learning/domain/practice";
 
 export function ReviewClient() {
   const [items, setItems] = useState<GrammarReviewItem[]>([]);
+  const [objectiveRecommendations, setObjectiveRecommendations] = useState<
+    GrammarObjectiveRecommendation[]
+  >([]);
   const [aggregations, setAggregations] = useState<GrammarReviewAggregations>({
     grammarPoints: [],
     errorTypes: [],
@@ -40,6 +45,7 @@ export function ReviewClient() {
           signal: controller.signal,
         }).then((response) => readJson<GrammarReviewResponse>(response));
         setItems(result.items);
+        setObjectiveRecommendations(result.objectiveRecommendations ?? []);
         setAggregations(
           result.aggregations ?? {
             grammarPoints: [],
@@ -72,6 +78,10 @@ export function ReviewClient() {
     { label: "场景", items: aggregations.scenarios },
     { label: "语体", items: aggregations.registers },
   ];
+  const reviewGrammarPointCount = new Set([
+    ...items.map((item) => item.grammarPoint.id),
+    ...objectiveRecommendations.map((item) => item.grammarPointId),
+  ]).size;
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
@@ -80,7 +90,7 @@ export function ReviewClient() {
           <div>
             <p className="text-2xl leading-tight font-semibold text-white/78">复习</p>
             <p className="mt-1 text-sm leading-6 text-white/42">
-              当前 {items.length} 个具体用法需要回看。
+              当前 {reviewGrammarPointCount} 个具体用法需要回看。
             </p>
           </div>
           <Link
@@ -122,6 +132,55 @@ export function ReviewClient() {
         </div>
       ) : null}
 
+      {!isLoading && !error && objectiveRecommendations.length > 0 ? (
+        <section className="mt-6 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 id="objective-review-heading" className="text-lg font-semibold text-white/76">
+                建议先复习
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-white/42">
+                按具体用法和学习目标排序，不会因为分类标签重复计算。
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 divide-y divide-white/8">
+            {objectiveRecommendations.slice(0, 4).map((recommendation) => (
+              <div
+                key={`${recommendation.grammarPointId}:${recommendation.learningObjective}`}
+                className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/grammar/${recommendation.grammarPointId}`}
+                      className="text-lg font-semibold text-white/78 transition hover:text-white"
+                    >
+                      {recommendation.grammarPoint}
+                    </Link>
+                    <TagBadge
+                      tag={PRACTICE_OBJECTIVE_LABELS[recommendation.learningObjective]}
+                    />
+                    <span className="text-xs text-white/34">
+                      掌握估计 {Math.round(recommendation.estimate * 100)}%
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-white/52">
+                    {recommendation.reasonZh}
+                  </p>
+                </div>
+                <Link
+                  href={`/practice?grammarId=${recommendation.grammarPointId}&mode=review`}
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-accent px-4 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                >
+                  开始复习
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {isLoading ? (
         <div className="mt-6 space-y-4">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -133,7 +192,7 @@ export function ReviewClient() {
         </div>
       ) : null}
 
-      {!isLoading && !error && items.length === 0 ? (
+      {!isLoading && !error && items.length === 0 && objectiveRecommendations.length === 0 ? (
         <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
           <p className="text-base font-medium text-white/60">暂时没有复习项</p>
           <Link
@@ -210,6 +269,11 @@ export function ReviewClient() {
                         <span className="text-xs text-white/34">
                           {displayFeedbackSeverityLabel(issue.severity)}
                         </span>
+                        {issue.role ? (
+                          <span className="text-xs font-medium text-accent-strong">
+                            {issue.role === "root" ? "主要问题" : "伴随影响"}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-2 text-sm leading-6 text-white/54">
                         {issue.explanation}

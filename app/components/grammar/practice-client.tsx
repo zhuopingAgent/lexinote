@@ -378,6 +378,16 @@ export function PracticeClient({
               </div>
             ))}
           </div>
+          {summary.nextRecommendation ? (
+            <div className="mt-6 border-l-2 border-accent pl-4">
+              <p className="text-sm font-semibold text-foreground/85">
+                下一步：{PRACTICE_OBJECTIVE_LABELS[summary.nextRecommendation.learningObjective]}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-muted">
+                {summary.nextRecommendation.reasonZh}
+              </p>
+            </div>
+          ) : null}
           <div className="mt-7 flex flex-wrap gap-3">
             <button
               type="button"
@@ -481,6 +491,14 @@ export function PracticeClient({
               </dd>
             </div>
           </dl>
+          {exercise.selectionReasonZh ? (
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-foreground/55">安排原因</p>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                {exercise.selectionReasonZh}
+              </p>
+            </div>
+          ) : null}
           <Link
             href={`/grammar/${exercise.grammarPoint.id}`}
             className="mt-5 inline-flex text-sm font-semibold text-accent-strong hover:text-accent"

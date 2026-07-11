@@ -9,8 +9,10 @@ import {
   type AnswerContract,
 } from "@/features/grammar-learning/domain/practiceV2";
 import { buildPracticeSessionPlan } from "@/features/grammar-learning/domain/practiceSessionPlanner";
+import { evaluateAnswerEquivalence } from "@/features/grammar-learning/domain/answerEquivalence";
+import { PRACTICE_SPECIALIZATIONS } from "@/features/grammar-learning/domain/practiceSpecializations";
 import type { GrammarPointDetail } from "@/shared/types/grammar";
-import type { PracticeContext, PracticeSkillState } from "@/shared/types/practice";
+import type { PracticeContext, PracticeObjectiveState, PracticeSkillState } from "@/shared/types/practice";
 
 const grammarPoint = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -178,5 +180,150 @@ describe("PracticeSessionPlanner", () => {
     expect(plan.filter((item) => item.cognitiveOperation === "constrained_produce").every(
       (item) => item.scaffoldLevel !== "none"
     )).toBe(true);
+  });
+
+  it("uses objective mastery and exposure instead of averaging only legacy skills", () => {
+    const objectiveStates: PracticeObjectiveState[] = [
+      {
+        grammarPointId: grammarPoint.id,
+        senseKey: grammarPoint.senseKey,
+        learningObjective: "meaning",
+        estimate: 0.88,
+        confidence: 0.8,
+        attempts: 5,
+        assistedAttempts: 0,
+        exposureCount: 0,
+        recentErrorCodes: [],
+        lastPracticedAt: "2026-07-10T00:00:00.000Z",
+        nextReviewAt: null,
+      },
+      {
+        grammarPointId: grammarPoint.id,
+        senseKey: grammarPoint.senseKey,
+        learningObjective: "register_control",
+        estimate: 0.28,
+        confidence: 0.4,
+        attempts: 2,
+        assistedAttempts: 2,
+        exposureCount: 1,
+        recentErrorCodes: ["register_mismatch"],
+        lastPracticedAt: "2026-07-10T00:00:00.000Z",
+        nextReviewAt: null,
+      },
+    ];
+    const plan = buildPracticeSessionPlan({
+      grammarPoint,
+      context,
+      skillStates: [],
+      objectiveStates,
+      history: {
+        consecutiveFailures: 0,
+        recentErrorCodes: [],
+        prerequisiteReady: true,
+        prerequisiteLevel: "independent",
+        recentHintCount: 2,
+        assistedAttemptRate: 1,
+        exposureCount: 1,
+      },
+      source,
+    });
+    expect(plan.filter((item) => item.learningObjective === "register_control").length)
+      .toBeGreaterThanOrEqual(2);
+    expect(plan.some((item) => item.selectionReasonZh.includes("提示"))).toBe(true);
+    expect(plan.every((item) => item.transferLevel !== "far_transfer")).toBe(true);
+  });
+
+  it("starts stable due knowledge with an unassisted delayed recall", () => {
+    const objectiveStates: PracticeObjectiveState[] = [
+      {
+        grammarPointId: grammarPoint.id,
+        senseKey: grammarPoint.senseKey,
+        learningObjective: "meaning",
+        estimate: 0.82,
+        confidence: 0.75,
+        attempts: 5,
+        assistedAttempts: 0,
+        exposureCount: 0,
+        recentErrorCodes: [],
+        lastPracticedAt: "2026-07-01T00:00:00.000Z",
+        nextReviewAt: "2026-07-11T00:00:00.000Z",
+      },
+      {
+        grammarPointId: grammarPoint.id,
+        senseKey: grammarPoint.senseKey,
+        learningObjective: "register_control",
+        estimate: 0.78,
+        confidence: 0.7,
+        attempts: 4,
+        assistedAttempts: 0,
+        exposureCount: 0,
+        recentErrorCodes: [],
+        lastPracticedAt: "2026-07-01T00:00:00.000Z",
+        nextReviewAt: "2026-07-11T00:00:00.000Z",
+      },
+    ];
+    const [first] = buildPracticeSessionPlan({
+      grammarPoint,
+      context,
+      skillStates: [],
+      objectiveStates,
+      history: {
+        consecutiveFailures: 0,
+        recentErrorCodes: [],
+        prerequisiteReady: true,
+        prerequisiteLevel: "independent",
+        lastPracticedAt: "2026-07-01T00:00:00.000Z",
+      },
+      source,
+    });
+    expect(first.exerciseType).toBe("guided_translation");
+    expect(first.scaffoldLevel).toBe("none");
+    expect(first.selectionReasonZh).toContain("10天");
+  });
+});
+
+describe("answer equivalence and specialization", () => {
+  const contract: AnswerContract = {
+    requiredMeaningSlots: ["再说明一次"],
+    requiredGrammarFeatures: ["sense:te_moraemasu_request"],
+    allowedVariants: ["すみません、もう一度説明していただけますか。"],
+    allowedRegisterRange: ["polite"],
+    prohibitedPatterns: [],
+    acceptableAlternativePolicy: "natural_variants",
+    assessedDimensions: ["grammar", "meaning", "register"],
+    passCriteria: {
+      minimumDimensionScore: 2,
+      requiredDimensions: ["grammar", "meaning", "register"],
+      fatalErrorCodes: ["semantic_error"],
+    },
+  };
+
+  it("accepts a natural softener variant but rejects a casual register", () => {
+    const point = {
+      ...grammarPoint,
+      canonicalForm: "〜てもらえますか",
+      connections: [{ baseType: "verb", requiredForm: "te_form", pattern: "Vて + もらえますか", notes: "", sortOrder: 1 }],
+    } as unknown as GrammarPointDetail;
+    expect(evaluateAnswerEquivalence({
+      sentence: "恐れ入りますが、もう一度説明していただけますか。",
+      answerContract: contract,
+      grammarPoint: point,
+    }).equivalent).toBe(true);
+    const casual = evaluateAnswerEquivalence({
+      sentence: "もう一度説明していただける？",
+      answerContract: contract,
+      grammarPoint: point,
+    });
+    expect(casual.equivalent).toBe(false);
+    expect(casual.registerSatisfied).toBe(false);
+  });
+
+  it("keeps specialization IDs unique and covers the high-frequency families", () => {
+    expect(new Set(PRACTICE_SPECIALIZATIONS.map((item) => item.id)).size)
+      .toBe(PRACTICE_SPECIALIZATIONS.length);
+    const forms = PRACTICE_SPECIALIZATIONS.flatMap((item) => item.canonicalForms);
+    for (const form of ["AはBです", "は", "て形", "〜ている", "〜たら", "〜ので", "〜てもらえますか", "〜てくれる", "〜ております"]) {
+      expect(forms).toContain(form);
+    }
   });
 });

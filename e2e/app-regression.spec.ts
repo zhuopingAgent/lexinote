@@ -205,6 +205,7 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
       prompt: string;
       context: { sceneLabel: string; registerLabel: string };
       options: Array<{ id: string; label: string }>;
+      selectionReasonZh?: string;
       grammarPoint: Record<string, unknown>;
     };
   };
@@ -214,6 +215,8 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     expect.objectContaining({ sceneLabel: "医院", registerLabel: "一般礼貌" })
   );
   expect(first.exercise.grammarPoint).not.toHaveProperty("examples");
+  expect(first.exercise.selectionReasonZh).toBeTruthy();
+  expect(first.exercise.selectionReasonZh).not.toMatch(/daily_life|polite|meaning_choice/);
   expect(first.exercise).not.toHaveProperty("referenceAnswers");
   expect(first.exercise).not.toHaveProperty("expectedFeatures");
   expect(first.exercise).not.toHaveProperty("hintLadder");
@@ -324,11 +327,17 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
       grammarPoint: { id: string };
       mistakeCount: number;
     }>;
+    objectiveRecommendations?: Array<{ grammarPointId: string; reasonZh: string }>;
   };
   const mistakeCountBeforeReveal = reviewBeforeReveal.items.find(
     (item) => item.grammarPoint.id === grammarPoint?.id
   )?.mistakeCount;
   expect(mistakeCountBeforeReveal).toBeGreaterThanOrEqual(1);
+  expect(reviewBeforeReveal.objectiveRecommendations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ grammarPointId: grammarPoint?.id }),
+    ])
+  );
 
   const revealResponse = await page.request.post(
     `/api/practice/exercises/${second.exercise.id}/reveal`,
@@ -391,12 +400,29 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     })
   );
 
+  const metricsResponse = await page.request.get("/api/practice/metrics");
+  expect(metricsResponse.ok()).toBe(true);
+  await expect(metricsResponse.json()).resolves.toEqual(
+    expect.objectContaining({
+      generatedItemCount: expect.any(Number),
+      aiGeneratedItemCount: expect.any(Number),
+      answerLeakCount: 0,
+      ambiguousChoiceCount: 0,
+    })
+  );
+
+  await page.goto("/grammar/quality");
+  await expect(page.getByRole("heading", { name: "练习生成质量" })).toBeVisible();
+  await expect(page.getByText("答案泄露", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("AI_GATEWAY_UNAVAILABLE");
+
   await page.goto(`/practice?grammarId=${grammarPoint?.id}`);
   await expect(page.getByText("第 1 / 5 题", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "〜てもらえますか", exact: true })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
+  await expect(page.getByText("安排原因", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("练习设置");
   await expect(page.locator("body")).not.toContainText("需要表达");
   await expect(page.locator("body")).not.toContainText("daily_life");

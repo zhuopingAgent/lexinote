@@ -161,6 +161,10 @@ describe("grammar domain seed", () => {
     expect(sql).toContain("error_type_id UUID NOT NULL REFERENCES error_types(id)");
     expect(sql).toContain("mistake_types JSONB NOT NULL DEFAULT '[]'::jsonb");
     expect(sql).toContain("issues JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(sql).toContain("role TEXT NOT NULL DEFAULT 'secondary'");
+    expect(sql).toContain("confidence NUMERIC(4,3)");
+    expect(sql).toContain("evidence_span TEXT");
+    expect(sql).toContain("affected_dimensions JSONB NOT NULL DEFAULT '[]'::jsonb");
     expect(sql).toContain("('wrong_register', 'register_mismatch')");
     expect(sql).toContain("('tense_mismatch', 'tense_aspect_error')");
   });
