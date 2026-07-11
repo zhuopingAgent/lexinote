@@ -89,7 +89,7 @@
 - Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
 - Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.
 - Adaptive grammar practice stores sessions, exercises, attempts, normalized attempt issues, mastery evidence, and per-skill learner state. The old generate/submit endpoints remain compatibility APIs, while `/api/practice/sessions` is the primary product flow.
-- Active practice responses hide expected features, reference answers, complete hint ladders, and grammar examples before submission. Translation and contextual prompts are rejected if they contain a candidate Japanese answer. A failed text attempt returns direct, specific correction feedback, while the predefined reference-answer set remains hidden until a correct attempt or explicit reveal.
+- Active practice responses hide expected features, reference answers, complete hint ladders, and grammar examples before submission. Translation prompts are rejected if they contain a candidate Japanese answer or do not provide a complete quoted Chinese sentence. Fallback translation tasks use concrete Chinese cues with semantically matching references instead of joining abstract goal/detail labels. A failed text attempt returns direct, specific correction feedback, while the predefined reference-answer set remains hidden until a correct attempt or explicit reveal.
 
 ## Quality Checks
 
