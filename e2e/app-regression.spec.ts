@@ -169,7 +169,7 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   expectNoBrowserErrors(browserErrors);
 });
 
-test("practice sessions hide answers, support retry and hints, and preserve hospital feedback", async ({
+test("practice sessions hide prompts, support retry, and return direct recorded feedback", async ({
   page,
 }) => {
   const grammarResponse = await page.request.get(
@@ -348,11 +348,13 @@ test("practice sessions hide answers, support retry and hints, and preserve hosp
   expect(registerFeedback.feedback.issues).toEqual([
     expect.objectContaining({
       errorTypeCode: "register_mismatch",
-      correction: "",
+      correction: "すみません、もう一度説明していただけますか。",
     }),
   ]);
-  expect(registerFeedback.feedback.correctedSentence).toBeNull();
-  expect(registerFeedback.feedback.explanation).not.toContain("いただけますか");
+  expect(registerFeedback.feedback.correctedSentence).toBe(
+    "すみません、もう一度説明していただけますか。"
+  );
+  expect(registerFeedback.feedback.explanation).toContain("太随便");
   expect(registerFeedback.referenceAnswers).toEqual([]);
 
   const reviewBeforeRevealResponse = await page.request.get("/api/review/today");

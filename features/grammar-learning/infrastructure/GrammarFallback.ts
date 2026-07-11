@@ -66,6 +66,39 @@ function normalizePattern(value: string) {
     .trim();
 }
 
+function matchesGrammarPattern(sentence: string, value: string) {
+  const normalized = normalizePattern(value);
+  const fragments = normalized
+    .split(/[A-ZＡ-Ｚ]+/)
+    .map((fragment) => fragment.trim())
+    .filter(Boolean);
+  const requiredFragments = fragments.length > 0 ? fragments : [normalized];
+  let searchStart = 0;
+
+  for (const fragment of requiredFragments) {
+    const variants = Array.from(
+      new Set([fragment, fragment.replace(/[かですます]+$/g, "")])
+    ).filter(Boolean);
+    let matchedIndex = -1;
+    let matchedLength = 0;
+
+    for (const variant of variants) {
+      const index = sentence.indexOf(variant, searchStart);
+      if (index >= 0) {
+        matchedIndex = index;
+        matchedLength = variant.length;
+        break;
+      }
+    }
+    if (matchedIndex < 0) {
+      return false;
+    }
+    searchStart = matchedIndex + matchedLength;
+  }
+
+  return true;
+}
+
 function resolveTeFormConnectionCue(grammarPoint: string, structure?: string | null) {
   const normalizedGrammarPoint = normalizePattern(grammarPoint);
   const requiresTeForm =
@@ -308,12 +341,10 @@ export function buildFallbackFeedback(input: {
     };
   }
 
-  const normalizedPattern = normalizePattern(input.grammarPoint.grammarPoint);
-  const usesPattern =
-    normalizedPattern.length === 1
-      ? input.sentence.includes(normalizedPattern)
-      : input.sentence.includes(normalizedPattern.replace(/[かですます]+$/g, "")) ||
-        input.sentence.includes(normalizedPattern);
+  const usesPattern = matchesGrammarPattern(
+    input.sentence,
+    input.grammarPoint.grammarPoint
+  );
   const teFormConnectionCue = resolveTeFormConnectionCue(
     input.grammarPoint.grammarPoint,
     input.grammarPoint.structure
@@ -407,15 +438,14 @@ export function buildFallbackFeedback(input: {
     explanation: feedbackText,
     nextHint,
     feedbackText,
-    correctedSentence: hasMistake
-      ? input.grammarPoint.examples[0]?.jp ?? null
-      : null,
+    correctedSentence: hasMistake ? referenceCorrection || null : null,
     betterVersions:
-      input.grammarPoint.examples[0]?.jp && hasMistake
+      referenceCorrection && hasMistake
         ? [
             {
-              sentence: input.grammarPoint.examples[0].jp,
-              registerTag: input.grammarPoint.examples[0].registerTag?.nameEn ?? null,
+              sentence: referenceCorrection,
+              registerTag:
+                input.grammarPoint.examples[0]?.registerTag?.nameEn ?? null,
               explanationZh: "参考当前语法点中更自然的例句。",
             },
           ]

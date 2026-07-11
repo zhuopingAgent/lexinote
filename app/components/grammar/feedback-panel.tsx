@@ -10,27 +10,24 @@ type FeedbackPanelProps = {
   feedback: AIFeedbackResult | null;
   isLoading?: boolean;
   embedded?: boolean;
+  learnerAnswer?: string | null;
+  isRecorded?: boolean;
 };
 
-function ScorePill({ label, value }: { label: string; value: number }) {
-  const tone =
-    value >= 4
-      ? "border-[#72e0ad33] bg-[#72e0ad14] text-[#9ce7c1]"
-      : value >= 3
-        ? "border-[#ffbe5c33] bg-[#ffbe5c14] text-[#ffd08a]"
-        : "border-danger/30 bg-danger-soft/70 text-danger";
-
-  return (
-    <span className={`inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>
-      {label} {value}/5
-    </span>
-  );
-}
+const SCORE_ITEMS = [
+  ["语法", "grammarScore"],
+  ["意思", "meaningScore"],
+  ["自然度", "naturalnessScore"],
+  ["语体", "registerScore"],
+  ["场景", "sceneFitScore"],
+] as const;
 
 export function FeedbackPanel({
   feedback,
   isLoading,
   embedded = false,
+  learnerAnswer,
+  isRecorded = false,
 }: FeedbackPanelProps) {
   if (isLoading) {
     return (
@@ -38,12 +35,13 @@ export function FeedbackPanel({
         className={
           embedded
             ? "border-t border-border pt-6"
-            : "rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
+            : "rounded-lg border border-border bg-surface p-5"
         }
       >
-        <div className="h-5 w-28 animate-pulse rounded bg-white/10" />
-        <div className="mt-4 h-5 w-full animate-pulse rounded bg-white/8" />
-        <div className="mt-3 h-5 w-4/5 animate-pulse rounded bg-white/8" />
+        <div className="ml-auto h-16 w-2/3 animate-pulse rounded-lg bg-foreground/8" />
+        <div className="mt-6 h-5 w-28 animate-pulse rounded bg-foreground/10" />
+        <div className="mt-4 h-5 w-full animate-pulse rounded bg-foreground/8" />
+        <div className="mt-3 h-5 w-4/5 animate-pulse rounded bg-foreground/8" />
       </section>
     );
   }
@@ -52,107 +50,158 @@ export function FeedbackPanel({
     return null;
   }
 
+  const explanation = feedback.explanation.trim();
+  const feedbackText = feedback.feedbackText.trim();
+  const correctedSentence = feedback.correctedSentence?.trim() || null;
+  const betterVersions = feedback.betterVersions.filter(
+    (version) => version.sentence.trim() !== correctedSentence
+  );
+
   return (
     <section
+      aria-label="练习反馈对话"
+      aria-live="polite"
       className={
         embedded
           ? "border-t border-border pt-6"
-          : "rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
+          : "rounded-lg border border-border bg-surface p-5"
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-white/74">反馈</h2>
-        <TagBadge tag={feedback.isCorrect ? "表达自然" : "需要调整"} />
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <ScorePill label="语法" value={feedback.grammarScore} />
-        <ScorePill label="意思" value={feedback.meaningScore} />
-        <ScorePill label="自然度" value={feedback.naturalnessScore} />
-        <ScorePill label="语体" value={feedback.registerScore} />
-        <ScorePill label="场景" value={feedback.sceneFitScore} />
-      </div>
-
-      <p className="mt-5 text-base leading-7 text-white/72">
-        {feedback.explanation || feedback.feedbackText}
-      </p>
-
-      {feedback.issues.length > 0 ? (
-        <div className="mt-5 divide-y divide-white/8 border-y border-white/8">
-          {feedback.issues.map((issue) => (
-            <div key={issue.errorTypeCode} className="py-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <TagBadge tag={displayMistakeTypeLabel(issue.errorTypeCode)} />
-                <span className="text-xs text-white/34">
-                  {displayFeedbackSeverityLabel(issue.severity)}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-white/56">
-                {issue.explanation}
-              </p>
-              {issue.correction ? (
-                <p className="mt-2 text-sm leading-6 text-white/42">
-                  {issue.correction}
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {feedback.correctedSentence ? (
-        <div className="mt-5 rounded-[14px] border border-white/8 bg-[#15151599] p-4">
-          <p className="text-sm font-semibold text-white/44">修正句</p>
-          <p className="mt-2 text-base leading-7 text-white/78">
-            {feedback.correctedSentence}
-          </p>
-        </div>
-      ) : null}
-
-      {feedback.betterVersions.length > 0 ? (
-        <div className="mt-5">
-          <p className="text-sm font-semibold text-white/44">更自然的版本</p>
-          <div className="mt-3 space-y-3">
-            {feedback.betterVersions.map((version) => (
-              <article
-                key={`${version.sentence}-${version.explanationZh}`}
-                className="rounded-[14px] border border-white/8 bg-[#15151599] p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="text-sm leading-6 text-white/76">{version.sentence}</p>
-                  {version.registerTag ? (
-                    <TagBadge tag={displayRegisterTagLabel(version.registerTag)} />
-                  ) : null}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-white/46">
-                  {version.explanationZh}
-                </p>
-              </article>
-            ))}
+      {learnerAnswer ? (
+        <div className="flex justify-end">
+          <div className="max-w-[88%] rounded-lg bg-foreground/8 px-4 py-3 sm:max-w-[76%]">
+            <p className="text-xs font-semibold text-muted">你的回答</p>
+            <p lang="ja" className="mt-1 whitespace-pre-wrap text-base leading-7 text-foreground/85">
+              {learnerAnswer}
+            </p>
           </div>
         </div>
       ) : null}
 
-      {feedback.issues.length === 0 && feedback.mistakeTypes.length > 0 ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {feedback.mistakeTypes.map((mistakeType) => (
-            <TagBadge key={mistakeType} tag={displayMistakeTypeLabel(mistakeType)} />
-          ))}
+      <div className={`grid grid-cols-[32px_minmax(0,1fr)] gap-3 ${learnerAnswer ? "mt-6" : ""}`}>
+        <span
+          aria-hidden="true"
+          className="inline-flex size-8 items-center justify-center rounded-full bg-accent text-sm font-semibold text-background"
+        >
+          文
+        </span>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground/85">
+              LexiNote 教练
+            </h2>
+            <TagBadge tag={feedback.isCorrect ? "表达自然" : "需要调整"} />
+          </div>
+
+          <p className="mt-3 text-base font-semibold leading-7 text-foreground">
+            {feedbackText || explanation}
+          </p>
+          {explanation && explanation !== feedbackText ? (
+            <p className="mt-2 text-base leading-7 text-foreground/72">
+              {explanation}
+            </p>
+          ) : null}
+
+          {feedback.issues.length > 0 ? (
+            <div className="mt-5 space-y-4 border-l-2 border-foreground/12 pl-4">
+              {feedback.issues.map((issue) => (
+                <div key={issue.errorTypeCode}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground/78">
+                      {displayMistakeTypeLabel(issue.errorTypeCode)}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {displayFeedbackSeverityLabel(issue.severity)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-foreground/62">
+                    {issue.explanation}
+                  </p>
+                  {issue.correction && issue.correction !== correctedSentence ? (
+                    <p className="mt-1 text-sm leading-6 text-foreground/72">
+                      <span className="text-muted">改成：</span>
+                      <span lang="ja">{issue.correction}</span>
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {correctedSentence ? (
+            <div className="mt-5 border-l-2 border-accent pl-4">
+              <p className="text-xs font-semibold text-muted">建议改为</p>
+              <p lang="ja" className="mt-1 text-lg leading-8 text-foreground">
+                {correctedSentence}
+              </p>
+            </div>
+          ) : null}
+
+          {betterVersions.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              <p className="text-sm font-semibold text-foreground/72">
+                还可以这样说
+              </p>
+              {betterVersions.map((version) => (
+                <div key={`${version.sentence}-${version.explanationZh}`}>
+                  <div className="flex flex-wrap items-start gap-2">
+                    <p lang="ja" className="text-sm leading-6 text-foreground/82">
+                      {version.sentence}
+                    </p>
+                    {version.registerTag ? (
+                      <TagBadge tag={displayRegisterTagLabel(version.registerTag)} />
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-muted">
+                    {version.explanationZh}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {feedback.issues.length === 0 && feedback.mistakeTypes.length > 0 ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {feedback.mistakeTypes.map((mistakeType) => (
+                <TagBadge
+                  key={mistakeType}
+                  tag={displayMistakeTypeLabel(mistakeType)}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {feedback.nextHint ? (
+            <p className="mt-5 text-sm leading-6 text-accent-strong">
+              下一步：{feedback.nextHint}
+            </p>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
+            {isRecorded ? (
+              <span className="text-xs font-medium text-foreground/48">
+                本次作答已记录
+              </span>
+            ) : null}
+            <details className="text-xs text-muted">
+              <summary className="cursor-pointer font-medium transition hover:text-foreground">
+                查看本次评分
+              </summary>
+              <dl className="mt-3 grid grid-cols-5 gap-3">
+                {SCORE_ITEMS.map(([label, key]) => (
+                  <div key={key} className="min-w-0">
+                    <dt className="truncate">{label}</dt>
+                    <dd className="mt-1 text-sm font-semibold text-foreground/76">
+                      {feedback[key]}/5
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          </div>
         </div>
-      ) : null}
-
-      {feedback.nextHint ? (
-        <p className="mt-5 rounded-[14px] border border-accent/20 bg-accent-soft px-4 py-3 text-sm leading-6 text-accent-strong">
-          下一步：{feedback.nextHint}
-        </p>
-      ) : null}
-
-      {feedback.nextPracticePrompt &&
-      feedback.nextPracticePrompt !== feedback.nextHint ? (
-        <p className="mt-5 rounded-[14px] border border-accent/20 bg-accent-soft px-4 py-3 text-sm leading-6 text-accent-strong">
-          {feedback.nextPracticePrompt}
-        </p>
-      ) : null}
+      </div>
     </section>
   );
 }

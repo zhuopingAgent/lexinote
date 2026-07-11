@@ -27,6 +27,7 @@ import {
   buildFallbackPractice,
   buildPracticeVariation,
 } from "@/features/grammar-learning/infrastructure/GrammarFallback";
+import { makeFeedbackConversational } from "@/features/grammar-learning/domain/practiceFeedback";
 
 export type {
   EvaluatedSentence,
@@ -56,7 +57,12 @@ export class GrammarAiClient {
       ? parsePracticeOutput(extractJsonObject(responseText))
       : null;
 
-    return parsed && isPlannedExerciseSafe(parsed)
+    return parsed &&
+      isPlannedExerciseSafe({
+        ...parsed,
+        exerciseType: input.exerciseType,
+        grammarPoint: input.grammarPoint.grammarPoint,
+      })
       ? { ...parsed, source: "ai" }
       : fallback;
   }
@@ -115,7 +121,7 @@ export class GrammarAiClient {
     const fallback = buildFallbackFeedback(input);
 
     if (!aiGatewayRequest) {
-      return fallback;
+      return makeFeedbackConversational(fallback);
     }
 
     const responseText = await requestAiGatewayText(aiGatewayRequest, {
@@ -129,12 +135,14 @@ export class GrammarAiClient {
       ? parseFeedbackOutput(extractJsonObject(responseText), input.grammarPoint.id)
       : null;
 
-    return parsed
-      ? {
-          ...parsed,
-          source: "ai",
-          modelName: resolveAiModel("premiumTeacher"),
-        }
-      : fallback;
+    return makeFeedbackConversational(
+      parsed
+        ? {
+            ...parsed,
+            source: "ai" as const,
+            modelName: resolveAiModel("premiumTeacher"),
+          }
+        : fallback
+    );
   }
 }

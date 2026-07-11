@@ -4,8 +4,11 @@ import {
   difficultyFromSkillState,
   planPracticeExercise,
 } from "@/features/grammar-learning/domain/practice";
-import { sanitizeIncorrectFeedback } from "@/features/grammar-learning/domain/practiceFeedback";
-import { buildPlannedExerciseFallback } from "@/features/grammar-learning/prompts/exerciseGeneration";
+import { makeFeedbackConversational } from "@/features/grammar-learning/domain/practiceFeedback";
+import {
+  buildPlannedExerciseFallback,
+  isPlannedExerciseSafe,
+} from "@/features/grammar-learning/prompts/exerciseGeneration";
 import type { GrammarPointDetail } from "@/shared/types/grammar";
 import type { PracticeContext, PracticeSkillState } from "@/shared/types/practice";
 
@@ -263,8 +266,48 @@ describe("redesigned practice domain", () => {
     expect(register.prompt).not.toContain("polite");
   });
 
-  it("removes corrections from failed feedback until the learner reveals the answer", () => {
-    const result = sanitizeIncorrectFeedback({
+  it("rejects generated translation tasks that contain a candidate Japanese answer", () => {
+    const referenceAnswers = [
+      {
+        jp: "駅の近くに車がありますか。",
+        zh: "车站附近有车吗？",
+        noteZh: "用存在句确认是否有车。",
+      },
+    ];
+
+    expect(
+      isPlannedExerciseSafe({
+        prompt: "请确认车站附近是否有车，并用一般礼貌体表达：駅近くに車がありますか？",
+        referenceAnswers,
+        hints: [],
+        exerciseType: "guided_translation",
+        grammarPoint: "Aがあります",
+      })
+    ).toBe(false);
+    expect(
+      isPlannedExerciseSafe({
+        prompt: "请介绍目的地，并用一般礼貌体表达：東京です。",
+        referenceAnswers: [
+          { jp: "大阪です。", zh: "是大阪。", noteZh: "礼貌判断句。" },
+        ],
+        hints: [],
+        exerciseType: "contextual_response",
+        grammarPoint: "〜です",
+      })
+    ).toBe(false);
+    expect(
+      isPlannedExerciseSafe({
+        prompt: "请用日语确认车站附近是否有车，必须使用「Aがあります」并保持一般礼貌。",
+        referenceAnswers,
+        hints: ["先确定存在的地点和物品。"],
+        exerciseType: "guided_translation",
+        grammarPoint: "Aがあります",
+      })
+    ).toBe(true);
+  });
+
+  it("keeps failed feedback specific, direct, and ready to persist", () => {
+    const result = makeFeedbackConversational({
       userSentenceId: "55555555-5555-4555-8555-555555555555",
       feedbackId: "66666666-6666-4666-8666-666666666666",
       source: "fallback",
@@ -298,10 +341,14 @@ describe("redesigned practice domain", () => {
       nextPracticePrompt: "再写一次。",
     });
 
-    expect(result.correctedSentence).toBeNull();
-    expect(result.betterVersions).toEqual([]);
-    expect(result.issues[0]?.correction).toBe("");
-    expect(result.explanation).not.toContain("いただけますか");
-    expect(result.nextHint).not.toContain("いただけますか");
+    expect(result.feedbackText).toContain("语体");
+    expect(result.correctedSentence).toBe(
+      "すみません、もう一度説明していただけますか。"
+    );
+    expect(result.issues[0]?.correction).toBe(
+      "すみません、もう一度説明していただけますか。"
+    );
+    expect(result.explanation).toContain("いただけますか");
+    expect(result.betterVersions).toHaveLength(1);
   });
 });

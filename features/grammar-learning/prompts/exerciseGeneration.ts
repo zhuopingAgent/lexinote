@@ -81,10 +81,13 @@ ${referenceExamples || "无"}
 - contextual_response：只提供现实沟通目标和必要背景，让学习者独立回应。
 
 输出要求：
-- task_zh 必须具体、可立即作答，且不能包含完整日语答案。
+- task_zh 必须具体、可立即作答，且不能包含完整或接近完整的日语答案。
+- guided_translation 和 contextual_response 的作答内容必须只用中文描述；除了用书名号标出的目标语法标签，不得出现任何候选日语句子。
+- form_repair 和 register_rewrite 可以提供待修改的日语原句，但原句必须确实有错，且不能与 reference_answers 中的答案相同。
 - reference_answers 必须给两个自然答案，都使用目标语法和目标语体，但人物、物品或措辞应有变化。
 - hints 必须依次为：意义方向、接续结构、句子骨架。第三条也不能给出完整答案。
 - 不能出现 daily_life、polite、business 等内部英文标签。
+- task_zh 不得使用 Markdown 粗体、代码标记或标题符号。
 - 不得照抄参考素材的完整日语句子。
 - 只返回 JSON，不返回 Markdown。
 
@@ -144,7 +147,7 @@ export function buildPlannedExerciseFallback(input: PlannedTextExerciseInput) {
   const promptByType: Partial<Record<PracticeExerciseType, string>> = {
     form_repair: `${contextLead}下面的形式存在接续或活用问题：「${incorrectConnection}」。请修复成完整、自然的日语，并表达「${cue}」。`,
     register_rewrite: `${contextLead}下面的说法不符合人物关系：「${registerMismatchSource}」。请保留原意，改写成适合对${input.context.listenerRole}使用的「${input.context.registerLabel}」日语。`,
-    guided_translation: `${contextLead}请把「${cue}」翻译成自然日语，必须使用「${input.grammarPoint.grammarPoint}」，并包含「${input.context.requiredDetail}」。`,
+    guided_translation: `${contextLead}请把这个中文意图表达成自然日语：${input.context.communicativeGoal}，并提到“${input.context.requiredDetail}”。必须使用「${input.grammarPoint.grammarPoint}」。`,
     contextual_response: `${contextLead}你的目的是「${input.context.communicativeGoal}」，必须提到「${input.context.requiredDetail}」。请使用「${input.grammarPoint.grammarPoint}」独立写一句自然的「${input.context.registerLabel}」日语。`,
   };
   const baseReferenceAnswers = fallbackReferenceAnswers(input.grammarPoint);
@@ -188,6 +191,9 @@ export function buildPlannedExerciseFallback(input: PlannedTextExerciseInput) {
 export function isPlannedExerciseSafe(input: {
   prompt: string;
   referenceAnswers: PracticeReferenceAnswer[];
+  hints?: string[];
+  exerciseType: PracticeExerciseType;
+  grammarPoint: string;
 }) {
   if (!input.prompt.trim() || input.referenceAnswers.length === 0) {
     return false;
@@ -195,7 +201,58 @@ export function isPlannedExerciseSafe(input: {
   if (/\b(daily_life|polite|business|formal|media_formal)\b/.test(input.prompt)) {
     return false;
   }
-  return input.referenceAnswers.every(
-    (answer) => answer.jp.trim() && !input.prompt.includes(answer.jp.trim())
+  if (/(\*\*|__|`|^#{1,6}\s)/m.test(input.prompt)) {
+    return false;
+  }
+
+  const normalizeForComparison = (value: string) =>
+    value
+      .normalize("NFKC")
+      .replace(/[\s*_`「」『』【】（）()\[\]。、，：；！？!?]/g, "")
+      .trim();
+  const promptForComparison = normalizeForComparison(input.prompt);
+  const visibleLearnerText = [input.prompt, ...(input.hints ?? [])];
+
+  if (
+    input.referenceAnswers.some((answer) => {
+      const normalizedAnswer = normalizeForComparison(answer.jp);
+      return (
+        !normalizedAnswer ||
+        visibleLearnerText.some((text) =>
+          normalizeForComparison(text).includes(normalizedAnswer)
+        )
+      );
+    })
+  ) {
+    return false;
+  }
+
+  if (
+    input.exerciseType !== "guided_translation" &&
+    input.exerciseType !== "contextual_response"
+  ) {
+    return true;
+  }
+
+  const grammarMentionForms = Array.from(
+    new Set([
+      input.grammarPoint,
+      input.grammarPoint.replace(/^[〜~]/, ""),
+      input.grammarPoint.replace(/^[〜~]/, "").replace(/[A-ZＡ-Ｚ]/g, ""),
+    ])
+  )
+    .map((form) => form.trim())
+    .filter(Boolean);
+  const normalizedGrammarMentions = new Set(
+    grammarMentionForms.map(normalizeForComparison)
   );
+  const promptWithoutGrammarLabel = input.prompt.replace(
+    /[「『]([^」』]+)[」』]/g,
+    (whole, content: string) =>
+      normalizedGrammarMentions.has(normalizeForComparison(content)) ? "" : whole
+  );
+  const remainingKanaCount =
+    promptWithoutGrammarLabel.match(/[\u3040-\u30ff]/g)?.length ?? 0;
+
+  return remainingKanaCount === 0 && promptForComparison.length > 0;
 }
