@@ -18,6 +18,7 @@ import {
   SELECT_LEARNING_MODULES_SQL,
   SELECT_LEARNING_STAGES_SQL,
   SELECT_REGISTER_TAGS_SQL,
+  SELECT_OBJECTIVE_RECOMMENDATIONS_SQL,
   SELECT_REVIEW_AGGREGATIONS_SQL,
   SELECT_REVIEW_ITEMS_SQL,
   SELECT_SCENE_TAGS_SQL,
@@ -39,6 +40,7 @@ import type {
   GrammarPointSummary,
   GrammarProgressGroup,
   GrammarReviewAggregations,
+  GrammarObjectiveRecommendation,
   GrammarReviewItem,
   GrammarTag,
   KnowledgeDimension,
@@ -77,6 +79,7 @@ import type {
   LearningStageRow,
   ProgressGroupRow,
   ReviewAggregationsRow,
+  ObjectiveRecommendationRow,
   ReviewRow,
   SimilarGrammarRow,
   StoredFeedback,
@@ -510,6 +513,46 @@ export class GrammarRepository {
     );
 
     return parseReviewAggregations(rows[0]?.aggregations);
+  }
+
+  async listObjectiveRecommendations(
+    userId: string
+  ): Promise<GrammarObjectiveRecommendation[]> {
+    const rows = await query<ObjectiveRecommendationRow>(
+      SELECT_OBJECTIVE_RECOMMENDATIONS_SQL,
+      [userId]
+    );
+    return rows.map((row) => {
+      const attempts = toInteger(row.attempts);
+      const assistedAttempts = toInteger(row.assisted_attempts);
+      const exposureCount = toInteger(row.exposure_count);
+      const estimate = Number(row.estimate);
+      const recentErrorCodes = parseStringArray(row.recent_error_codes);
+      const reasonZh = exposureCount > 0
+        ? "看过参考答案后还没有形成独立证据，建议先做一次无答案复现。"
+        : attempts > 0 && assistedAttempts / attempts >= 0.5
+          ? "最近较依赖提示，建议保留少量支架后重新作答。"
+          : recentErrorCodes.length > 0
+            ? "最近仍有结构化错误记录，建议针对同一学习目标复练。"
+            : estimate < 0.55
+              ? "当前掌握估计较低，建议先完成一组聚焦练习。"
+              : "已到建议复习时间，用延迟回忆确认是否真正掌握。";
+      return {
+        grammarPointId: row.grammar_point_id,
+        grammarPoint: row.grammar_point,
+        coreMeaning: row.core_meaning,
+        senseKey: row.sense_key,
+        learningObjective: row.learning_objective as GrammarObjectiveRecommendation["learningObjective"],
+        estimate,
+        confidence: Number(row.confidence),
+        attempts,
+        assistedAttempts,
+        exposureCount,
+        recentErrorCodes,
+        nextReviewAt: toIsoString(row.next_review_at),
+        reasonZh,
+      };
+    });
   }
 
   async getProgress(userId: string): Promise<GrammarProgressGroup[]> {

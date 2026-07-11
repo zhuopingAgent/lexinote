@@ -29,6 +29,7 @@ import type {
   PracticeAttemptResponse,
   PracticeExercise,
   PracticeHintResponse,
+  PracticeGenerationMetrics,
   PracticeRevealResponse,
   PracticeSessionCreateRequest,
   PracticeSessionEntryMode,
@@ -47,6 +48,7 @@ import {
   buildPracticeSessionPlan,
   defaultPracticePlannerSource,
 } from "@/features/grammar-learning/domain/practiceSessionPlanner";
+import { GRAMMAR_PRACTICE_CONTENT_VERSION } from "@/features/grammar-learning/domain/practiceSpecializations";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -131,6 +133,36 @@ export class PracticeSessionService {
     private readonly grammarLearningService: GrammarLearningService
   ) {}
 
+  async getGenerationMetrics(since?: string): Promise<PracticeGenerationMetrics> {
+    if (since && Number.isNaN(Date.parse(since))) {
+      throw new ValidationError("since must be a valid date");
+    }
+    const raw = await this.practiceRepository.getGenerationMetrics(since ?? null);
+    const numberValue = (value: unknown) => {
+      const number = Number(value ?? 0);
+      return Number.isFinite(number) ? number : 0;
+    };
+    const countRecord = (value: unknown) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      return Object.fromEntries(
+        Object.entries(value).map(([key, count]) => [key, numberValue(count)])
+      );
+    };
+    return {
+      generatedItemCount: numberValue(raw.generatedItemCount),
+      aiGeneratedItemCount: numberValue(raw.aiGeneratedItemCount),
+      firstPassValidationRate: numberValue(raw.firstPassValidationRate),
+      repairRate: numberValue(raw.repairRate),
+      fallbackRate: numberValue(raw.fallbackRate),
+      generationLatency: numberValue(raw.generationLatency),
+      duplicateContextRate: numberValue(raw.duplicateContextRate),
+      answerLeakCount: numberValue(raw.answerLeakCount),
+      ambiguousChoiceCount: numberValue(raw.ambiguousChoiceCount),
+      validationErrorCounts: countRecord(raw.validationErrorCounts),
+      fallbackReasonCounts: countRecord(raw.fallbackReasonCounts),
+    };
+  }
+
   async createSession(
     input: Partial<PracticeSessionCreateRequest>
   ): Promise<PracticeSessionResponse> {
@@ -169,8 +201,13 @@ export class PracticeSessionService {
     let planSnapshot: PracticeIntent[] = [];
     const useV2 = isPracticeGenerationV2Enabled();
     if (useV2) {
-      const [skillStates, scenarioTemplate, plannerHistory] = await Promise.all([
+      const [skillStates, objectiveStates, scenarioTemplate, plannerHistory] = await Promise.all([
         this.practiceRepository.listSkillStates(userId, grammarPoint.id),
+        this.practiceRepository.listObjectiveStates(
+          userId,
+          grammarPoint.id,
+          grammarPoint.senseKey
+        ),
         this.practiceRepository.findScenarioTemplate(preferredScene),
         this.practiceRepository.getPlannerHistory(userId, grammarPoint.id),
       ]);
@@ -187,6 +224,7 @@ export class PracticeSessionService {
         grammarPoint,
         context: firstContext,
         skillStates,
+        objectiveStates,
         history: plannerHistory,
         count: plannedExerciseCount,
         source: defaultPracticePlannerSource,
@@ -219,7 +257,12 @@ export class PracticeSessionService {
       preferredScene,
       preferredRegister,
       plannedExerciseCount,
-      metadata: { redesignVersion: useV2 ? 2 : 1 },
+      metadata: {
+        redesignVersion: useV2 ? 2 : 1,
+        grammarPracticeContentVersion: useV2
+          ? GRAMMAR_PRACTICE_CONTENT_VERSION
+          : null,
+      },
       planSnapshot,
       plannerVersion: useV2 ? 2 : 1,
     });
@@ -232,7 +275,14 @@ export class PracticeSessionService {
       userId,
       grammarPointId: grammarPoint.id,
       activityType: "start_practice_session",
-      metadata: { entryMode, preferredScene, preferredRegister },
+      metadata: {
+        entryMode,
+        preferredScene,
+        preferredRegister,
+        grammarPracticeContentVersion: useV2
+          ? GRAMMAR_PRACTICE_CONTENT_VERSION
+          : null,
+      },
     });
 
     return this.nextExercise(sessionId, userId);
@@ -768,6 +818,7 @@ export class PracticeSessionService {
           cognitiveOperation: exercise.practiceIntent?.cognitiveOperation,
           transferLevel: exercise.practiceIntent?.transferLevel,
           scaffoldLevel: exercise.practiceIntent?.scaffoldLevel,
+          selectionReasonZh: exercise.practiceIntent?.selectionReasonZh,
           grammarPoint: {
             id: grammarPoint.id,
             grammarPoint: grammarPoint.grammarPoint,
@@ -803,6 +854,12 @@ export class PracticeSessionService {
     session: PracticeSessionRecord,
     grammarPoint: GrammarPointDetail
   ): Promise<PracticeSessionSummary> {
+    const objectiveSummaries = (await this.practiceRepository.getSessionObjectiveSummaries(
+      session.id
+    )) as NonNullable<PracticeSessionSummary["objectiveSummaries"]>;
+    const nextObjective = [...objectiveSummaries].sort(
+      (left, right) => left.estimate - right.estimate || left.confidence - right.confidence
+    )[0];
     return {
       sessionId: session.id,
       grammarPoint: toGrammarPointSummary(grammarPoint),
@@ -811,9 +868,17 @@ export class PracticeSessionService {
       skillSummaries: await this.practiceRepository.getSessionSkillSummaries(
         session.id
       ),
-      objectiveSummaries: (await this.practiceRepository.getSessionObjectiveSummaries(
-        session.id
-      )) as PracticeSessionSummary["objectiveSummaries"],
+      objectiveSummaries,
+      nextRecommendation: nextObjective
+        ? {
+            learningObjective: nextObjective.learningObjective,
+            reasonZh: nextObjective.evidenceCount < 2
+              ? "本组有效证据还不够，下一次会继续观察同一目标。"
+              : nextObjective.estimate < 0.6
+                ? "这是本组相对薄弱的目标，建议优先再练一次。"
+                : "当前表现已经稳定，下一次将用延迟回忆确认保持情况。",
+          }
+        : null,
     };
   }
 }

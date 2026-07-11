@@ -10,6 +10,41 @@ import type {
   GeneratedPractice,
 } from "@/features/grammar-learning/infrastructure/GrammarAiOutput";
 import type { AnswerContract } from "@/features/grammar-learning/domain/practiceV2";
+import { evaluateAnswerEquivalence } from "@/features/grammar-learning/domain/answerEquivalence";
+
+const ISSUE_DIMENSIONS: Record<
+  AIFeedbackIssue["errorTypeCode"],
+  NonNullable<AIFeedbackIssue["affectedDimensions"]>
+> = {
+  conjugation_error: ["grammar"],
+  connection_error: ["grammar"],
+  particle_error: ["grammar", "meaning"],
+  tense_aspect_error: ["grammar", "meaning"],
+  giving_receiving_direction_error: ["grammar", "meaning"],
+  semantic_error: ["meaning"],
+  register_mismatch: ["register", "contextFit"],
+  collocation_error: ["naturalness", "meaning"],
+  literal_translation: ["naturalness"],
+  unnatural_expression: ["naturalness"],
+};
+
+function withIssueMetadata(
+  issues: AIFeedbackIssue[],
+  sentence: string
+): AIFeedbackIssue[] {
+  return issues.map((issue, index) => ({
+    ...issue,
+    role: index === 0 ? "root" : "secondary",
+    confidence: issue.severity === "high" || issue.severity === "critical" ? 0.95 : 0.82,
+    evidenceSpan:
+      issue.errorTypeCode === "register_mismatch"
+        ? sentence.match(/[^、。]{2,}(?:？|\?|。)?$/)?.[0] ?? sentence
+        : issue.errorTypeCode === "tense_aspect_error"
+          ? sentence.match(/昨日|先週|先月|去年|さっき|先ほど/)?.[0] ?? sentence
+          : sentence,
+    affectedDimensions: ISSUE_DIMENSIONS[issue.errorTypeCode],
+  }));
+}
 
 const PRACTICE_LISTENER_FOCI = [
   "根据场景选择一个具体听话对象，例如老师、店员、医生、同事、客户、朋友或家人。",
@@ -322,6 +357,10 @@ export function buildFallbackFeedback(input: {
           explanation: "对医生使用「もらえる？」礼貌度不足。",
           correction,
           relatedGrammarPointId: input.grammarPoint.id,
+          role: "root",
+          confidence: 0.99,
+          evidenceSpan: "説明してもらえる？",
+          affectedDimensions: ["register", "contextFit"],
         },
       ],
       explanation,
@@ -412,8 +451,9 @@ export function buildFallbackFeedback(input: {
       relatedGrammarPointId: input.grammarPoint.id,
     });
   }
-  const mistakeTypes = issues.map((issue) => issue.errorTypeCode);
-  const hasMistake = issues.length > 0;
+  const structuredIssues = withIssueMetadata(issues, input.sentence);
+  const mistakeTypes = structuredIssues.map((issue) => issue.errorTypeCode);
+  const hasMistake = structuredIssues.length > 0;
   const feedbackText = hasMistake
     ? [
         hasConnectionIssue
@@ -439,7 +479,7 @@ export function buildFallbackFeedback(input: {
     naturalnessScore: hasMistake ? 3 : 4,
     registerScore: isCasualMismatch ? 2 : 4,
     sceneFitScore: 4,
-    issues,
+    issues: structuredIssues,
     explanation: feedbackText,
     nextHint,
     feedbackText,
@@ -463,19 +503,21 @@ export function buildFallbackFeedback(input: {
   };
 }
 
-export function applyAnswerContractToFallback(
+export function applyAnswerContractEquivalence(
   input: {
     sentence: string;
     answerContract?: AnswerContract;
+    grammarPoint: GrammarPointDetail;
   },
   feedback: EvaluatedSentence
 ): EvaluatedSentence {
-  const normalize = (value: string) =>
-    value.normalize("NFKC").replace(/[\s。、，：；！？!?]/g, "");
-  const isValidatedVariant = input.answerContract?.allowedVariants.some(
-    (variant) => normalize(variant) === normalize(input.sentence)
-  );
-  if (!isValidatedVariant) return feedback;
+  if (!input.answerContract) return feedback;
+  const equivalence = evaluateAnswerEquivalence({
+    sentence: input.sentence,
+    answerContract: input.answerContract,
+    grammarPoint: input.grammarPoint,
+  });
+  if (!equivalence.equivalent || equivalence.confidence < 0.8) return feedback;
 
   return {
     ...feedback,
@@ -486,9 +528,9 @@ export function applyAnswerContractToFallback(
     registerScore: input.answerContract?.assessedDimensions.includes("register") ? 5 : 4,
     sceneFitScore: input.answerContract?.assessedDimensions.includes("contextFit") ? 5 : 4,
     issues: [],
-    explanation: "这句可以。目标用法和题目要求都成立，表达自然。",
+    explanation: `这句可以。${equivalence.reasonZh}`,
     nextHint: "保持这个用法，换一个具体对象或场景再表达一次。",
-    feedbackText: "这句可以。目标用法和题目要求都成立，表达自然。",
+    feedbackText: `这句可以。${equivalence.reasonZh}`,
     correctedSentence: null,
     betterVersions: [],
     mistakeTypes: [],

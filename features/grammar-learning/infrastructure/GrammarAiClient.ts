@@ -25,7 +25,7 @@ import {
 } from "@/features/grammar-learning/infrastructure/GrammarAiOutput";
 import {
   buildFallbackFeedback,
-  applyAnswerContractToFallback,
+  applyAnswerContractEquivalence,
   buildFallbackPractice,
   buildPracticeVariation,
 } from "@/features/grammar-learning/infrastructure/GrammarFallback";
@@ -304,7 +304,7 @@ export class GrammarAiClient {
     rubric?: PracticeRubric;
   }): Promise<EvaluatedSentence> {
     const aiGatewayRequest = resolveAiGatewayRequest();
-    const fallback = applyAnswerContractToFallback(
+    const fallback = applyAnswerContractEquivalence(
       input,
       buildFallbackFeedback(input)
     );
@@ -324,14 +324,13 @@ export class GrammarAiClient {
       ? parseFeedbackOutput(extractJsonObject(responseText), input.grammarPoint.id)
       : null;
 
-    return makeFeedbackConversational(
-      parsed
-        ? {
-            ...parsed,
-            source: "ai" as const,
-            modelName: resolveAiModel("premiumTeacher"),
-          }
-        : fallback
-    );
+    const evaluated = parsed
+      ? applyAnswerContractEquivalence(input, {
+          ...parsed,
+          source: "ai" as const,
+          modelName: resolveAiModel("premiumTeacher"),
+        })
+      : fallback;
+    return makeFeedbackConversational(evaluated);
   }
 }

@@ -624,10 +624,53 @@ CREATE TABLE IF NOT EXISTS ai_feedback_issues (
   explanation TEXT NOT NULL,
   correction TEXT NOT NULL DEFAULT '',
   related_grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE SET NULL,
+  role TEXT NOT NULL DEFAULT 'secondary' CHECK (role IN ('root', 'secondary')),
+  confidence NUMERIC(4,3) CHECK (confidence BETWEEN 0 AND 1),
+  evidence_span TEXT,
+  affected_dimensions JSONB NOT NULL DEFAULT '[]'::jsonb,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (ai_feedback_id, error_type_id)
 );
+
+ALTER TABLE ai_feedback_issues
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'secondary' CHECK (role IN ('root', 'secondary')),
+  ADD COLUMN IF NOT EXISTS confidence NUMERIC(4,3) CHECK (confidence BETWEEN 0 AND 1),
+  ADD COLUMN IF NOT EXISTS evidence_span TEXT,
+  ADD COLUMN IF NOT EXISTS affected_dimensions JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+WITH ranked_roots AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (
+      PARTITION BY ai_feedback_id
+      ORDER BY sort_order ASC, created_at ASC, id ASC
+    ) AS root_order
+  FROM ai_feedback_issues
+  WHERE role = 'root'
+)
+UPDATE ai_feedback_issues
+SET role = 'secondary'
+FROM ranked_roots
+WHERE ai_feedback_issues.id = ranked_roots.id
+  AND ranked_roots.root_order > 1;
+
+WITH first_issue AS (
+  SELECT DISTINCT ON (ai_feedback_id) id, ai_feedback_id
+  FROM ai_feedback_issues
+  ORDER BY ai_feedback_id, sort_order ASC, created_at ASC, id ASC
+)
+UPDATE ai_feedback_issues
+SET role = 'root'
+FROM first_issue
+WHERE ai_feedback_issues.id = first_issue.id
+  AND NOT EXISTS (
+    SELECT 1
+    FROM ai_feedback_issues existing_root
+    WHERE existing_root.ai_feedback_id = first_issue.ai_feedback_id
+      AND existing_root.role = 'root'
+  );
+
 
 CREATE TABLE IF NOT EXISTS favorites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -804,9 +847,57 @@ CREATE TABLE IF NOT EXISTS practice_attempt_issues (
   explanation TEXT NOT NULL,
   correction TEXT NOT NULL DEFAULT '',
   related_grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE SET NULL,
+  role TEXT NOT NULL DEFAULT 'secondary' CHECK (role IN ('root', 'secondary')),
+  confidence NUMERIC(4,3) CHECK (confidence BETWEEN 0 AND 1),
+  evidence_span TEXT,
+  affected_dimensions JSONB NOT NULL DEFAULT '[]'::jsonb,
   sort_order INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (practice_attempt_id, error_type_id)
 );
+
+ALTER TABLE practice_attempt_issues
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'secondary' CHECK (role IN ('root', 'secondary')),
+  ADD COLUMN IF NOT EXISTS confidence NUMERIC(4,3) CHECK (confidence BETWEEN 0 AND 1),
+  ADD COLUMN IF NOT EXISTS evidence_span TEXT,
+  ADD COLUMN IF NOT EXISTS affected_dimensions JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+WITH ranked_roots AS (
+  SELECT
+    practice_attempt_id,
+    error_type_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY practice_attempt_id
+      ORDER BY sort_order ASC, error_type_id ASC
+    ) AS root_order
+  FROM practice_attempt_issues
+  WHERE role = 'root'
+)
+UPDATE practice_attempt_issues
+SET role = 'secondary'
+FROM ranked_roots
+WHERE practice_attempt_issues.practice_attempt_id = ranked_roots.practice_attempt_id
+  AND practice_attempt_issues.error_type_id = ranked_roots.error_type_id
+  AND ranked_roots.root_order > 1;
+
+WITH first_issue AS (
+  SELECT DISTINCT ON (practice_attempt_id)
+    practice_attempt_id,
+    error_type_id
+  FROM practice_attempt_issues
+  ORDER BY practice_attempt_id, sort_order ASC, error_type_id ASC
+)
+UPDATE practice_attempt_issues
+SET role = 'root'
+FROM first_issue
+WHERE practice_attempt_issues.practice_attempt_id = first_issue.practice_attempt_id
+  AND practice_attempt_issues.error_type_id = first_issue.error_type_id
+  AND NOT EXISTS (
+    SELECT 1
+    FROM practice_attempt_issues existing_root
+    WHERE existing_root.practice_attempt_id = first_issue.practice_attempt_id
+      AND existing_root.role = 'root'
+  );
+
 
 CREATE TABLE IF NOT EXISTS mastery_evidence (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -3090,6 +3181,10 @@ INSERT INTO ai_feedback_issues (
   explanation,
   correction,
   related_grammar_point_id,
+  role,
+  confidence,
+  evidence_span,
+  affected_dimensions,
   sort_order
 )
 SELECT
@@ -3099,6 +3194,10 @@ SELECT
   ai_feedback.feedback_text,
   COALESCE(ai_feedback.corrected_sentence, ''),
   user_sentences.grammar_point_id,
+  CASE WHEN legacy_issue.ordinality = 1 THEN 'root' ELSE 'secondary' END,
+  NULL,
+  NULL,
+  '[]'::jsonb,
   legacy_issue.ordinality::integer
 FROM ai_feedback
 JOIN user_sentences ON user_sentences.id = ai_feedback.user_sentence_id
@@ -3127,7 +3226,11 @@ SET meaning_score = COALESCE(meaning_score, scene_fit_score, 3),
             'severity', ai_feedback_issues.severity,
             'explanation', ai_feedback_issues.explanation,
             'correction', ai_feedback_issues.correction,
-            'relatedGrammarPointId', ai_feedback_issues.related_grammar_point_id
+            'relatedGrammarPointId', ai_feedback_issues.related_grammar_point_id,
+            'role', ai_feedback_issues.role,
+            'confidence', ai_feedback_issues.confidence,
+            'evidenceSpan', ai_feedback_issues.evidence_span,
+            'affectedDimensions', ai_feedback_issues.affected_dimensions
           )
           ORDER BY ai_feedback_issues.sort_order ASC
         )

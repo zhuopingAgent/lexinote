@@ -6,6 +6,7 @@ const nextExerciseMock = vi.fn();
 const submitAttemptMock = vi.fn();
 const revealHintMock = vi.fn();
 const revealAnswerMock = vi.fn();
+const getGenerationMetricsMock = vi.fn();
 
 vi.mock(
   "@/features/grammar-learning/application/PracticeSessionService",
@@ -17,6 +18,7 @@ vi.mock(
       submitAttempt = submitAttemptMock;
       revealHint = revealHintMock;
       revealAnswer = revealAnswerMock;
+      getGenerationMetrics = getGenerationMetricsMock;
     },
   })
 );
@@ -36,6 +38,7 @@ describe("practice session API routes", () => {
     submitAttemptMock.mockReset();
     revealHintMock.mockReset();
     revealAnswerMock.mockReset();
+    getGenerationMetricsMock.mockReset();
   });
 
   it("creates a session and preserves the service response", async () => {
@@ -131,5 +134,28 @@ describe("practice session API routes", () => {
     });
     expect(revealHintMock).toHaveBeenCalledWith(exerciseId, undefined);
     expect(revealAnswerMock).toHaveBeenCalledWith(exerciseId, undefined);
+  });
+
+  it("returns server-side practice quality metrics without answer content", async () => {
+    const metrics = {
+      generatedItemCount: 12,
+      aiGeneratedItemCount: 9,
+      firstPassValidationRate: 0.75,
+      repairRate: 0.2,
+      fallbackRate: 0.1,
+      generationLatency: 420,
+      duplicateContextRate: 0,
+      answerLeakCount: 0,
+      ambiguousChoiceCount: 0,
+      validationErrorCounts: { SCHEMA_INVALID: 2 },
+      fallbackReasonCounts: { AI_GATEWAY_UNAVAILABLE: 1 },
+    };
+    getGenerationMetricsMock.mockResolvedValue(metrics);
+    const { GET } = await import("@/app/api/practice/metrics/route");
+    const response = await GET(new Request("http://localhost/api/practice/metrics"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(metrics);
+    expect(getGenerationMetricsMock).toHaveBeenCalledWith(undefined);
   });
 });

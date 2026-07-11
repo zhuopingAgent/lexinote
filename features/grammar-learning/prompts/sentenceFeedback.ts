@@ -56,7 +56,11 @@ ${comparisonGuidance || "无"}
       "severity": "low" | "medium" | "high" | "critical",
       "explanation": string,
       "correction": string,
-      "related_grammar_point_id": "${input.grammarPoint.id}" | null
+      "related_grammar_point_id": "${input.grammarPoint.id}" | null,
+      "role": "root" | "secondary",
+      "confidence": number,
+      "evidence_span": string,
+      "affected_dimensions": ("grammar" | "meaning" | "naturalness" | "register" | "contextFit")[]
     }
   ],
   "corrected_sentence": string | null,
@@ -82,5 +86,8 @@ ${comparisonGuidance || "无"}
 8. corrected_sentence 给出一条完整自然的修正句；原句正确时允许为 null。
 9. explanation_zh 要像老师当面回复一样直接：第一句先说“这句可以”或明确指出主要问题，再解释原因；不要写成抽象评分报告。
 10. 每个 issue 必须引用用户句子中的具体词语或结构，correction 直接给出应替换的形式；不要只说“需要调整”。
-11. 用简洁、自然的中文，不重复分数，不使用 Markdown，并给一个可立即执行的 next_hint。`;
+11. 用简洁、自然的中文，不重复分数，不使用 Markdown，并给一个可立即执行的 next_hint。
+12. issues 按因果顺序排列，只能有一个 root；其他由根因引起的问题标为 secondary。
+13. evidence_span 必须直接引用用户原句中的最小问题片段；affected_dimensions 只列实际受影响的评分维度。
+14. confidence 表示诊断把握度，范围为 0 到 1；低把握度问题不要作为 root。`;
 }

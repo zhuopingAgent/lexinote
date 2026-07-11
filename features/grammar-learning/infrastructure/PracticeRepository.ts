@@ -8,6 +8,7 @@ import {
   SELECT_ACTIVE_SESSION_EXERCISE_SQL,
   SELECT_EXERCISE_INSTANCE_SQL,
   SELECT_LEARNER_SKILL_STATES_SQL,
+  SELECT_LEARNER_OBJECTIVE_STATES_SQL,
   SELECT_PRACTICE_BLUEPRINT_SQL,
   SELECT_PRACTICE_PLANNER_HISTORY_SQL,
   SELECT_PRACTICE_SESSION_SQL,
@@ -33,6 +34,7 @@ import type {
   PracticeSessionSkillSummary,
   PracticeSkillDimension,
   PracticeSkillState,
+  PracticeObjectiveState,
 } from "@/shared/types/practice";
 import type {
   AnswerContract,
@@ -53,6 +55,7 @@ import type {
   PracticeRevealRow,
   PracticeScenarioTemplateRow,
   PracticePlannerHistoryRow,
+  PracticeObjectiveStateRow,
   PracticeSessionRow,
   PracticeSkillStateRow,
   PracticeSummaryRow,
@@ -410,6 +413,30 @@ export class PracticeRepository {
     }));
   }
 
+  async listObjectiveStates(
+    userId: string,
+    grammarPointId: string,
+    senseKey: string
+  ): Promise<PracticeObjectiveState[]> {
+    const rows = await query<PracticeObjectiveStateRow>(
+      SELECT_LEARNER_OBJECTIVE_STATES_SQL,
+      [userId, grammarPointId, senseKey]
+    );
+    return rows.map((row) => ({
+      grammarPointId: row.grammar_point_id,
+      senseKey: row.sense_key,
+      learningObjective: row.learning_objective as PracticeObjectiveState["learningObjective"],
+      estimate: toNumber(row.estimate),
+      confidence: toNumber(row.confidence),
+      attempts: toNumber(row.attempts),
+      assistedAttempts: toNumber(row.assisted_attempts),
+      exposureCount: toNumber(row.exposure_count),
+      recentErrorCodes: parseStringArray(row.recent_error_codes),
+      lastPracticedAt: toIsoString(row.last_practiced_at),
+      nextReviewAt: toIsoString(row.next_review_at),
+    }));
+  }
+
   async getPlannerHistory(userId: string, grammarPointId: string) {
     const rows = await query<PracticePlannerHistoryRow>(
       SELECT_PRACTICE_PLANNER_HISTORY_SQL,
@@ -437,6 +464,20 @@ export class PracticeRepository {
       consecutiveFailures,
       recentErrorCodes,
       prerequisiteReady: rows[0]?.prerequisite_ready ?? true,
+      prerequisiteLevel:
+        (rows[0]?.prerequisite_level as
+          | "not_started"
+          | "exposed"
+          | "assisted"
+          | "independent") ?? "independent",
+      recentHintCount: toNumber(attempts[0]?.hint_count ?? 0),
+      assistedAttemptRate:
+        toNumber(rows[0]?.objective_attempt_count ?? 0) > 0
+          ? toNumber(rows[0]?.assisted_count ?? 0) /
+            toNumber(rows[0]?.objective_attempt_count ?? 1)
+          : 0,
+      exposureCount: toNumber(rows[0]?.exposure_count ?? 0),
+      lastPracticedAt: toIsoString(rows[0]?.last_practiced_at ?? null),
     };
   }
 

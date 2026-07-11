@@ -524,14 +524,16 @@ export class GrammarLearningService {
 
   async listReviewItems(userId?: string): Promise<GrammarReviewResponse> {
     const normalizedUserId = normalizeUserId(userId);
-    const [items, aggregations] = await Promise.all([
+    const [items, aggregations, objectiveRecommendations] = await Promise.all([
       this.repository.listReviewItems(normalizedUserId),
       this.repository.getReviewAggregations(normalizedUserId),
+      this.repository.listObjectiveRecommendations(normalizedUserId),
     ]);
 
     return {
       items,
       aggregations,
+      objectiveRecommendations,
     };
   }
 

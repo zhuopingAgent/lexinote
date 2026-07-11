@@ -475,6 +475,11 @@ describe("redesigned practice domain", () => {
     expect(result.issues[0]?.correction).toBe(
       "すみません、もう一度説明していただけますか。"
     );
+    expect(result.issues[0]).toEqual(expect.objectContaining({
+      role: "root",
+      confidence: 0.8,
+      affectedDimensions: ["register", "contextFit"],
+    }));
     expect(result.explanation).toContain("いただけますか");
     expect(result.betterVersions).toHaveLength(1);
   });

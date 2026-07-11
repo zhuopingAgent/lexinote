@@ -210,6 +210,21 @@ export type ReviewAggregationsRow = {
   aggregations: unknown;
 };
 
+export type ObjectiveRecommendationRow = {
+  grammar_point_id: string;
+  grammar_point: string;
+  core_meaning: string;
+  sense_key: string;
+  learning_objective: string;
+  estimate: number | string;
+  confidence: number | string;
+  attempts: number | string;
+  assisted_attempts: number | string;
+  exposure_count: number | string;
+  recent_error_codes: unknown;
+  next_review_at: string | Date | null;
+};
+
 export type ProgressGroupRow = {
   id: string;
   slug: string;

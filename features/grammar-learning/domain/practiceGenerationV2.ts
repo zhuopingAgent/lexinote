@@ -17,6 +17,7 @@ import {
   type PracticeRubric,
   type ScaffoldLevel,
 } from "@/features/grammar-learning/domain/practiceV2";
+import { GRAMMAR_PRACTICE_CONTENT_VERSION } from "@/features/grammar-learning/domain/practiceSpecializations";
 
 type CandidateInput = {
   intent: PracticeIntent;
@@ -108,6 +109,10 @@ function baseItem(raw: Record<string, unknown>, input: CandidateInput) {
     assessedDimensions: input.answerContract.assessedDimensions,
     scoringNotes: input.intent.requiredEvidence,
   };
+  const answerContract: AnswerContract = {
+    ...input.answerContract,
+    allowedVariants: Array.from(new Set(referenceAnswers.map((answer) => answer.jp))),
+  };
   return {
     id: randomUUID(),
     intent: input.intent,
@@ -115,7 +120,7 @@ function baseItem(raw: Record<string, unknown>, input: CandidateInput) {
     prompt,
     context: input.intent.context,
     referenceAnswers,
-    answerContract: input.answerContract,
+    answerContract,
     rubric,
     hints,
     generationMetadata: input.metadata,
@@ -336,7 +341,8 @@ export function buildEmptyGenerationMetadata(input: Partial<PracticeGenerationMe
     promptId: input.promptId ?? "practice.local_fallback",
     promptVersion: input.promptVersion ?? 2,
     schemaVersion: PRACTICE_V2_SCHEMA_VERSION,
-    grammarContentVersion: input.grammarContentVersion ?? "grammar-content-v3",
+    grammarContentVersion:
+      input.grammarContentVersion ?? GRAMMAR_PRACTICE_CONTENT_VERSION,
     model: input.model ?? null,
     generationSource: input.generationSource ?? "fallback",
     validationResults: input.validationResults ?? [],

@@ -44,6 +44,22 @@ const ISSUE_NAMES: Record<GrammarErrorCode, string> = {
   unnatural_expression: "自然度",
 };
 
+const ISSUE_DIMENSIONS: Record<
+  GrammarErrorCode,
+  NonNullable<AIFeedbackIssue["affectedDimensions"]>
+> = {
+  conjugation_error: ["grammar"],
+  connection_error: ["grammar"],
+  particle_error: ["grammar", "meaning"],
+  tense_aspect_error: ["grammar", "meaning"],
+  giving_receiving_direction_error: ["grammar", "meaning"],
+  semantic_error: ["meaning"],
+  register_mismatch: ["register", "contextFit"],
+  collocation_error: ["naturalness", "meaning"],
+  literal_translation: ["naturalness"],
+  unnatural_expression: ["naturalness"],
+};
+
 function directVerdictForIssue(
   issue: AIFeedbackIssue,
   overallExplanation: string
@@ -130,8 +146,13 @@ export function buildChoiceFeedback(input: {
 export function makeFeedbackConversational<T extends AIFeedbackResult>(
   feedback: T
 ): T {
-  const issues = feedback.issues.map((issue) => ({
+  const issues = feedback.issues.map((issue, index) => ({
     ...issue,
+    role: index === 0 ? "root" as const : "secondary" as const,
+    confidence: issue.confidence ?? 0.8,
+    evidenceSpan: issue.evidenceSpan ?? null,
+    affectedDimensions:
+      issue.affectedDimensions ?? ISSUE_DIMENSIONS[issue.errorTypeCode],
     explanation:
       issue.explanation.trim() || PUBLIC_ISSUE_EXPLANATIONS[issue.errorTypeCode],
     correction: issue.correction.trim(),

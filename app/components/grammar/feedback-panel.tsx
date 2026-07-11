@@ -122,10 +122,20 @@ export function FeedbackPanel({
                     <span className="text-sm font-semibold text-foreground/78">
                       {displayMistakeTypeLabel(issue.errorTypeCode)}
                     </span>
+                    {issue.role ? (
+                      <span className="text-xs font-medium text-accent-strong">
+                        {issue.role === "root" ? "主要问题" : "伴随影响"}
+                      </span>
+                    ) : null}
                     <span className="text-xs text-muted">
                       {displayFeedbackSeverityLabel(issue.severity)}
                     </span>
                   </div>
+                  {issue.evidenceSpan ? (
+                    <p className="mt-1 text-xs text-muted">
+                      句中位置：<span lang="ja">{issue.evidenceSpan}</span>
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-sm leading-6 text-foreground/62">
                     {issue.explanation}
                   </p>

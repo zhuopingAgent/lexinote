@@ -96,6 +96,9 @@ export type PracticeIntent = {
   };
   requiredEvidence: string[];
   answerPolicy: AnswerPolicy;
+  selectionReasonZh: string;
+  specializationId: string | null;
+  specializationVersion: number | null;
   planMetadata?: {
     plannedAt: string;
     randomTieBreak: number;

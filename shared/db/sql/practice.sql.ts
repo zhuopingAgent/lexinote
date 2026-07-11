@@ -176,21 +176,88 @@ export const SELECT_LEARNER_SKILL_STATES_SQL = `
   ORDER BY skill_dimension;
 `;
 
+export const SELECT_LEARNER_OBJECTIVE_STATES_SQL = `
+  SELECT
+    grammar_point_id::text,
+    sense_key,
+    learning_objective,
+    estimate::float8,
+    confidence::float8,
+    attempts,
+    assisted_attempts,
+    exposure_count,
+    recent_error_codes,
+    last_practiced_at,
+    next_review_at
+  FROM learner_objective_states
+  WHERE user_id = $1::uuid
+    AND grammar_point_id = $2::uuid
+    AND sense_key = $3::text
+  ORDER BY learning_objective;
+`;
+
 export const SELECT_PRACTICE_PLANNER_HISTORY_SQL = `
-  WITH prerequisite_status AS (
-    SELECT NOT EXISTS (
-      SELECT 1
-      FROM grammar_point_prerequisites prerequisite
-      LEFT JOIN learner_skill_states state
-        ON state.user_id = $1::uuid
-       AND state.grammar_point_id = prerequisite.prerequisite_grammar_point_id
-      WHERE prerequisite.grammar_point_id = $2::uuid
-        AND prerequisite.relation_type = 'required'
-        AND COALESCE(state.estimate, 0) < 0.45
-    ) AS prerequisite_ready
+  WITH required_prerequisites AS (
+    SELECT prerequisite.prerequisite_grammar_point_id
+    FROM grammar_point_prerequisites prerequisite
+    WHERE prerequisite.grammar_point_id = $2::uuid
+      AND prerequisite.relation_type = 'required'
+  ),
+  prerequisite_progress AS (
+    SELECT
+      required.prerequisite_grammar_point_id,
+      COALESCE(BOOL_OR(
+        (state.attempts > state.assisted_attempts AND state.estimate >= 0.45)
+        OR (legacy_state.attempts > 0 AND legacy_state.estimate >= 0.45)
+      ), FALSE) AS independently_ready,
+      COALESCE(BOOL_OR(state.attempts > 0 OR legacy_state.attempts > 0), FALSE) AS has_attempt,
+      COALESCE(BOOL_OR(state.exposure_count > 0), FALSE) AS has_exposure
+    FROM required_prerequisites required
+    LEFT JOIN learner_objective_states state
+      ON state.user_id = $1::uuid
+     AND state.grammar_point_id = required.prerequisite_grammar_point_id
+    LEFT JOIN learner_skill_states legacy_state
+      ON legacy_state.user_id = $1::uuid
+     AND legacy_state.grammar_point_id = required.prerequisite_grammar_point_id
+    GROUP BY required.prerequisite_grammar_point_id
+  ),
+  prerequisite_status AS (
+    SELECT
+      COALESCE(BOOL_AND(independently_ready), TRUE) AS prerequisite_ready,
+      CASE
+        WHEN COUNT(*) = 0 OR BOOL_AND(independently_ready) THEN 'independent'
+        WHEN BOOL_OR(NOT has_attempt AND NOT has_exposure) THEN 'not_started'
+        WHEN BOOL_OR(NOT has_attempt AND has_exposure) THEN 'exposed'
+        ELSE 'assisted'
+      END AS prerequisite_level
+    FROM prerequisite_progress
+  ),
+  target_progress AS (
+    SELECT
+      COALESCE(SUM(exposure_count), 0)::integer AS exposure_count,
+      COALESCE(SUM(assisted_attempts), 0)::integer AS assisted_count,
+      COALESCE(SUM(attempts), 0)::integer AS objective_attempt_count,
+      COALESCE(
+        MAX(last_practiced_at),
+        (
+          SELECT MAX(legacy_state.last_practiced_at)
+          FROM learner_skill_states legacy_state
+          WHERE legacy_state.user_id = $1::uuid
+            AND legacy_state.grammar_point_id = $2::uuid
+        )
+      ) AS last_practiced_at
+    FROM learner_objective_states
+    WHERE user_id = $1::uuid
+      AND grammar_point_id = $2::uuid
   ),
   latest_attempts AS (
-    SELECT attempt.is_correct, attempt.issues, attempt.created_at
+    SELECT
+      attempt.is_correct,
+      attempt.issues,
+      attempt.hint_count,
+      attempt.evidence_kind,
+      attempt.attempt_number,
+      attempt.created_at
     FROM practice_attempts attempt
     JOIN exercise_instances exercise
       ON exercise.id = attempt.exercise_instance_id
@@ -202,8 +269,17 @@ export const SELECT_PRACTICE_PLANNER_HISTORY_SQL = `
   SELECT
     latest_attempts.is_correct,
     latest_attempts.issues,
-    prerequisite_status.prerequisite_ready
+    latest_attempts.hint_count,
+    latest_attempts.evidence_kind,
+    latest_attempts.attempt_number,
+    target_progress.exposure_count,
+    target_progress.assisted_count,
+    target_progress.objective_attempt_count,
+    target_progress.last_practiced_at,
+    prerequisite_status.prerequisite_ready,
+    prerequisite_status.prerequisite_level
   FROM prerequisite_status
+  CROSS JOIN target_progress
   LEFT JOIN latest_attempts ON TRUE
   ORDER BY latest_attempts.created_at DESC NULLS LAST;
 `;
@@ -424,6 +500,10 @@ export const RECORD_PRACTICE_ATTEMPT_SQL = `
       explanation,
       correction,
       related_grammar_point_id,
+      role,
+      confidence,
+      evidence_span,
+      affected_dimensions,
       sort_order
     )
     SELECT
@@ -433,6 +513,13 @@ export const RECORD_PRACTICE_ATTEMPT_SQL = `
       issue.item ->> 'explanation',
       COALESCE(issue.item ->> 'correction', ''),
       NULLIF(issue.item ->> 'relatedGrammarPointId', '')::uuid,
+      COALESCE(
+        NULLIF(issue.item ->> 'role', ''),
+        CASE WHEN issue.ordinality = 1 THEN 'root' ELSE 'secondary' END
+      ),
+      NULLIF(issue.item ->> 'confidence', '')::numeric,
+      NULLIF(issue.item ->> 'evidenceSpan', ''),
+      COALESCE(issue.item -> 'affectedDimensions', '[]'::jsonb),
       issue.ordinality::integer
     FROM inserted_attempt
     CROSS JOIN LATERAL jsonb_array_elements($13::jsonb)
@@ -444,6 +531,10 @@ export const RECORD_PRACTICE_ATTEMPT_SQL = `
       explanation = EXCLUDED.explanation,
       correction = EXCLUDED.correction,
       related_grammar_point_id = EXCLUDED.related_grammar_point_id,
+      role = EXCLUDED.role,
+      confidence = EXCLUDED.confidence,
+      evidence_span = EXCLUDED.evidence_span,
+      affected_dimensions = EXCLUDED.affected_dimensions,
       sort_order = EXCLUDED.sort_order
     RETURNING practice_attempt_id
   ),
@@ -821,6 +912,8 @@ export const SELECT_PRACTICE_GENERATION_METRICS_SQL = `
       register_preset
   )
   SELECT jsonb_build_object(
+    'generatedItemCount', COUNT(*),
+    'aiGeneratedItemCount', COUNT(*) FILTER (WHERE generation_source = 'ai'),
     'firstPassValidationRate', COALESCE(
       COUNT(*) FILTER (WHERE generation_source = 'ai' AND generation_retry_count = 0)::numeric /
         NULLIF(COUNT(*) FILTER (WHERE generation_source = 'ai'), 0),
