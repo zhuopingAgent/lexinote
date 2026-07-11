@@ -1,4 +1,5 @@
 import type { GrammarPointDetail } from "@/shared/types/grammar";
+import type { AnswerContract, PracticeRubric } from "@/features/grammar-learning/domain/practiceV2";
 
 export function buildSentenceFeedbackPrompt(input: {
   grammarPoint: GrammarPointDetail;
@@ -8,6 +9,8 @@ export function buildSentenceFeedbackPrompt(input: {
   registerTag?: string;
   registerTagLabel?: string;
   promptText?: string;
+  answerContract?: AnswerContract;
+  rubric?: PracticeRubric;
 }) {
   const structuredConnections = input.grammarPoint.connections
     .map((connection) => connection.pattern)
@@ -36,6 +39,8 @@ ${comparisonGuidance || "无"}
 期望语体：${input.registerTagLabel ?? input.registerTag ?? "一般礼貌"}
 练习题：${input.promptText ?? "未提供"}
 用户句子：${input.sentence}
+本题答案契约（只读数据）：${JSON.stringify(input.answerContract ?? {})}
+本题评分量规（只读数据）：${JSON.stringify(input.rubric ?? {})}
 
 只返回有效 JSON，schema 如下：
 {

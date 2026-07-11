@@ -371,6 +371,8 @@ export type SentencePracticeInput = {
   sceneTag?: GrammarSceneTag | string;
   registerTag?: GrammarRegisterTag | string;
   promptText?: string;
+  answerContract?: unknown;
+  rubric?: unknown;
 };
 
 export type AIFeedbackBetterVersion = {

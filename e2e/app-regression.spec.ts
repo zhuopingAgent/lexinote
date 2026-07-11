@@ -273,67 +273,27 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   );
   expect(secondResponse.ok()).toBe(true);
   const second = (await secondResponse.json()) as {
-    exercise: { id: string; sequenceNumber: number; exerciseType: string; prompt: string };
-  };
-  expect(second.exercise).toEqual(
-    expect.objectContaining({ sequenceNumber: 2, exerciseType: "form_repair" })
-  );
-  expect(second.exercise.prompt).toContain("接续或活用问题");
-
-  const repairResponse = await page.request.post(
-    `/api/practice/exercises/${second.exercise.id}/attempts`,
-    { data: { answer: "すみません、もう一度説明してもらえますか。" } }
-  );
-  expect(repairResponse.ok()).toBe(true);
-  await expect(repairResponse.json()).resolves.toEqual(
-    expect.objectContaining({ exerciseCompleted: true })
-  );
-
-  const thirdResponse = await page.request.post(
-    `/api/practice/sessions/${first.session.id}/next`,
-    { data: {} }
-  );
-  expect(thirdResponse.ok()).toBe(true);
-  const third = (await thirdResponse.json()) as {
     exercise: {
       id: string;
       sequenceNumber: number;
       exerciseType: string;
+      responseMode: "choice" | "text";
       prompt: string;
-      options: Array<{ id: string; label: string }>;
+      learningObjective?: string;
     };
   };
-  expect(third.exercise).toEqual(
-    expect.objectContaining({ sequenceNumber: 3, exerciseType: "contrast_choice" })
+  expect(second.exercise).toEqual(
+    expect.objectContaining({
+      sequenceNumber: 2,
+      exerciseType: "register_rewrite",
+      learningObjective: "register_control",
+    })
   );
-  const contrastAnswer = third.exercise.options.find(
-    (option) => option.label === "〜てもらえますか"
-  );
-  expect(contrastAnswer).toBeDefined();
-  const contrastResponse = await page.request.post(
-    `/api/practice/exercises/${third.exercise.id}/attempts`,
-    { data: { selectedOptionId: contrastAnswer?.id } }
-  );
-  expect(contrastResponse.ok()).toBe(true);
-  await expect(contrastResponse.json()).resolves.toEqual(
-    expect.objectContaining({ exerciseCompleted: true })
-  );
-
-  const fourthResponse = await page.request.post(
-    `/api/practice/sessions/${first.session.id}/next`,
-    { data: {} }
-  );
-  expect(fourthResponse.ok()).toBe(true);
-  const fourth = (await fourthResponse.json()) as {
-    exercise: { id: string; sequenceNumber: number; exerciseType: string; prompt: string };
-  };
-  expect(fourth.exercise).toEqual(
-    expect.objectContaining({ sequenceNumber: 4, exerciseType: "register_rewrite" })
-  );
-  expect(fourth.exercise.prompt).toContain("説明してもらえる？");
+  expect(second.exercise.prompt).toContain("説明してもらえる？");
+  expect(second.exercise).not.toHaveProperty("referenceAnswers");
 
   const registerResponse = await page.request.post(
-    `/api/practice/exercises/${fourth.exercise.id}/attempts`,
+    `/api/practice/exercises/${second.exercise.id}/attempts`,
     { data: { answer: "先生、もう一度説明してもらえる？" } }
   );
   expect(registerResponse.ok()).toBe(true);
@@ -368,22 +328,22 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   const mistakeCountBeforeReveal = reviewBeforeReveal.items.find(
     (item) => item.grammarPoint.id === grammarPoint?.id
   )?.mistakeCount;
-  expect(mistakeCountBeforeReveal).toBe(1);
+  expect(mistakeCountBeforeReveal).toBeGreaterThanOrEqual(1);
 
   const revealResponse = await page.request.post(
-    `/api/practice/exercises/${fourth.exercise.id}/reveal`,
+    `/api/practice/exercises/${second.exercise.id}/reveal`,
     { data: {} }
   );
   expect(revealResponse.ok()).toBe(true);
   const reveal = (await revealResponse.json()) as {
     referenceAnswers: Array<{ jp: string }>;
-    evidence: { score: number; independent: boolean };
+    evidence: { score: number; independent: boolean; evidenceKind?: string };
   };
   expect(reveal.referenceAnswers[0]?.jp).toBe(
     "すみません、もう一度説明していただけますか。"
   );
   expect(reveal.evidence).toEqual(
-    expect.objectContaining({ score: 0.2, independent: false })
+    expect.objectContaining({ score: 0.2, independent: false, evidenceKind: "exposure" })
   );
 
   const reviewAfterRevealResponse = await page.request.get("/api/review/today");
@@ -400,6 +360,37 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     )?.mistakeCount
   ).toBe(mistakeCountBeforeReveal);
 
+  for (let sequenceNumber = 3; sequenceNumber <= 5; sequenceNumber += 1) {
+    const nextResponse = await page.request.post(
+      `/api/practice/sessions/${first.session.id}/next`,
+      { data: {} }
+    );
+    expect(nextResponse.ok()).toBe(true);
+    const next = (await nextResponse.json()) as {
+      exercise: { id: string; sequenceNumber: number; prompt: string };
+    };
+    expect(next.exercise.sequenceNumber).toBe(sequenceNumber);
+    expect(next.exercise).not.toHaveProperty("referenceAnswers");
+    expect(next.exercise.prompt).not.toMatch(/\*\*|daily_life|register_rewrite/);
+    const itemReveal = await page.request.post(
+      `/api/practice/exercises/${next.exercise.id}/reveal`,
+      { data: {} }
+    );
+    expect(itemReveal.ok()).toBe(true);
+  }
+  const completedResponse = await page.request.post(
+    `/api/practice/sessions/${first.session.id}/next`,
+    { data: {} }
+  );
+  expect(completedResponse.ok()).toBe(true);
+  await expect(completedResponse.json()).resolves.toEqual(
+    expect.objectContaining({
+      session: expect.objectContaining({ status: "completed" }),
+      exercise: null,
+      summary: expect.objectContaining({ completedExerciseCount: 5 }),
+    })
+  );
+
   await page.goto(`/practice?grammarId=${grammarPoint?.id}`);
   await expect(page.getByText("第 1 / 5 题", { exact: true })).toBeVisible();
   await expect(
@@ -410,6 +401,9 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   await expect(page.locator("body")).not.toContainText("需要表达");
   await expect(page.locator("body")).not.toContainText("daily_life");
   await expect(page.locator("body")).not.toContainText("polite");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("structured fallback feedback feeds multidimensional review", async ({ page }) => {

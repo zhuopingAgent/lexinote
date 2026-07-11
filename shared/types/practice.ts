@@ -91,6 +91,22 @@ export type PracticeExercise = {
   hasMoreHints: boolean;
   attemptCount: number;
   source: "ai" | "fallback" | "deterministic";
+  learningObjective?:
+    | "meaning"
+    | "form_connection"
+    | "grammar_selection"
+    | "register_control"
+    | "collocation_naturalness"
+    | "discourse_function";
+  cognitiveOperation?:
+    | "recognize"
+    | "select"
+    | "repair"
+    | "transform"
+    | "constrained_produce"
+    | "respond";
+  transferLevel?: "reproduction" | "near_transfer" | "far_transfer";
+  scaffoldLevel?: "options" | "semantic_hint" | "form_hint" | "partial_sentence" | "none";
   grammarPoint: PracticeGrammarPoint;
 };
 
@@ -115,6 +131,15 @@ export type PracticeMasteryEvidence = {
   estimate: number;
   confidence: number;
   nextReviewAt: string;
+  learningObjective?: PracticeExercise["learningObjective"];
+  evidenceKind?: "independent" | "assisted" | "exposure" | "recognition";
+  rubricScores?: {
+    grammar: 0 | 1 | 2 | 3 | "not_assessed";
+    meaning: 0 | 1 | 2 | 3 | "not_assessed";
+    naturalness: 0 | 1 | 2 | 3 | "not_assessed";
+    register: 0 | 1 | 2 | 3 | "not_assessed";
+    contextFit: 0 | 1 | 2 | 3 | "not_assessed";
+  };
 };
 
 export type PracticeSessionCreateRequest = {
@@ -175,4 +200,11 @@ export type PracticeSessionSummary = {
   completedExerciseCount: number;
   plannedExerciseCount: number;
   skillSummaries: PracticeSessionSkillSummary[];
+  objectiveSummaries?: Array<{
+    learningObjective: NonNullable<PracticeExercise["learningObjective"]>;
+    evidenceCount: number;
+    averageScore: number;
+    estimate: number;
+    confidence: number;
+  }>;
 };

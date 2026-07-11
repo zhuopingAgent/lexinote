@@ -11,6 +11,8 @@ export type PracticeSessionRow = {
   completed_at: string | Date | null;
   preferred_scene: string | null;
   preferred_register: string | null;
+  plan_snapshot: unknown;
+  planner_version: number | string;
 };
 
 export type PracticeBlueprintRow = {
@@ -26,6 +28,19 @@ export type PracticeBlueprintRow = {
   maximum_difficulty: number | string;
   planner_config: unknown;
   rubric_template: unknown;
+  grammar_point_id: string | null;
+  sense_key: string | null;
+  blueprint_version: number | string;
+  learning_objective: string | null;
+  cognitive_operation: string | null;
+  supported_transfer_levels: unknown;
+  supported_registers: unknown;
+  supported_scenarios: unknown;
+  misconception_codes: unknown;
+  context_requirements: unknown;
+  difficulty_rules: unknown;
+  answer_policy: unknown;
+  hint_plan: unknown;
 };
 
 export type PracticeScenarioTemplateRow = {
@@ -69,6 +84,28 @@ export type PracticeExerciseRow = {
   generation_source: string;
   status: string;
   attempt_count: number | string;
+  practice_intent_snapshot: unknown;
+  answer_contract: unknown;
+  rubric: unknown;
+  blueprint_version: number | string;
+  prompt_id: string | null;
+  prompt_version: number | string | null;
+  schema_version: number | string;
+  grammar_content_version: string | null;
+  model: string | null;
+  validation_results: unknown;
+  reviewer_result: unknown;
+  generation_retry_count: number | string;
+  network_retry_count: number | string;
+  fallback_reason: string | null;
+  degradation_reason: string | null;
+  generation_latency_ms: number | string;
+};
+
+export type PracticePlannerHistoryRow = {
+  is_correct: boolean | null;
+  issues: unknown;
+  prerequisite_ready: boolean;
 };
 
 export type PracticeSkillStateRow = {
@@ -96,6 +133,7 @@ export type PracticeRevealRow = {
   confidence: number | string;
   next_review_at: string | Date;
   skill_dimension: string;
+  learning_objective: string | null;
 };
 
 export type PracticeSummaryRow = {

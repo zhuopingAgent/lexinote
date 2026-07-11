@@ -14,6 +14,10 @@ import type {
   PracticeSubmitResponse,
   SentencePracticeInput,
 } from "@/shared/types/grammar";
+import type {
+  AnswerContract,
+  PracticeRubric,
+} from "@/features/grammar-learning/domain/practiceV2";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 
 const UUID_PATTERN =
@@ -337,6 +341,8 @@ export class GrammarLearningService {
       registerTag,
       registerTagLabel: resolvedRegisterTag?.nameZh,
       promptText,
+      answerContract: input.answerContract as AnswerContract | undefined,
+      rubric: input.rubric as PracticeRubric | undefined,
     });
     const feedbackId = await this.repository.insertFeedback(userSentenceId, {
       ...feedback,

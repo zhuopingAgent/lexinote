@@ -5,6 +5,7 @@ import {
   displayRegisterTagLabel,
 } from "@/app/components/grammar/display-labels";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
+import type { PracticeMasteryEvidence } from "@/shared/types/practice";
 
 type FeedbackPanelProps = {
   feedback: AIFeedbackResult | null;
@@ -12,6 +13,7 @@ type FeedbackPanelProps = {
   embedded?: boolean;
   learnerAnswer?: string | null;
   isRecorded?: boolean;
+  rubricScores?: PracticeMasteryEvidence["rubricScores"];
 };
 
 const SCORE_ITEMS = [
@@ -22,12 +24,21 @@ const SCORE_ITEMS = [
   ["场景", "sceneFitScore"],
 ] as const;
 
+const RUBRIC_SCORE_KEYS = {
+  grammarScore: "grammar",
+  meaningScore: "meaning",
+  naturalnessScore: "naturalness",
+  registerScore: "register",
+  sceneFitScore: "contextFit",
+} as const;
+
 export function FeedbackPanel({
   feedback,
   isLoading,
   embedded = false,
   learnerAnswer,
   isRecorded = false,
+  rubricScores,
 }: FeedbackPanelProps) {
   if (isLoading) {
     return (
@@ -188,12 +199,16 @@ export function FeedbackPanel({
               <summary className="cursor-pointer font-medium transition hover:text-foreground">
                 查看本次评分
               </summary>
-              <dl className="mt-3 grid grid-cols-5 gap-3">
+              <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {SCORE_ITEMS.map(([label, key]) => (
                   <div key={key} className="min-w-0">
                     <dt className="truncate">{label}</dt>
                     <dd className="mt-1 text-sm font-semibold text-foreground/76">
-                      {feedback[key]}/5
+                      {rubricScores
+                        ? rubricScores[RUBRIC_SCORE_KEYS[key]] === "not_assessed"
+                          ? "未评估"
+                          : `${rubricScores[RUBRIC_SCORE_KEYS[key]]}/3`
+                        : `${feedback[key]}/5`}
                     </dd>
                   </div>
                 ))}

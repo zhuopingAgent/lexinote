@@ -27,6 +27,7 @@ export default defineConfig({
       VERCEL_OIDC_TOKEN: runLiveAi
         ? process.env.VERCEL_OIDC_TOKEN ?? ""
         : "",
+      PRACTICE_GENERATION_V2: "1",
       APP_BASIC_AUTH_PASSWORD: "",
       APP_TWO_FACTOR_TOTP_SECRET: "",
       APP_TWO_FACTOR_COOKIE_SECRET: "",

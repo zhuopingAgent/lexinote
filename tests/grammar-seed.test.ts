@@ -193,6 +193,21 @@ describe("grammar domain seed", () => {
     expect(sql).toContain("UNIQUE (practice_session_id, sequence_number)");
   });
 
+  it("adds versioned V2 practice contracts without replacing legacy practice data", () => {
+    const sql = readSchemaSql();
+
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS plan_snapshot JSONB");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS practice_intent_snapshot JSONB");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS answer_contract JSONB");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS validation_results JSONB");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS generation_retry_count INTEGER");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS learner_objective_states");
+    expect(sql).toContain("PRIMARY KEY (user_id, grammar_point_id, sense_key, learning_objective)");
+    expect(sql).toContain("blueprint_version = 2");
+    expect(sql).not.toContain("DROP TABLE practice_sessions");
+    expect(sql).not.toContain("DELETE FROM practice_attempts");
+  });
+
   it("uses stable keys and conflict-safe associations for repeatable migrations", () => {
     const sql = readSchemaSql();
 

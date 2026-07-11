@@ -27,6 +27,7 @@
 - `AI_GATEWAY_API_KEY` is optional for local development. Vercel deployments can use `VERCEL_OIDC_TOKEN` instead. If neither Gateway credential is available, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
 - Common Japanese inflections and adjective forms can still resolve locally without AI Gateway credentials when the conservative local base-form fallback hits an existing persisted entry.
 - Grammar practice generation and sentence feedback also work without AI Gateway credentials by using deterministic local fallback output.
+- `PRACTICE_GENERATION_V2=1` enables the validated practice pipeline: persisted five-item intent plans, type-specific prompts, bounded repair, contract-aware evaluation, and validated fallback. Keep it explicit so Preview can be observed before Production rollout.
 - `AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
 - Canonical AI Gateway model roles live in `shared/ai/gateway.ts`: `cheap` is `openai/gpt-5-nano`, `defaultTeacher` is `openai/gpt-4.1-mini`, `premiumTeacher` is `openai/gpt-5-mini`, `longContext` is `alibaba/qwen3.7-plus`, and `speech` is `openai/whisper-1`.
 - Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.

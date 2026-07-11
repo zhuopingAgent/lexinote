@@ -9,6 +9,7 @@ import type {
   EvaluatedSentence,
   GeneratedPractice,
 } from "@/features/grammar-learning/infrastructure/GrammarAiOutput";
+import type { AnswerContract } from "@/features/grammar-learning/domain/practiceV2";
 
 const PRACTICE_LISTENER_FOCI = [
   "根据场景选择一个具体听话对象，例如老师、店员、医生、同事、客户、朋友或家人。",
@@ -77,7 +78,11 @@ function matchesGrammarPattern(sentence: string, value: string) {
 
   for (const fragment of requiredFragments) {
     const variants = Array.from(
-      new Set([fragment, fragment.replace(/[かですます]+$/g, "")])
+      new Set([
+        fragment,
+        fragment.replace(/^[はがをにへでとからまでより]+/, ""),
+        fragment.replace(/[かですます]+$/g, ""),
+      ])
     ).filter(Boolean);
     let matchedIndex = -1;
     let matchedLength = 0;
@@ -455,5 +460,38 @@ export function buildFallbackFeedback(input: {
       ? `请再用「${input.grammarPoint.grammarPoint}」造一个更符合场景的句子。`
       : `请换一个场景继续使用「${input.grammarPoint.grammarPoint}」造句。`,
     source: "fallback",
+  };
+}
+
+export function applyAnswerContractToFallback(
+  input: {
+    sentence: string;
+    answerContract?: AnswerContract;
+  },
+  feedback: EvaluatedSentence
+): EvaluatedSentence {
+  const normalize = (value: string) =>
+    value.normalize("NFKC").replace(/[\s。、，：；！？!?]/g, "");
+  const isValidatedVariant = input.answerContract?.allowedVariants.some(
+    (variant) => normalize(variant) === normalize(input.sentence)
+  );
+  if (!isValidatedVariant) return feedback;
+
+  return {
+    ...feedback,
+    isCorrect: true,
+    grammarScore: 5,
+    meaningScore: 5,
+    naturalnessScore: 5,
+    registerScore: input.answerContract?.assessedDimensions.includes("register") ? 5 : 4,
+    sceneFitScore: input.answerContract?.assessedDimensions.includes("contextFit") ? 5 : 4,
+    issues: [],
+    explanation: "这句可以。目标用法和题目要求都成立，表达自然。",
+    nextHint: "保持这个用法，换一个具体对象或场景再表达一次。",
+    feedbackText: "这句可以。目标用法和题目要求都成立，表达自然。",
+    correctedSentence: null,
+    betterVersions: [],
+    mistakeTypes: [],
+    nextPracticePrompt: null,
   };
 }
