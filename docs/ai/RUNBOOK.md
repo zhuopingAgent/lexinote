@@ -19,6 +19,9 @@
 ## Required Environment
 
 - `DATABASE_URL` is required for the lookup flow.
+- Request-time database initialization is disabled by default in production and on Vercel. Apply `schema.sql` and `grammar-content.sql` intentionally before deploying code that depends on them; set `DATABASE_AUTO_INIT=1` only for controlled one-off environments.
+- `PG_POOL_MAX` can override the PostgreSQL pool size. It defaults to `1` on Vercel/serverless and `10` elsewhere.
+- `PG_CONNECTION_TIMEOUT_MS` defaults to `5000`; `PG_IDLE_TIMEOUT_MS` defaults to `10000`.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
 - `E2E_RUN_LIVE_AI=1` opts the Playwright server into using locally configured Gateway credentials for the live AI auto-filter case. The default E2E run clears Gateway credentials and skips that cost-bearing case.
 - `AI_GATEWAY_API_KEY` is optional for local development. Vercel deployments can use `VERCEL_OIDC_TOKEN` instead. If neither Gateway credential is available, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.

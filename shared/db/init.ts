@@ -5,6 +5,34 @@ import { getPool } from "@/shared/db/pool";
 let initPromise: Promise<void> | null = null;
 let databaseSqlPromise: Promise<[string, string]> | null = null;
 
+function parseBooleanEnv(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
+export function shouldAutoInitializeDatabase(
+  env: Record<string, string | undefined> = process.env
+) {
+  const explicitSetting = parseBooleanEnv(env.DATABASE_AUTO_INIT);
+  if (explicitSetting !== null) {
+    return explicitSetting;
+  }
+
+  return env.NODE_ENV !== "production" && !env.VERCEL;
+}
+
 async function loadDatabaseSql() {
   if (!databaseSqlPromise) {
     const schemaPath = path.join(process.cwd(), "shared/db/sql/schema.sql");
@@ -32,6 +60,10 @@ async function initializeDatabase() {
 }
 
 export async function ensureDatabaseReady() {
+  if (!shouldAutoInitializeDatabase()) {
+    return;
+  }
+
   if (!initPromise) {
     initPromise = initializeDatabase().catch((error) => {
       initPromise = null;
