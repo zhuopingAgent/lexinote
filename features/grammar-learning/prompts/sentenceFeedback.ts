@@ -75,5 +75,7 @@ ${comparisonGuidance || "无"}
 6. 一句话可返回多个 issues；相同 error_type_code 最多返回一次。
 7. 只有确实存在的问题才返回 issue，不要为了凑数量过度纠错。
 8. corrected_sentence 给出一条完整自然的修正句；原句正确时允许为 null。
-9. 用清楚、实用的中文解释，并给一个可立即执行的 next_hint。`;
+9. explanation_zh 要像老师当面回复一样直接：第一句先说“这句可以”或明确指出主要问题，再解释原因；不要写成抽象评分报告。
+10. 每个 issue 必须引用用户句子中的具体词语或结构，correction 直接给出应替换的形式；不要只说“需要调整”。
+11. 用简洁、自然的中文，不重复分数，不使用 Markdown，并给一个可立即执行的 next_hint。`;
 }

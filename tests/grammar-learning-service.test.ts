@@ -245,6 +245,42 @@ const tenseGrammarPoint: GrammarPointDetail = {
   ],
 };
 
+const existenceGrammarPoint: GrammarPointDetail = {
+  ...grammarPoint,
+  id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  grammarPoint: "Aがあります",
+  pointType: "sentence_pattern",
+  canonicalForm: "Aがあります",
+  senseKey: "gp_a_ga_arimasu",
+  formGroupSlug: "existence_arimasu",
+  reading: "Aがあります",
+  coreMeaning: "表示某处存在无生命事物。",
+  naturalTranslation: "有 A。",
+  structure: "地点に + 名词が + あります",
+  commonMistakes: ["把存在地点的「に」误写成动作地点的「で」。"],
+  connections: [
+    {
+      baseType: "noun",
+      requiredForm: "plain_form",
+      pattern: "地点に + 名词が + あります",
+      notes: "存在地点用「に」。",
+      sortOrder: 1,
+    },
+  ],
+  examples: [
+    {
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      jp: "駅の近くに駐車場があります。",
+      zh: "车站附近有停车场。",
+      sceneTag: { nameEn: "daily_life", nameZh: "日常生活" },
+      registerTag: { nameEn: "polite", nameZh: "一般礼貌" },
+      difficulty: 1,
+      naturalnessScore: 5,
+      notes: "用「の近く」说明相对位置。",
+    },
+  ],
+};
+
 function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
   const tagLabels: Record<string, string> = {
     daily_life: "日常生活",
@@ -548,6 +584,57 @@ describe("GrammarLearningService", () => {
     });
   });
 
+  it("falls back when AI puts a Japanese candidate answer in a translation task", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          output_text: JSON.stringify({
+            task_zh:
+              "请确认车站附近是否有车，并用一般礼貌体表达：駅近くに車がありますか？",
+            reference_answers: [
+              {
+                jp: "駅の近くに車がありますか。",
+                zh: "车站附近有车吗？",
+                note_zh: "一般礼貌的存在句。",
+              },
+            ],
+            hints: ["先确定地点和存在的物品。"],
+          }),
+        }),
+      })
+    );
+
+    const result = await new GrammarAiClient().generatePlannedExercise({
+      grammarPoint: existenceGrammarPoint,
+      skillDimension: "contextual_production",
+      exerciseType: "guided_translation",
+      difficulty: 2,
+      context: {
+        sceneSlug: "daily_life",
+        sceneLabel: "日常生活",
+        speakerRole: "学习者",
+        listenerRole: "不熟悉的人",
+        socialDistance: "unfamiliar",
+        hierarchy: "equal",
+        requestBurden: "low",
+        medium: "spoken",
+        communicativeGoal: "确认信息",
+        knownContext: "双方已经知道当前话题",
+        requiredDetail: "车站附近",
+        registerPreset: "polite",
+        registerLabel: "一般礼貌",
+      },
+      generationSeed: "answer-leak-regression",
+    });
+
+    expect(result.source).toBe("fallback");
+    expect(result.prompt).not.toContain("駅近くに車がありますか");
+    expect(result.prompt).toContain("确认信息");
+  });
+
   it("uses low reasoning for premium teacher sentence feedback", async () => {
     vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
     vi.stubGlobal(
@@ -645,6 +732,34 @@ describe("GrammarLearningService", () => {
         issues: [
           expect.objectContaining({ errorTypeCode: "register_mismatch" }),
         ],
+      })
+    );
+  });
+
+  it("recognizes placeholder existence patterns without reporting a false error", async () => {
+    const repository = createRepositoryMock(existenceGrammarPoint);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.submitSentence({
+      grammarPointId: existenceGrammarPoint.id,
+      sentence: "駅近くに車がありますか？",
+      sceneTag: "daily_life",
+      registerTag: "polite",
+      promptText: "请用日语确认车站附近是否有车。",
+    });
+
+    expect(result.isCorrect).toBe(true);
+    expect(result.feedbackText).toContain("这句可以");
+    expect(result.issues).toEqual([]);
+    expect(result.correctedSentence).toBeNull();
+    expect(repository.insertFeedback).toHaveBeenCalledWith(
+      "44444444-4444-4444-8444-444444444444",
+      expect.objectContaining({
+        feedbackText: expect.stringContaining("这句可以"),
+        correctedSentence: null,
       })
     );
   });

@@ -367,6 +367,11 @@ export function PracticeClient({
   const canSubmit =
     !attempt &&
     (exercise.responseMode === "text" ? Boolean(answer.trim()) : Boolean(selectedOptionId));
+  const submittedAnswer = attempt
+    ? exercise.responseMode === "text"
+      ? answer.trim()
+      : exercise.options.find((option) => option.id === selectedOptionId)?.label ?? ""
+    : null;
 
   return (
     <div className="mx-auto w-full max-w-[1040px]">
@@ -567,6 +572,8 @@ export function PracticeClient({
             feedback={attempt?.feedback ?? null}
             isLoading={false}
             embedded
+            learnerAnswer={submittedAnswer}
+            isRecorded={Boolean(attempt)}
           />
 
           {attempt?.canReveal && !isRevealed ? (

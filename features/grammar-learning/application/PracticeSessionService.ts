@@ -9,10 +9,7 @@ import {
   buildPracticeContext,
   buildDeterministicChoiceExercise,
 } from "@/features/grammar-learning/domain/practiceExercise";
-import {
-  buildChoiceFeedback,
-  sanitizeIncorrectFeedback,
-} from "@/features/grammar-learning/domain/practiceFeedback";
+import { buildChoiceFeedback } from "@/features/grammar-learning/domain/practiceFeedback";
 import type { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import type { GrammarAiClient } from "@/features/grammar-learning/infrastructure/GrammarAiClient";
 import type { GrammarRepository } from "@/features/grammar-learning/infrastructure/GrammarRepository";
@@ -382,7 +379,7 @@ export class PracticeSessionService {
       });
       legacyUserSentenceId = legacyFeedback.userSentenceId;
       legacyFeedbackId = legacyFeedback.feedbackId;
-      feedback = sanitizeIncorrectFeedback(legacyFeedback);
+      feedback = legacyFeedback;
     }
 
     const evidenceScore = calculateEvidenceScore({

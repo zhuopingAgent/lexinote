@@ -3,7 +3,6 @@ import type {
   AIFeedbackResult,
   GrammarErrorCode,
   GrammarPointDetail,
-  PracticeSubmitResponse,
 } from "@/shared/types/grammar";
 
 const PUBLIC_ISSUE_EXPLANATIONS: Record<GrammarErrorCode, string> = {
@@ -18,6 +17,50 @@ const PUBLIC_ISSUE_EXPLANATIONS: Record<GrammarErrorCode, string> = {
   literal_translation: "表达受到中文结构影响，需要按日语方式重新组织。",
   unnatural_expression: "句子可以理解，但整体表达还不够自然或完整。",
 };
+
+const DIRECT_ISSUE_VERDICTS: Record<GrammarErrorCode, string> = {
+  conjugation_error: "这句的活用不对。",
+  connection_error: "这句的接续不对。",
+  particle_error: "意思能懂，但助词用得不自然。",
+  tense_aspect_error: "这句的时态或体不符合题目。",
+  giving_receiving_direction_error: "这句的授受方向不对。",
+  semantic_error: "这句还没有表达出题目要求的意思。",
+  register_mismatch: "意思能懂，但语体不符合当前对象和场合。",
+  collocation_error: "意思能懂，但词语搭配不自然。",
+  literal_translation: "这句有明显的中文直译痕迹。",
+  unnatural_expression: "意思能懂，但日语表达还不自然。",
+};
+
+const ISSUE_NAMES: Record<GrammarErrorCode, string> = {
+  conjugation_error: "活用",
+  connection_error: "接续",
+  particle_error: "助词",
+  tense_aspect_error: "时态或体",
+  giving_receiving_direction_error: "授受方向",
+  semantic_error: "意思",
+  register_mismatch: "语体",
+  collocation_error: "搭配",
+  literal_translation: "直译",
+  unnatural_expression: "自然度",
+};
+
+function directVerdictForIssue(
+  issue: AIFeedbackIssue,
+  overallExplanation: string
+) {
+  if (issue.errorTypeCode !== "register_mismatch") {
+    return DIRECT_ISSUE_VERDICTS[issue.errorTypeCode];
+  }
+
+  const explanation = `${issue.explanation} ${overallExplanation}`;
+  if (/太随便|偏随便|礼貌度不足|不够礼貌/.test(explanation)) {
+    return "意思能懂，但当前说法对这个对象来说太随便。";
+  }
+  if (/太正式|过于正式|过度礼貌/.test(explanation)) {
+    return "意思能懂，但当前说法对这个对象来说太正式。";
+  }
+  return DIRECT_ISSUE_VERDICTS.register_mismatch;
+}
 
 function issueCodeFor(grammarPoint: GrammarPointDetail): GrammarErrorCode {
   if (grammarPoint.pointType === "particle") {
@@ -50,7 +93,7 @@ export function buildChoiceFeedback(input: {
       issues: [],
       explanation: "判断正确。你抓住了这个语境中的关键条件。",
       nextHint: "下一题会换一个条件，确认你能独立迁移。",
-      feedbackText: "判断正确。",
+      feedbackText: "选得对。这个表达符合当前语境。",
       correctedSentence: null,
       betterVersions: [],
       mistakeTypes: [],
@@ -74,9 +117,9 @@ export function buildChoiceFeedback(input: {
     registerScore: 3,
     sceneFitScore: 2,
     issues: [issue],
-    explanation: "这次选择还没有命中关键条件。先查看条件中的人物关系、动作类型或信息来源，再试一次。",
-    nextHint: "需要时逐级查看提示；答案会在答对或主动揭示后显示。",
-    feedbackText: "这次选择还需要调整。",
+    explanation: "这个选项没有满足题目里的核心条件。请重新看人物关系、动作类型或信息来源。",
+    nextHint: "按题目中的关键条件排除不合适的选项，再选一次。",
+    feedbackText: "这个选项不对。",
     correctedSentence: null,
     betterVersions: [],
     mistakeTypes: [errorTypeCode],
@@ -84,30 +127,41 @@ export function buildChoiceFeedback(input: {
   };
 }
 
-export function sanitizeIncorrectFeedback(
-  feedback: PracticeSubmitResponse
-): AIFeedbackResult {
-  if (feedback.isCorrect) {
-    return feedback;
-  }
-
+export function makeFeedbackConversational<T extends AIFeedbackResult>(
+  feedback: T
+): T {
   const issues = feedback.issues.map((issue) => ({
     ...issue,
-    explanation: PUBLIC_ISSUE_EXPLANATIONS[issue.errorTypeCode],
-    correction: "",
+    explanation:
+      issue.explanation.trim() || PUBLIC_ISSUE_EXPLANATIONS[issue.errorTypeCode],
+    correction: issue.correction.trim(),
   }));
+  const issueNames = Array.from(
+    new Set(issues.map((issue) => ISSUE_NAMES[issue.errorTypeCode]))
+  );
+  const feedbackText = feedback.isCorrect
+    ? "这句可以。目标语法、意思和语体都符合题目。"
+    : issues.length === 1
+      ? issues[0]
+        ? directVerdictForIssue(issues[0], feedback.explanation)
+        : DIRECT_ISSUE_VERDICTS.semantic_error
+      : issues.length > 1
+        ? `这句有 ${issues.length} 个地方需要调整：${issueNames.join("、")}。`
+        : "这句还没有完整达到题目要求。";
   const explanation =
-    issues.map((issue) => issue.explanation).join("") ||
-    "这次回答还没有完全达到题目要求。";
+    feedback.explanation.trim() ||
+    issues.map((issue) => issue.explanation).join(" ") ||
+    feedbackText;
 
   return {
     ...feedback,
     issues,
+    feedbackText,
     explanation,
-    feedbackText: explanation,
-    correctedSentence: null,
-    betterVersions: [],
-    nextPracticePrompt: null,
-    nextHint: "先根据问题类型修改，再尝试一次；也可以逐级查看提示。",
-  };
+    nextHint:
+      feedback.nextHint.trim() ||
+      (feedback.isCorrect
+        ? "换一个场景，再独立说一次。"
+        : "按上面的具体问题修改后，再提交一次。"),
+  } as T;
 }
