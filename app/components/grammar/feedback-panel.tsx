@@ -9,6 +9,7 @@ import { TagBadge } from "@/app/components/grammar/tag-badge";
 type FeedbackPanelProps = {
   feedback: AIFeedbackResult | null;
   isLoading?: boolean;
+  embedded?: boolean;
 };
 
 function ScorePill({ label, value }: { label: string; value: number }) {
@@ -26,10 +27,20 @@ function ScorePill({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
+export function FeedbackPanel({
+  feedback,
+  isLoading,
+  embedded = false,
+}: FeedbackPanelProps) {
   if (isLoading) {
     return (
-      <section className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
+      <section
+        className={
+          embedded
+            ? "border-t border-border pt-6"
+            : "rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
+        }
+      >
         <div className="h-5 w-28 animate-pulse rounded bg-white/10" />
         <div className="mt-4 h-5 w-full animate-pulse rounded bg-white/8" />
         <div className="mt-3 h-5 w-4/5 animate-pulse rounded bg-white/8" />
@@ -42,7 +53,13 @@ export function FeedbackPanel({ feedback, isLoading }: FeedbackPanelProps) {
   }
 
   return (
-    <section className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
+    <section
+      className={
+        embedded
+          ? "border-t border-border pt-6"
+          : "rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-white/74">反馈</h2>
         <TagBadge tag={feedback.isCorrect ? "表达自然" : "需要调整"} />

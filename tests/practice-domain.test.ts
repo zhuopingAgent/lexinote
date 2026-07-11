@@ -1,0 +1,307 @@
+import { describe, expect, it } from "vitest";
+import {
+  calculateEvidenceScore,
+  difficultyFromSkillState,
+  planPracticeExercise,
+} from "@/features/grammar-learning/domain/practice";
+import { sanitizeIncorrectFeedback } from "@/features/grammar-learning/domain/practiceFeedback";
+import { buildPlannedExerciseFallback } from "@/features/grammar-learning/prompts/exerciseGeneration";
+import type { GrammarPointDetail } from "@/shared/types/grammar";
+import type { PracticeContext, PracticeSkillState } from "@/shared/types/practice";
+
+const grammarPoint = {
+  id: "11111111-1111-4111-8111-111111111111",
+  grammarPoint: "〜てもらえますか",
+  pointType: "grammar_pattern",
+  canonicalForm: "〜てもらえますか",
+  senseKey: "gp_te_moraemasu_ka",
+  status: "active",
+  primaryCategory: {
+    id: "22222222-2222-4222-8222-222222222222",
+    slug: "requests_permission_advice",
+    dimensionId: "33333333-3333-4333-8333-333333333333",
+    dimensionSlug: "expression_function",
+    dimensionNameZh: "表达功能",
+    dimensionNameEn: "Expression function",
+    nameZh: "请求、许可与建议",
+    nameEn: "Requests, permission, and advice",
+    displayOrder: 7,
+  },
+  taxonomyTags: [],
+  curriculum: null,
+  categoryId: null,
+  coreMeaning: "请求对方为自己做某事。",
+  naturalTranslation: "可以请你……吗？",
+  structure: "Vて + もらえますか",
+  practicality: "S",
+  spokenOrWritten: "spoken",
+  sceneTags: [{ nameEn: "hospital", nameZh: "医院" }],
+  registerTags: [{ nameEn: "polite", nameZh: "一般礼貌" }],
+  commonMistakes: ["对医生说成〜てもらえる？会显得太随便。"],
+  connections: [
+    {
+      baseType: "verb",
+      requiredForm: "te_form",
+      pattern: "动词て形 + もらえますか",
+      notes: "一般礼貌请求。",
+      sortOrder: 1,
+    },
+  ],
+  prerequisites: [],
+  formSiblings: [],
+  comparisonSets: [],
+  examples: [
+    {
+      id: "44444444-4444-4444-8444-444444444444",
+      jp: "すみません、もう一度説明してもらえますか。",
+      zh: "不好意思，可以请您再说明一遍吗？",
+      difficulty: 1,
+      naturalnessScore: 5,
+      notes: "一般礼貌请求。",
+    },
+  ],
+  similarGrammar: [],
+} satisfies GrammarPointDetail;
+
+const context: PracticeContext = {
+  sceneSlug: "hospital",
+  sceneLabel: "医院",
+  speakerRole: "患者",
+  listenerRole: "医生",
+  socialDistance: "unfamiliar",
+  hierarchy: "listener_higher",
+  requestBurden: "medium",
+  medium: "spoken",
+  communicativeGoal: "请求重复说明",
+  knownContext: "医生刚说明了检查结果",
+  requiredDetail: "再说明一次",
+  registerPreset: "polite",
+  registerLabel: "一般礼貌",
+};
+
+function skillState(
+  skillDimension: PracticeSkillState["skillDimension"],
+  estimate: number
+): PracticeSkillState {
+  return {
+    grammarPointId: grammarPoint.id,
+    skillDimension,
+    estimate,
+    confidence: 0.4,
+    attempts: 2,
+    lastPracticedAt: null,
+    nextReviewAt: null,
+    recentErrorCodes: [],
+  };
+}
+
+describe("redesigned practice domain", () => {
+  it("plans a progressive skill sequence instead of treating a menu choice as difficulty", () => {
+    expect(
+      planPracticeExercise({ grammarPoint, sequenceNumber: 1, skillStates: [] })
+    ).toMatchObject({
+      skillDimension: "meaning_discrimination",
+      exerciseType: "meaning_choice",
+      responseMode: "choice",
+      difficulty: 2,
+    });
+    expect(
+      planPracticeExercise({ grammarPoint, sequenceNumber: 2, skillStates: [] })
+    ).toMatchObject({
+      skillDimension: "form_connection",
+      exerciseType: "form_repair",
+      responseMode: "text",
+    });
+    expect(
+      planPracticeExercise({ grammarPoint, sequenceNumber: 3, skillStates: [] })
+    ).toMatchObject({
+      skillDimension: "register_control",
+      exerciseType: "register_rewrite",
+    });
+  });
+
+  it("starts with the weakest relevant skill when prior evidence exists", () => {
+    const result = planPracticeExercise({
+      grammarPoint,
+      sequenceNumber: 1,
+      skillStates: [
+        skillState("meaning_discrimination", 0.8),
+        skillState("form_connection", 0.7),
+        skillState("register_control", 0.65),
+        skillState("contextual_production", 0.22),
+        skillState("transfer_naturalness", 0.55),
+      ],
+    });
+
+    expect(result.skillDimension).toBe("contextual_production");
+    expect(result.exerciseType).toBe("guided_translation");
+    expect(result.difficulty).toBe(1);
+  });
+
+  it("adds comparison practice and prioritizes an unpracticed skill next time", () => {
+    const comparisonGrammarPoint: GrammarPointDetail = {
+      ...grammarPoint,
+      comparisonSets: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          slug: "request_politeness",
+          nameZh: "请求礼貌度",
+          summary: "按对象选择请求表达。",
+          commonMeaning: "都用于请求对方行动。",
+          decisionRules: [],
+          connectionDifferences: [],
+          registerDifferences: [],
+          interchangeableCases: [],
+          nonInterchangeableCases: [],
+          minimalPairExamples: [],
+          learnerMistakes: [],
+          status: "active",
+          members: [
+            {
+              grammarPointId: grammarPoint.id,
+              grammarPoint: grammarPoint.grammarPoint,
+              canonicalForm: grammarPoint.canonicalForm,
+              senseKey: grammarPoint.senseKey,
+              sortOrder: 1,
+            },
+            {
+              grammarPointId: "88888888-8888-4888-8888-888888888888",
+              grammarPoint: "〜ていただけますか",
+              canonicalForm: "〜ていただけますか",
+              senseKey: "gp_te_itadakemasu_ka",
+              sortOrder: 2,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      planPracticeExercise({
+        grammarPoint: comparisonGrammarPoint,
+        sequenceNumber: 3,
+        skillStates: [],
+      })
+    ).toMatchObject({
+      skillDimension: "contrast_selection",
+      exerciseType: "contrast_choice",
+    });
+
+    const result = planPracticeExercise({
+      grammarPoint: comparisonGrammarPoint,
+      sequenceNumber: 1,
+      skillStates: [
+        skillState("meaning_discrimination", 0.8),
+        skillState("form_connection", 0.7),
+        skillState("contrast_selection", 0.6),
+        skillState("register_control", 0.5),
+        skillState("contextual_production", 0.4),
+      ],
+    });
+    expect(result.skillDimension).toBe("transfer_naturalness");
+    expect(result.exerciseType).toBe("contextual_response");
+  });
+
+  it("uses independent correctness, retry, and hints as mastery evidence", () => {
+    expect(
+      calculateEvidenceScore({
+        isCorrect: true,
+        attemptNumber: 1,
+        hintCount: 0,
+        skillDimension: "contextual_production",
+      })
+    ).toBe(1);
+    expect(
+      calculateEvidenceScore({
+        isCorrect: true,
+        attemptNumber: 2,
+        hintCount: 1,
+        skillDimension: "contextual_production",
+      })
+    ).toBeCloseTo(0.533);
+    expect(
+      calculateEvidenceScore({
+        isCorrect: false,
+        attemptNumber: 1,
+        hintCount: 0,
+        skillDimension: "contextual_production",
+      })
+    ).toBe(0);
+    expect(
+      difficultyFromSkillState(
+        skillState("meaning_discrimination", 0.9),
+        "choice"
+      )
+    ).toBe(3);
+  });
+
+  it("keeps fallback repair and register tasks targeted without exposing the answer", () => {
+    const repair = buildPlannedExerciseFallback({
+      grammarPoint,
+      skillDimension: "form_connection",
+      exerciseType: "form_repair",
+      difficulty: 2,
+      context,
+      generationSeed: "repair",
+    });
+    const register = buildPlannedExerciseFallback({
+      grammarPoint,
+      skillDimension: "register_control",
+      exerciseType: "register_rewrite",
+      difficulty: 2,
+      context,
+      generationSeed: "register",
+    });
+
+    expect(repair.prompt).toContain("接续或活用问题");
+    expect(repair.prompt).toContain("読むてもらえますか");
+    expect(repair.prompt).not.toContain(grammarPoint.examples[0].jp);
+    expect(register.prompt).toContain("不符合人物关系");
+    expect(register.prompt).toContain("説明してもらえる？");
+    expect(register.prompt).not.toContain(grammarPoint.examples[0].jp);
+    expect(register.prompt).not.toContain("hospital");
+    expect(register.prompt).not.toContain("polite");
+  });
+
+  it("removes corrections from failed feedback until the learner reveals the answer", () => {
+    const result = sanitizeIncorrectFeedback({
+      userSentenceId: "55555555-5555-4555-8555-555555555555",
+      feedbackId: "66666666-6666-4666-8666-666666666666",
+      source: "fallback",
+      isCorrect: false,
+      grammarScore: 4,
+      meaningScore: 4,
+      naturalnessScore: 3,
+      registerScore: 2,
+      sceneFitScore: 3,
+      issues: [
+        {
+          errorTypeCode: "register_mismatch",
+          severity: "high",
+          explanation: "建议改成いただけますか。",
+          correction: "すみません、もう一度説明していただけますか。",
+          relatedGrammarPointId: grammarPoint.id,
+        },
+      ],
+      explanation: "请改成すみません、もう一度説明していただけますか。",
+      nextHint: "使用いただけますか。",
+      feedbackText: "完整答案在这里。",
+      correctedSentence: "すみません、もう一度説明していただけますか。",
+      betterVersions: [
+        {
+          sentence: "すみません、もう一度説明していただけますか。",
+          registerTag: "business",
+          explanationZh: "更礼貌。",
+        },
+      ],
+      mistakeTypes: ["register_mismatch"],
+      nextPracticePrompt: "再写一次。",
+    });
+
+    expect(result.correctedSentence).toBeNull();
+    expect(result.betterVersions).toEqual([]);
+    expect(result.issues[0]?.correction).toBe("");
+    expect(result.explanation).not.toContain("いただけますか");
+    expect(result.nextHint).not.toContain("いただけますか");
+  });
+});

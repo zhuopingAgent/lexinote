@@ -659,6 +659,209 @@ CREATE TABLE IF NOT EXISTS learning_history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS exercise_blueprints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  skill_dimension TEXT NOT NULL CHECK (skill_dimension IN (
+    'meaning_discrimination',
+    'form_connection',
+    'contrast_selection',
+    'register_control',
+    'contextual_production',
+    'transfer_naturalness'
+  )),
+  exercise_type TEXT NOT NULL CHECK (exercise_type IN (
+    'meaning_choice',
+    'form_repair',
+    'contrast_choice',
+    'register_rewrite',
+    'guided_translation',
+    'contextual_response'
+  )),
+  response_mode TEXT NOT NULL CHECK (response_mode IN ('text', 'choice')),
+  supported_point_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  minimum_difficulty INTEGER NOT NULL DEFAULT 1 CHECK (minimum_difficulty BETWEEN 1 AND 4),
+  maximum_difficulty INTEGER NOT NULL DEFAULT 4 CHECK (maximum_difficulty BETWEEN 1 AND 4),
+  planner_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  rubric_template JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (minimum_difficulty <= maximum_difficulty)
+);
+
+CREATE TABLE IF NOT EXISTS scenario_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  name_zh TEXT NOT NULL,
+  scene_tag_id UUID REFERENCES scene_tags(id) ON DELETE SET NULL,
+  default_register_tag_id UUID REFERENCES register_tags(id) ON DELETE SET NULL,
+  speaker_role TEXT NOT NULL,
+  listener_role TEXT NOT NULL,
+  social_distance TEXT NOT NULL CHECK (social_distance IN ('close', 'familiar', 'unfamiliar')),
+  hierarchy TEXT NOT NULL CHECK (hierarchy IN ('speaker_higher', 'equal', 'listener_higher')),
+  request_burden TEXT NOT NULL CHECK (request_burden IN ('none', 'low', 'medium', 'high')),
+  medium TEXT NOT NULL CHECK (medium IN ('spoken', 'message', 'email', 'written')),
+  communicative_goals JSONB NOT NULL DEFAULT '[]'::jsonb,
+  known_contexts JSONB NOT NULL DEFAULT '[]'::jsonb,
+  detail_pool JSONB NOT NULL DEFAULT '[]'::jsonb,
+  compatible_function_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden', 'deprecated')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS practice_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_session_key TEXT NOT NULL,
+  entry_mode TEXT NOT NULL CHECK (entry_mode IN ('daily', 'focus', 'review')),
+  focus_grammar_point_id UUID NOT NULL REFERENCES grammar_points(id),
+  preferred_scene_tag_id UUID REFERENCES scene_tags(id),
+  preferred_register_tag_id UUID REFERENCES register_tags(id),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'abandoned')),
+  planned_exercise_count INTEGER NOT NULL DEFAULT 5 CHECK (planned_exercise_count BETWEEN 1 AND 10),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, client_session_key)
+);
+
+CREATE TABLE IF NOT EXISTS exercise_instances (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  practice_session_id UUID NOT NULL REFERENCES practice_sessions(id) ON DELETE CASCADE,
+  blueprint_id UUID NOT NULL REFERENCES exercise_blueprints(id),
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id),
+  comparison_set_id UUID REFERENCES comparison_sets(id) ON DELETE SET NULL,
+  sequence_number INTEGER NOT NULL CHECK (sequence_number > 0),
+  skill_dimension TEXT NOT NULL CHECK (skill_dimension IN (
+    'meaning_discrimination',
+    'form_connection',
+    'contrast_selection',
+    'register_control',
+    'contextual_production',
+    'transfer_naturalness'
+  )),
+  exercise_type TEXT NOT NULL CHECK (exercise_type IN (
+    'meaning_choice',
+    'form_repair',
+    'contrast_choice',
+    'register_rewrite',
+    'guided_translation',
+    'contextual_response'
+  )),
+  difficulty INTEGER NOT NULL CHECK (difficulty BETWEEN 1 AND 4),
+  response_mode TEXT NOT NULL CHECK (response_mode IN ('text', 'choice')),
+  context_snapshot JSONB NOT NULL,
+  prompt TEXT NOT NULL,
+  options JSONB NOT NULL DEFAULT '[]'::jsonb,
+  expected_features JSONB NOT NULL DEFAULT '{}'::jsonb,
+  reference_answers JSONB NOT NULL DEFAULT '[]'::jsonb,
+  hint_ladder JSONB NOT NULL DEFAULT '[]'::jsonb,
+  hints_revealed INTEGER NOT NULL DEFAULT 0 CHECK (hints_revealed >= 0),
+  generation_source TEXT NOT NULL CHECK (generation_source IN ('ai', 'fallback', 'deterministic')),
+  generation_seed TEXT NOT NULL,
+  content_signature TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'revealed')),
+  revealed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (practice_session_id, sequence_number)
+);
+
+CREATE TABLE IF NOT EXISTS practice_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  exercise_instance_id UUID NOT NULL REFERENCES exercise_instances(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+  answer TEXT NOT NULL DEFAULT '',
+  selected_option_id TEXT,
+  hint_count INTEGER NOT NULL DEFAULT 0 CHECK (hint_count >= 0),
+  is_correct BOOLEAN NOT NULL,
+  grammar_score INTEGER CHECK (grammar_score BETWEEN 1 AND 5),
+  meaning_score INTEGER CHECK (meaning_score BETWEEN 1 AND 5),
+  naturalness_score INTEGER CHECK (naturalness_score BETWEEN 1 AND 5),
+  register_score INTEGER CHECK (register_score BETWEEN 1 AND 5),
+  scene_fit_score INTEGER CHECK (scene_fit_score BETWEEN 1 AND 5),
+  issues JSONB NOT NULL DEFAULT '[]'::jsonb,
+  explanation TEXT NOT NULL,
+  next_hint TEXT NOT NULL DEFAULT '',
+  legacy_user_sentence_id UUID REFERENCES user_sentences(id) ON DELETE SET NULL,
+  legacy_feedback_id UUID REFERENCES ai_feedback(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (exercise_instance_id, attempt_number),
+  CHECK (NULLIF(BTRIM(answer), '') IS NOT NULL OR selected_option_id IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS practice_attempt_issues (
+  practice_attempt_id UUID NOT NULL REFERENCES practice_attempts(id) ON DELETE CASCADE,
+  error_type_id UUID NOT NULL REFERENCES error_types(id),
+  severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  explanation TEXT NOT NULL,
+  correction TEXT NOT NULL DEFAULT '',
+  related_grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE SET NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (practice_attempt_id, error_type_id)
+);
+
+CREATE TABLE IF NOT EXISTS mastery_evidence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  exercise_instance_id UUID NOT NULL REFERENCES exercise_instances(id) ON DELETE CASCADE,
+  practice_attempt_id UUID REFERENCES practice_attempts(id) ON DELETE CASCADE,
+  skill_dimension TEXT NOT NULL CHECK (skill_dimension IN (
+    'meaning_discrimination',
+    'form_connection',
+    'contrast_selection',
+    'register_control',
+    'contextual_production',
+    'transfer_naturalness'
+  )),
+  evidence_source TEXT NOT NULL CHECK (evidence_source IN ('attempt', 'reveal')),
+  score NUMERIC(4,3) NOT NULL CHECK (score BETWEEN 0 AND 1),
+  independent BOOLEAN NOT NULL,
+  hint_count INTEGER NOT NULL DEFAULT 0 CHECK (hint_count >= 0),
+  attempt_number INTEGER NOT NULL DEFAULT 0 CHECK (attempt_number >= 0),
+  context_novelty NUMERIC(4,3) NOT NULL DEFAULT 1 CHECK (context_novelty BETWEEN 0 AND 1),
+  error_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS mastery_evidence_attempt_key
+  ON mastery_evidence (practice_attempt_id)
+  WHERE practice_attempt_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS mastery_evidence_reveal_key
+  ON mastery_evidence (exercise_instance_id, evidence_source)
+  WHERE evidence_source = 'reveal';
+
+CREATE TABLE IF NOT EXISTS learner_skill_states (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  skill_dimension TEXT NOT NULL CHECK (skill_dimension IN (
+    'meaning_discrimination',
+    'form_connection',
+    'contrast_selection',
+    'register_control',
+    'contextual_production',
+    'transfer_naturalness'
+  )),
+  estimate NUMERIC(4,3) NOT NULL DEFAULT 0.35 CHECK (estimate BETWEEN 0 AND 1),
+  confidence NUMERIC(4,3) NOT NULL DEFAULT 0 CHECK (confidence BETWEEN 0 AND 1),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  recent_error_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  last_practiced_at TIMESTAMPTZ,
+  next_review_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, grammar_point_id, skill_dimension)
+);
+
 CREATE INDEX IF NOT EXISTS idx_grammar_points_search
   ON grammar_points
   USING gin (to_tsvector('simple', grammar_point || ' ' || coalesce(reading, '') || ' ' || coalesce(core_meaning, '') || ' ' || coalesce(natural_translation, '')));
@@ -724,6 +927,27 @@ CREATE INDEX IF NOT EXISTS idx_review_records_due
 
 CREATE INDEX IF NOT EXISTS idx_learning_history_user_created
   ON learning_history (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_practice_sessions_user_status
+  ON practice_sessions (user_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_instances_session_status
+  ON exercise_instances (practice_session_id, status, sequence_number);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_instances_recent_signature
+  ON exercise_instances (grammar_point_id, content_signature, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_practice_attempts_exercise
+  ON practice_attempts (exercise_instance_id, attempt_number DESC);
+
+CREATE INDEX IF NOT EXISTS idx_practice_attempt_issues_error
+  ON practice_attempt_issues (error_type_id, practice_attempt_id);
+
+CREATE INDEX IF NOT EXISTS idx_mastery_evidence_user_skill
+  ON mastery_evidence (user_id, grammar_point_id, skill_dimension, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_learner_skill_states_due
+  ON learner_skill_states (user_id, next_review_at, estimate);
 
 CREATE OR REPLACE FUNCTION prevent_grammar_prerequisite_cycle()
 RETURNS TRIGGER AS $$
@@ -1276,6 +1500,222 @@ ON CONFLICT (name_en) DO UPDATE SET
   name_zh = EXCLUDED.name_zh,
   description = EXCLUDED.description,
   priority = EXCLUDED.priority,
+  updated_at = NOW();
+
+WITH blueprint_seed(
+  slug,
+  name_zh,
+  description,
+  skill_dimension,
+  exercise_type,
+  response_mode,
+  supported_point_types,
+  minimum_difficulty,
+  maximum_difficulty,
+  planner_config,
+  rubric_template
+) AS (
+  VALUES
+    (
+      'meaning_choice',
+      '意义选择',
+      '根据表达目的选择正确的具体语法用法。',
+      'meaning_discrimination',
+      'meaning_choice',
+      'choice',
+      '["grammar_pattern","conjugation","sentence_pattern","syntax_concept","particle","collocation","register_concept","discourse_marker"]'::jsonb,
+      1,
+      3,
+      '{"distractorSource":"comparison_or_siblings"}'::jsonb,
+      '{"primary":"meaning","requiresTargetChoice":true}'::jsonb
+    ),
+    (
+      'form_repair',
+      '形式修复',
+      '根据结构化接续修复或构造表达。',
+      'form_connection',
+      'form_repair',
+      'text',
+      '["grammar_pattern","conjugation","sentence_pattern","syntax_concept","particle","collocation","register_concept","discourse_marker"]'::jsonb,
+      1,
+      4,
+      '{"focus":"connection"}'::jsonb,
+      '{"primary":"grammar","checkConnection":true}'::jsonb
+    ),
+    (
+      'contrast_choice',
+      '易混辨析',
+      '根据结构化对比规则选择最合适的语法。',
+      'contrast_selection',
+      'contrast_choice',
+      'choice',
+      '["grammar_pattern","sentence_pattern","syntax_concept","particle","register_concept","discourse_marker"]'::jsonb,
+      2,
+      4,
+      '{"requiresComparisonSet":true}'::jsonb,
+      '{"primary":"meaning","checkComparisonBoundary":true}'::jsonb
+    ),
+    (
+      'register_rewrite',
+      '语体转换',
+      '根据人物关系与沟通负担改写语体。',
+      'register_control',
+      'register_rewrite',
+      'text',
+      '["grammar_pattern","sentence_pattern","register_concept","collocation","discourse_marker"]'::jsonb,
+      2,
+      4,
+      '{"focus":"relationship_and_medium"}'::jsonb,
+      '{"primary":"register","checkScene":true}'::jsonb
+    ),
+    (
+      'guided_translation',
+      '受限中译日',
+      '根据具体中文意图和必要细节产出日语。',
+      'contextual_production',
+      'guided_translation',
+      'text',
+      '["grammar_pattern","conjugation","sentence_pattern","syntax_concept","particle","collocation","register_concept","discourse_marker"]'::jsonb,
+      2,
+      4,
+      '{"includeRequiredDetail":true}'::jsonb,
+      '{"primary":"meaning","checkTarget":true,"checkScene":true}'::jsonb
+    ),
+    (
+      'contextual_response',
+      '场景迁移',
+      '在新的对象、媒介或场景中独立完成表达。',
+      'transfer_naturalness',
+      'contextual_response',
+      'text',
+      '["grammar_pattern","conjugation","sentence_pattern","syntax_concept","particle","collocation","register_concept","discourse_marker"]'::jsonb,
+      3,
+      4,
+      '{"requireNovelContext":true}'::jsonb,
+      '{"primary":"naturalness","checkTarget":true,"checkScene":true}'::jsonb
+    )
+)
+INSERT INTO exercise_blueprints (
+  slug,
+  name_zh,
+  description,
+  skill_dimension,
+  exercise_type,
+  response_mode,
+  supported_point_types,
+  minimum_difficulty,
+  maximum_difficulty,
+  planner_config,
+  rubric_template,
+  status
+)
+SELECT
+  slug,
+  name_zh,
+  description,
+  skill_dimension,
+  exercise_type,
+  response_mode,
+  supported_point_types,
+  minimum_difficulty,
+  maximum_difficulty,
+  planner_config,
+  rubric_template,
+  'active'
+FROM blueprint_seed
+ON CONFLICT (slug) DO UPDATE SET
+  name_zh = EXCLUDED.name_zh,
+  description = EXCLUDED.description,
+  skill_dimension = EXCLUDED.skill_dimension,
+  exercise_type = EXCLUDED.exercise_type,
+  response_mode = EXCLUDED.response_mode,
+  supported_point_types = EXCLUDED.supported_point_types,
+  minimum_difficulty = EXCLUDED.minimum_difficulty,
+  maximum_difficulty = EXCLUDED.maximum_difficulty,
+  planner_config = EXCLUDED.planner_config,
+  rubric_template = EXCLUDED.rubric_template,
+  status = EXCLUDED.status,
+  updated_at = NOW();
+
+WITH scenario_seed(
+  slug,
+  name_zh,
+  scene_slug,
+  register_slug,
+  speaker_role,
+  listener_role,
+  social_distance,
+  hierarchy,
+  request_burden,
+  medium,
+  communicative_goals,
+  known_contexts,
+  detail_pool,
+  compatible_function_tags
+) AS (
+  VALUES
+    ('daily_life', '日常生活', 'daily_life', 'polite', '学习者', '不熟悉的人', 'unfamiliar', 'equal', 'low', 'spoken', '["说明情况","确认信息","表达计划"]'::jsonb, '["双方已经知道当前话题"]'::jsonb, '["今天下班前","车站附近","两次"]'::jsonb, '[]'::jsonb),
+    ('hospital', '医院', 'hospital', 'polite', '患者', '医生', 'unfamiliar', 'listener_higher', 'medium', 'spoken', '["请求重复说明","说明症状","确认检查安排"]'::jsonb, '["医生刚说明了检查结果"]'::jsonb, '["再说明一次","药的服用时间","下次检查日期"]'::jsonb, '["requests_permission_advice","reasons_and_explanations"]'::jsonb),
+    ('workplace', '公司', 'workplace', 'business', '员工', '上司或同事', 'familiar', 'listener_higher', 'medium', 'spoken', '["汇报进度","请求确认","调整安排"]'::jsonb, '["对方已经了解项目背景"]'::jsonb, '["今天五点前","会议资料","下周的日程"]'::jsonb, '["honorifics_and_politeness","purpose_and_plans"]'::jsonb),
+    ('customer_service', '客服', 'customer_service', 'business', '顾客', '客服人员', 'unfamiliar', 'equal', 'medium', 'spoken', '["确认流程","请求协助","说明问题"]'::jsonb, '["双方正在处理同一订单"]'::jsonb, '["订单编号","退款期限","替代方案"]'::jsonb, '["requests_permission_advice","honorifics_and_politeness"]'::jsonb),
+    ('school', '学校', 'school', 'polite', '学生', '老师', 'familiar', 'listener_higher', 'medium', 'spoken', '["请教问题","说明原因","确认作业"]'::jsonb, '["老师已经布置了相关任务"]'::jsonb, '["报告截止时间","课堂内容","补交安排"]'::jsonb, '["requests_permission_advice","quotation_reporting_topic"]'::jsonb),
+    ('friend_chat', '朋友聊天', 'friend_chat', 'casual', '自己', '朋友', 'close', 'equal', 'low', 'message', '["分享计划","表达判断","确认消息"]'::jsonb, '["双方熟悉彼此近况"]'::jsonb, '["周末计划","常去的店","刚看到的消息"]'::jsonb, '["sentence_final_nuance","inference_judgment_sources"]'::jsonb),
+    ('shopping', '购物', 'shopping', 'polite', '顾客', '店员', 'unfamiliar', 'equal', 'low', 'spoken', '["询问商品","确认条件","请求服务"]'::jsonb, '["双方正在看同一件商品"]'::jsonb, '["其他颜色","退换货期限","库存数量"]'::jsonb, '["requests_permission_advice","comparison_degree_scope"]'::jsonb),
+    ('transportation', '交通', 'transportation', 'polite', '乘客', '工作人员', 'unfamiliar', 'equal', 'low', 'spoken', '["确认路线","询问时间","说明延误"]'::jsonb, '["双方正在确认同一段行程"]'::jsonb, '["末班车","换乘站台","预计到达时间"]'::jsonb, '["time_and_sequence","quotation_reporting_topic"]'::jsonb),
+    ('government_office', '市役所 / 手续', 'government_office', 'formal', '办事人', '窗口人员', 'unfamiliar', 'equal', 'medium', 'spoken', '["确认材料","询问规定","说明情况"]'::jsonb, '["双方正在办理同一项手续"]'::jsonb, '["身份证明","申请期限","缺少的材料"]'::jsonb, '["conditions_and_hypotheses","honorifics_and_politeness"]'::jsonb),
+    ('email', '正式邮件', 'email', 'business', '发件人', '工作或学校联系人', 'unfamiliar', 'listener_higher', 'medium', 'email', '["请求确认","说明安排","表达致歉"]'::jsonb, '["收件人知道邮件所指事项"]'::jsonb, '["附件资料","回复期限","会议时间"]'::jsonb, '["honorifics_and_politeness","quotation_reporting_topic"]'::jsonb)
+)
+INSERT INTO scenario_templates (
+  slug,
+  name_zh,
+  scene_tag_id,
+  default_register_tag_id,
+  speaker_role,
+  listener_role,
+  social_distance,
+  hierarchy,
+  request_burden,
+  medium,
+  communicative_goals,
+  known_contexts,
+  detail_pool,
+  compatible_function_tags,
+  status
+)
+SELECT
+  scenario_seed.slug,
+  scenario_seed.name_zh,
+  scene_tags.id,
+  register_tags.id,
+  scenario_seed.speaker_role,
+  scenario_seed.listener_role,
+  scenario_seed.social_distance,
+  scenario_seed.hierarchy,
+  scenario_seed.request_burden,
+  scenario_seed.medium,
+  scenario_seed.communicative_goals,
+  scenario_seed.known_contexts,
+  scenario_seed.detail_pool,
+  scenario_seed.compatible_function_tags,
+  'active'
+FROM scenario_seed
+JOIN scene_tags ON scene_tags.name_en = scenario_seed.scene_slug
+JOIN register_tags ON register_tags.name_en = scenario_seed.register_slug
+ON CONFLICT (slug) DO UPDATE SET
+  name_zh = EXCLUDED.name_zh,
+  scene_tag_id = EXCLUDED.scene_tag_id,
+  default_register_tag_id = EXCLUDED.default_register_tag_id,
+  speaker_role = EXCLUDED.speaker_role,
+  listener_role = EXCLUDED.listener_role,
+  social_distance = EXCLUDED.social_distance,
+  hierarchy = EXCLUDED.hierarchy,
+  request_burden = EXCLUDED.request_burden,
+  medium = EXCLUDED.medium,
+  communicative_goals = EXCLUDED.communicative_goals,
+  known_contexts = EXCLUDED.known_contexts,
+  detail_pool = EXCLUDED.detail_pool,
+  compatible_function_tags = EXCLUDED.compatible_function_tags,
+  status = EXCLUDED.status,
   updated_at = NOW();
 
 WITH grammar_seed(seed_key, grammar_point, reading, category_slug, sub_category, core_meaning, natural_translation, structure, practicality, spoken_or_written, notes, jlpt_level, common_mistakes) AS (

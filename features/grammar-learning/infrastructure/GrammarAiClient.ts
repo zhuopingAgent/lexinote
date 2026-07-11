@@ -1,5 +1,11 @@
 import { buildPracticeGenerationPrompt } from "@/features/grammar-learning/prompts/practiceGeneration";
 import { buildSentenceFeedbackPrompt } from "@/features/grammar-learning/prompts/sentenceFeedback";
+import {
+  buildPlannedExerciseFallback,
+  buildPlannedExerciseGenerationPrompt,
+  isPlannedExerciseSafe,
+  type PlannedTextExerciseInput,
+} from "@/features/grammar-learning/prompts/exerciseGeneration";
 import type {
   GrammarPointDetail,
   PracticeLevel,
@@ -31,6 +37,30 @@ const PRACTICE_MAX_OUTPUT_TOKENS = 820;
 const FEEDBACK_MAX_OUTPUT_TOKENS = 760;
 
 export class GrammarAiClient {
+  async generatePlannedExercise(input: PlannedTextExerciseInput): Promise<GeneratedPractice> {
+    const aiGatewayRequest = resolveAiGatewayRequest();
+    const fallback = buildPlannedExerciseFallback(input);
+
+    if (!aiGatewayRequest) {
+      return fallback;
+    }
+
+    const responseText = await requestAiGatewayText(aiGatewayRequest, {
+      role: "defaultTeacher",
+      maxOutputTokens: PRACTICE_MAX_OUTPUT_TOKENS,
+      systemPrompt:
+        "你只负责把确定的教学规格实现成自然日语练习。只返回严格 JSON。",
+      userPrompt: buildPlannedExerciseGenerationPrompt(input),
+    });
+    const parsed = responseText
+      ? parsePracticeOutput(extractJsonObject(responseText))
+      : null;
+
+    return parsed && isPlannedExerciseSafe(parsed)
+      ? { ...parsed, source: "ai" }
+      : fallback;
+  }
+
   async generatePractice(input: {
     grammarPoint: GrammarPointDetail;
     sceneTag?: string;
