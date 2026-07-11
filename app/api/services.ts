@@ -18,74 +18,123 @@ import { WordLookupService } from "@/features/word-lookup/application/WordLookup
 
 const AUTO_FILTER_JOB_POLL_INTERVAL_MS = 60_000;
 
-const llmClient = new LlmClient();
-const collectionRepository = new CollectionRepository();
-const dictionaryService = new JapaneseDictionaryService(
-  new JapaneseDictionaryRepository()
-);
-const vocabularyCoreService = new VocabularyCoreService(dictionaryService);
-const autoFilterJobService = new CollectionAutoFilterJobService(
-  new CollectionAutoFilterJobRepository(),
-  collectionRepository,
-  new CollectionAutoFilterService(
-    collectionRepository,
-    vocabularyCoreService,
-    llmClient
-  )
-);
-const collectionService = new CollectionService(
-  collectionRepository,
-  autoFilterJobService
-);
-const collectionWordService = new CollectionWordService(
-  collectionRepository,
-  vocabularyCoreService
-);
-const wordLookupService = new WordLookupService(
-  vocabularyCoreService,
-  new AIWordLookupService(llmClient),
-  autoFilterJobService
-);
-const grammarRepository = new GrammarRepository();
-const grammarAiClient = new GrammarAiClient();
-const grammarLearningService = new GrammarLearningService(
-  grammarRepository,
-  grammarAiClient
-);
-const practiceSessionService = new PracticeSessionService(
-  new PracticeRepository(),
-  grammarRepository,
-  grammarAiClient,
-  grammarLearningService
-);
-
 let autoFilterJobPoller: ReturnType<typeof setInterval> | null = null;
+let aiWordLookupService: AIWordLookupService | null = null;
+let autoFilterJobService: CollectionAutoFilterJobService | null = null;
+let collectionAutoFilterService: CollectionAutoFilterService | null = null;
+let collectionRepository: CollectionRepository | null = null;
+let collectionService: CollectionService | null = null;
+let collectionWordService: CollectionWordService | null = null;
+let dictionaryService: JapaneseDictionaryService | null = null;
+let grammarAiClient: GrammarAiClient | null = null;
+let grammarLearningService: GrammarLearningService | null = null;
+let grammarRepository: GrammarRepository | null = null;
+let llmClient: LlmClient | null = null;
+let practiceRepository: PracticeRepository | null = null;
+let practiceSessionService: PracticeSessionService | null = null;
+let vocabularyCoreService: VocabularyCoreService | null = null;
+let wordLookupService: WordLookupService | null = null;
+
+function getLlmClient() {
+  llmClient ??= new LlmClient();
+  return llmClient;
+}
+
+function getCollectionRepository() {
+  collectionRepository ??= new CollectionRepository();
+  return collectionRepository;
+}
+
+function getCollectionAutoFilterService() {
+  collectionAutoFilterService ??= new CollectionAutoFilterService(
+    getCollectionRepository(),
+    getVocabularyCoreService(),
+    getLlmClient()
+  );
+  return collectionAutoFilterService;
+}
+
+function getAutoFilterJobService() {
+  autoFilterJobService ??= new CollectionAutoFilterJobService(
+    new CollectionAutoFilterJobRepository(),
+    getCollectionRepository(),
+    getCollectionAutoFilterService()
+  );
+  return autoFilterJobService;
+}
+
+function getAiWordLookupService() {
+  aiWordLookupService ??= new AIWordLookupService(getLlmClient());
+  return aiWordLookupService;
+}
+
+function getGrammarRepository() {
+  grammarRepository ??= new GrammarRepository();
+  return grammarRepository;
+}
+
+function getGrammarAiClient() {
+  grammarAiClient ??= new GrammarAiClient();
+  return grammarAiClient;
+}
+
+function getPracticeRepository() {
+  practiceRepository ??= new PracticeRepository();
+  return practiceRepository;
+}
 
 export function getCollectionService() {
+  collectionService ??= new CollectionService(
+    getCollectionRepository(),
+    getAutoFilterJobService()
+  );
   return collectionService;
 }
 
 export function getCollectionWordService() {
+  collectionWordService ??= new CollectionWordService(
+    getCollectionRepository(),
+    getVocabularyCoreService()
+  );
   return collectionWordService;
 }
 
 export function getVocabularyCoreService() {
+  vocabularyCoreService ??= new VocabularyCoreService(getDictionaryService());
   return vocabularyCoreService;
 }
 
 export function getDictionaryService() {
+  dictionaryService ??= new JapaneseDictionaryService(
+    new JapaneseDictionaryRepository()
+  );
   return dictionaryService;
 }
 
 export function getWordLookupService() {
+  wordLookupService ??= new WordLookupService(
+    getVocabularyCoreService(),
+    getAiWordLookupService(),
+    getAutoFilterJobService()
+  );
   return wordLookupService;
 }
 
 export function getGrammarLearningService() {
+  grammarLearningService ??= new GrammarLearningService(
+    getGrammarRepository(),
+    getGrammarAiClient()
+  );
   return grammarLearningService;
 }
 
 export function getPracticeSessionService() {
+  practiceSessionService ??= new PracticeSessionService(
+    getPracticeRepository(),
+    getGrammarRepository(),
+    getGrammarAiClient(),
+    getGrammarLearningService()
+  );
   return practiceSessionService;
 }
 
@@ -94,9 +143,10 @@ export function ensureAutoFilterJobRunnerStarted() {
     return;
   }
 
-  void autoFilterJobService.kickOff();
+  const jobService = getAutoFilterJobService();
+  void jobService.kickOff();
   autoFilterJobPoller = setInterval(() => {
-    void autoFilterJobService.kickOff();
+    void jobService.kickOff();
   }, AUTO_FILTER_JOB_POLL_INTERVAL_MS);
   autoFilterJobPoller.unref?.();
 }
