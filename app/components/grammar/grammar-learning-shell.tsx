@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type {
+  GrammarBootstrapResponse,
   GrammarPointSummary,
   GrammarProgressResponse,
   GrammarSearchResponse,
-  GrammarTaxonomyResponse,
   KnowledgeDimension,
   LearningModule,
   LearningStage,
@@ -20,6 +20,8 @@ import { getErrorMessage, readJson } from "@/app/lib/api-client";
 
 const GRAMMAR_PAGE_SIZE = 36;
 const GRAMMAR_FETCH_LIMIT = GRAMMAR_PAGE_SIZE + 1;
+const DEFAULT_DIMENSION_SLUG = "expression_function";
+const DEFAULT_STAGE_SLUG = "foundations";
 
 type GrammarBrowseMode = "knowledge" | "curriculum";
 
@@ -27,9 +29,9 @@ export function GrammarLearningShell() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [browseMode, setBrowseMode] = useState<GrammarBrowseMode>("knowledge");
-  const [dimensionSlug, setDimensionSlug] = useState("expression_function");
+  const [dimensionSlug, setDimensionSlug] = useState(DEFAULT_DIMENSION_SLUG);
   const [categorySlug, setCategorySlug] = useState("");
-  const [stageSlug, setStageSlug] = useState("foundations");
+  const [stageSlug, setStageSlug] = useState(DEFAULT_STAGE_SLUG);
   const [moduleSlug, setModuleSlug] = useState("");
   const [knowledgeDimensions, setKnowledgeDimensions] = useState<
     KnowledgeDimension[]
@@ -47,69 +49,73 @@ export function GrammarLearningShell() {
   const [isProgressLoading, setIsProgressLoading] = useState(true);
   const [isSearchLoading, setIsSearchLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const searchGenerationRef = useRef(0);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
+  const skipNextSearchRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    const generation = searchGenerationRef.current + 1;
+    searchGenerationRef.current = generation;
+    loadMoreControllerRef.current?.abort();
+    setIsTaxonomyLoading(true);
+    setIsProgressLoading(true);
+    setIsSearchLoading(true);
+    setIsLoadingMore(false);
+    setTaxonomyError(null);
+    setProgressError(null);
+    setSearchError(null);
+    setLoadMoreError(null);
+    setHasMore(false);
 
-    async function loadTaxonomy() {
-      setIsTaxonomyLoading(true);
-      setTaxonomyError(null);
+    async function loadBootstrap() {
+      const params = new URLSearchParams();
 
+      params.set("dimension", DEFAULT_DIMENSION_SLUG);
+      params.set("limit", String(GRAMMAR_FETCH_LIMIT));
       try {
-        const taxonomy = await fetch("/api/grammar/taxonomy", {
+        const result = await fetch(`/api/grammar/bootstrap?${params.toString()}`, {
           signal: controller.signal,
-        }).then((response) => readJson<GrammarTaxonomyResponse>(response));
-        setKnowledgeDimensions(taxonomy.knowledgeDimensions ?? []);
-        setTaxonomyNodes(taxonomy.taxonomyNodes ?? []);
-        setLearningStages(taxonomy.learningStages ?? []);
-        setLearningModules(taxonomy.learningModules ?? []);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setTaxonomyError(getErrorMessage(error, "分类加载失败，请稍后再试。"));
+        }).then((response) => readJson<GrammarBootstrapResponse>(response));
+
+        if (controller.signal.aborted || searchGenerationRef.current !== generation) {
+          return;
         }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsTaxonomyLoading(false);
-        }
-      }
-    }
 
-    void loadTaxonomy();
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadProgress() {
-      setIsProgressLoading(true);
-      setProgressError(null);
-
-      try {
-        const result = await fetch("/api/grammar/progress", {
-          signal: controller.signal,
-        }).then((response) => readJson<GrammarProgressResponse>(response));
-        setProgress(result);
+        setKnowledgeDimensions(result.taxonomy.knowledgeDimensions ?? []);
+        setTaxonomyNodes(result.taxonomy.taxonomyNodes ?? []);
+        setLearningStages(result.taxonomy.learningStages ?? []);
+        setLearningModules(result.taxonomy.learningModules ?? []);
+        setProgress(result.progress);
+        setItems(result.search.items.slice(0, GRAMMAR_PAGE_SIZE));
+        setHasMore(result.search.items.length > GRAMMAR_PAGE_SIZE);
+        skipNextSearchRef.current = true;
+        setHasBootstrapped(true);
       } catch (error) {
-        if (!controller.signal.aborted) {
-          setProgressError(
-            getErrorMessage(error, "学习进度加载失败，请稍后再试。")
+        if (!controller.signal.aborted && searchGenerationRef.current === generation) {
+          const message = getErrorMessage(
+            error,
+            "文法首页加载失败，请稍后再试。"
           );
+
+          setTaxonomyError(message);
+          setProgressError(message);
+          setSearchError(message);
+          skipNextSearchRef.current = false;
+          setHasBootstrapped(true);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && searchGenerationRef.current === generation) {
+          setIsTaxonomyLoading(false);
           setIsProgressLoading(false);
+          setIsSearchLoading(false);
         }
       }
     }
 
-    void loadProgress();
+    void loadBootstrap();
 
     return () => {
       controller.abort();
@@ -117,6 +123,15 @@ export function GrammarLearningShell() {
   }, []);
 
   useEffect(() => {
+    if (!hasBootstrapped) {
+      return;
+    }
+
+    if (skipNextSearchRef.current) {
+      skipNextSearchRef.current = false;
+      return;
+    }
+
     const controller = new AbortController();
     const generation = searchGenerationRef.current + 1;
     searchGenerationRef.current = generation;
@@ -175,7 +190,15 @@ export function GrammarLearningShell() {
       controller.abort();
       loadMoreControllerRef.current?.abort();
     };
-  }, [submittedQuery, browseMode, categorySlug, dimensionSlug, moduleSlug, stageSlug]);
+  }, [
+    hasBootstrapped,
+    submittedQuery,
+    browseMode,
+    categorySlug,
+    dimensionSlug,
+    moduleSlug,
+    stageSlug,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -190,9 +213,9 @@ export function GrammarLearningShell() {
   function clearFilters() {
     setQuery("");
     setSubmittedQuery("");
-    setDimensionSlug("expression_function");
+    setDimensionSlug(DEFAULT_DIMENSION_SLUG);
     setCategorySlug("");
-    setStageSlug("foundations");
+    setStageSlug(DEFAULT_STAGE_SLUG);
     setModuleSlug("");
   }
 
