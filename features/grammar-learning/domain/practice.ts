@@ -6,6 +6,10 @@ import type {
   PracticeSkillDimension,
   PracticeSkillState,
 } from "@/shared/types/practice";
+import type {
+  LearningObjective,
+  TransferLevel,
+} from "@/features/grammar-learning/domain/practiceV2";
 
 export const PRACTICE_SKILL_DIMENSIONS: readonly PracticeSkillDimension[] = [
   "meaning_discrimination",
@@ -32,6 +36,21 @@ export const PRACTICE_EXERCISE_LABELS: Record<PracticeExerciseType, string> = {
   register_rewrite: "语体转换",
   guided_translation: "受限中译日",
   contextual_response: "场景回应",
+};
+
+export const PRACTICE_OBJECTIVE_LABELS: Record<LearningObjective, string> = {
+  meaning: "意义理解",
+  form_connection: "接续与形式",
+  grammar_selection: "语法选择",
+  register_control: "语体控制",
+  collocation_naturalness: "搭配与自然度",
+  discourse_function: "篇章功能",
+};
+
+export const PRACTICE_TRANSFER_LABELS: Record<TransferLevel, string> = {
+  reproduction: "复现",
+  near_transfer: "近迁移",
+  far_transfer: "新场景迁移",
 };
 
 export type PracticePlan = {

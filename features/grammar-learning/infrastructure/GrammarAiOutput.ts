@@ -58,6 +58,21 @@ export function extractJsonObject(text: string): unknown | null {
     return null;
   }
 }
+
+export function parseStrictJsonObject(text: string): unknown | null {
+  const normalized = text.trim();
+  if (!normalized.startsWith("{") || !normalized.endsWith("}")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(normalized) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
 function sanitizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }

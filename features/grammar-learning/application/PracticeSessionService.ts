@@ -36,6 +36,17 @@ import type {
   PracticeSessionSummary,
 } from "@/shared/types/practice";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
+import {
+  isPracticeGenerationV2Enabled,
+  resolveMasteryEvidence,
+  passesAnswerContract,
+  toPracticeRubricScores,
+  type PracticeIntent,
+} from "@/features/grammar-learning/domain/practiceV2";
+import {
+  buildPracticeSessionPlan,
+  defaultPracticePlannerSource,
+} from "@/features/grammar-learning/domain/practiceSessionPlanner";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -154,6 +165,52 @@ export class PracticeSessionService {
       normalizeOptionalSlug(input.preferredRegister) ??
         grammarPoint.registerTags[0]?.nameEn
     );
+    const plannedExerciseCount = normalizePlannedCount(input.plannedExerciseCount);
+    let planSnapshot: PracticeIntent[] = [];
+    const useV2 = isPracticeGenerationV2Enabled();
+    if (useV2) {
+      const [skillStates, scenarioTemplate, plannerHistory] = await Promise.all([
+        this.practiceRepository.listSkillStates(userId, grammarPoint.id),
+        this.practiceRepository.findScenarioTemplate(preferredScene),
+        this.practiceRepository.getPlannerHistory(userId, grammarPoint.id),
+      ]);
+      if (!scenarioTemplate) {
+        throw new Error("No active practice scenario template is available.");
+      }
+      const firstContext = buildPracticeContext({
+        scenario: scenarioTemplate,
+        preferredRegister,
+        sequenceNumber: 1,
+        variant: 0,
+      });
+      planSnapshot = buildPracticeSessionPlan({
+        grammarPoint,
+        context: firstContext,
+        skillStates,
+        history: plannerHistory,
+        count: plannedExerciseCount,
+        source: defaultPracticePlannerSource,
+      }).map((intent, index) => {
+        const context = buildPracticeContext({
+          scenario: scenarioTemplate,
+          preferredRegister,
+          sequenceNumber: index + 1,
+          variant: index,
+        });
+        return {
+          ...intent,
+          communicativeGoal: context.communicativeGoal,
+          context: {
+            ...context,
+            scenario: context.sceneLabel,
+            participants: [context.speakerRole, context.listenerRole],
+            relationship: `${context.socialDistance}/${context.hierarchy}`,
+            register: context.registerLabel,
+            previousTurn: context.knownContext,
+          },
+        };
+      });
+    }
     const sessionId = await this.practiceRepository.upsertSession({
       userId,
       clientSessionKey,
@@ -161,8 +218,10 @@ export class PracticeSessionService {
       grammarPointId: grammarPoint.id,
       preferredScene,
       preferredRegister,
-      plannedExerciseCount: normalizePlannedCount(input.plannedExerciseCount),
-      metadata: { redesignVersion: 1 },
+      plannedExerciseCount,
+      metadata: { redesignVersion: useV2 ? 2 : 1 },
+      planSnapshot,
+      plannerVersion: useV2 ? 2 : 1,
     });
 
     if (!sessionId) {
@@ -226,6 +285,14 @@ export class PracticeSessionService {
       session.focusGrammarPointId,
       userId
     );
+    if (session.plannerVersion === 2 && session.planSnapshot[session.generatedExerciseCount]) {
+      return this.generateNextExerciseV2({
+        session,
+        grammarPoint,
+        userId,
+        intent: session.planSnapshot[session.generatedExerciseCount],
+      });
+    }
     const [skillStates, scenarioTemplate, recentSignatures] = await Promise.all([
       this.practiceRepository.listSkillStates(userId, grammarPoint.id),
       this.practiceRepository.findScenarioTemplate(
@@ -376,18 +443,56 @@ export class PracticeSessionService {
         sceneTag: exercise.context.sceneSlug,
         registerTag: exercise.context.registerPreset,
         promptText: exercise.prompt,
+        answerContract: exercise.answerContract ?? undefined,
+        rubric: exercise.rubric ?? undefined,
       });
       legacyUserSentenceId = legacyFeedback.userSentenceId;
       legacyFeedbackId = legacyFeedback.feedbackId;
       feedback = legacyFeedback;
     }
 
-    const evidenceScore = calculateEvidenceScore({
-      isCorrect: feedback.isCorrect,
-      attemptNumber,
-      hintCount: exercise.hintsRevealed,
-      skillDimension: exercise.skillDimension,
-    });
+    const rubricScores = exercise.answerContract
+      ? toPracticeRubricScores({
+          contract: exercise.answerContract,
+          legacyScores: {
+            grammar: feedback.grammarScore,
+            meaning: feedback.meaningScore,
+            naturalness: feedback.naturalnessScore,
+            register: feedback.registerScore,
+            contextFit: feedback.sceneFitScore,
+          },
+        })
+      : null;
+    if (
+      exercise.answerContract &&
+      rubricScores &&
+      feedback.isCorrect &&
+      !passesAnswerContract(exercise.answerContract, rubricScores)
+    ) {
+      feedback = {
+        ...feedback,
+        isCorrect: false,
+        explanation: `${feedback.explanation} 但本题要求的关键维度还没有达到通过标准。`,
+        feedbackText: `${feedback.feedbackText} 但本题要求的关键维度还没有达到通过标准。`,
+      };
+    }
+    const masteryEvidence = exercise.practiceIntent
+      ? resolveMasteryEvidence({
+          isCorrect: feedback.isCorrect,
+          responseMode: exercise.responseMode,
+          transferLevel: exercise.practiceIntent.transferLevel,
+          hintCount: exercise.hintsRevealed,
+          attemptNumber,
+        })
+      : null;
+    const evidenceScore = masteryEvidence
+      ? masteryEvidence.weight
+      : calculateEvidenceScore({
+          isCorrect: feedback.isCorrect,
+          attemptNumber,
+          hintCount: exercise.hintsRevealed,
+          skillDimension: exercise.skillDimension,
+        });
     const evidence = await this.practiceRepository.recordAttempt({
       exerciseId: exercise.id,
       userId,
@@ -407,8 +512,12 @@ export class PracticeSessionService {
       legacyUserSentenceId,
       legacyFeedbackId,
       evidenceScore,
-      independent: attemptNumber === 1 && exercise.hintsRevealed === 0,
+      independent: masteryEvidence
+        ? masteryEvidence.kind === "independent"
+        : attemptNumber === 1 && exercise.hintsRevealed === 0,
       contextNovelty: exercise.skillDimension === "transfer_naturalness" ? 1 : 0.8,
+      rubricScores,
+      evidenceKind: masteryEvidence?.kind ?? null,
     });
 
     return {
@@ -420,6 +529,117 @@ export class PracticeSessionService {
       referenceAnswers: feedback.isCorrect ? exercise.referenceAnswers : [],
       evidence,
     };
+  }
+
+  private async generateNextExerciseV2(input: {
+    session: PracticeSessionRecord;
+    grammarPoint: GrammarPointDetail;
+    userId: string;
+    intent: PracticeIntent;
+  }): Promise<PracticeSessionResponse> {
+    const sequenceNumber = input.session.generatedExerciseCount + 1;
+    const recentSignatures = await this.practiceRepository.listRecentSignatures(
+      input.userId,
+      input.grammarPoint.id
+    );
+    const generationSeed = randomUUID();
+    const generated = await this.grammarAiClient.generatePracticeItemV2({
+      grammarPoint: input.grammarPoint,
+      intent: input.intent,
+      generationSeed,
+    });
+    const actualIntent = generated.intent;
+    const blueprint = await this.practiceRepository.findBlueprint(generated.exerciseType);
+    if (!blueprint) {
+      throw new Error(`Practice blueprint ${generated.exerciseType} is unavailable.`);
+    }
+    let variant = 0;
+    let contentSignature = buildPracticeContentSignature({
+      grammarPointId: input.grammarPoint.id,
+      blueprintSlug: generated.exerciseType,
+      context: generated.context,
+    });
+    while (recentSignatures.includes(contentSignature) && variant < 12) {
+      variant += 1;
+      contentSignature = buildPracticeContentSignature({
+        grammarPointId: input.grammarPoint.id,
+        blueprintSlug: `${generated.exerciseType}:${variant}`,
+        context: generated.context,
+      });
+    }
+    const isChoice =
+      generated.exerciseType === "meaning_choice" ||
+      generated.exerciseType === "contrast_choice";
+    const options = isChoice ? generated.choices : [];
+    const comparisonSetId = generated.exerciseType === "contrast_choice"
+      ? input.grammarPoint.comparisonSets.find((set) =>
+          set.members.some((member) =>
+            actualIntent.comparisonGrammarPointIds.includes(member.grammarPointId)
+          )
+        )?.id ?? null
+      : null;
+    const expectedFeatures = {
+      requiredGrammarPointId: input.grammarPoint.id,
+      canonicalForm: input.grammarPoint.canonicalForm,
+      senseKey: input.grammarPoint.senseKey,
+      correctOptionId: isChoice ? generated.correctChoiceId : undefined,
+      distractorReasons: isChoice ? generated.distractorReasons : undefined,
+      instructionZh: generated.instructionZh,
+      hintPlan: generated.hints,
+      itemSchema:
+        generated.exerciseType === "form_repair"
+          ? {
+              incorrectSentence: generated.incorrectSentence,
+              targetErrorType: generated.targetErrorType,
+              errorSpan: generated.errorSpan,
+              correctedSentence: generated.correctedSentence,
+            }
+          : generated.exerciseType === "register_rewrite"
+            ? {
+                sourceSentence: generated.sourceSentence,
+                targetRegister: generated.targetRegister,
+              }
+            : generated.exerciseType === "guided_translation"
+              ? { chineseSentence: generated.chineseSentence }
+              : generated.exerciseType === "contextual_response"
+                ? {
+                    previousTurn: generated.previousTurn,
+                    speakerRelationship: generated.speakerRelationship,
+                    communicativeGoal: generated.communicativeGoal,
+                    requiredInformation: generated.requiredInformation,
+                  }
+                : null,
+    };
+    const exerciseId = await this.practiceRepository.insertExercise({
+      sessionId: input.session.id,
+      blueprintSlug: generated.exerciseType,
+      grammarPointId: input.grammarPoint.id,
+      comparisonSetId,
+      sequenceNumber,
+      skillDimension: actualIntent.legacySkillDimension,
+      exerciseType: generated.exerciseType,
+      difficulty: Math.min(
+        Math.max(actualIntent.difficulty, blueprint.minimumDifficulty),
+        blueprint.maximumDifficulty
+      ) as typeof actualIntent.difficulty,
+      responseMode: actualIntent.answerPolicy.responseMode,
+      context: generated.context,
+      prompt: generated.prompt,
+      options,
+      expectedFeatures,
+      referenceAnswers: generated.referenceAnswers,
+      hintLadder: generated.hints.map((hint) => hint.content),
+      source: generated.generationMetadata.generationSource,
+      generationSeed,
+      contentSignature,
+      practiceIntent: actualIntent,
+      answerContract: generated.answerContract,
+      rubric: generated.rubric,
+      generationMetadata: generated.generationMetadata,
+    });
+    const exercise = await this.practiceRepository.findExercise(exerciseId, input.userId);
+    const session = await this.requireSession(input.session.id, input.userId);
+    return this.buildSessionResponse(session, exercise, input.userId);
   }
 
   async revealHint(
@@ -544,6 +764,10 @@ export class PracticeSessionService {
           hasMoreHints: exercise.hintsRevealed < exercise.hintLadder.length,
           attemptCount: exercise.attemptCount,
           source: exercise.generationSource,
+          learningObjective: exercise.practiceIntent?.learningObjective,
+          cognitiveOperation: exercise.practiceIntent?.cognitiveOperation,
+          transferLevel: exercise.practiceIntent?.transferLevel,
+          scaffoldLevel: exercise.practiceIntent?.scaffoldLevel,
           grammarPoint: {
             id: grammarPoint.id,
             grammarPoint: grammarPoint.grammarPoint,
@@ -587,6 +811,9 @@ export class PracticeSessionService {
       skillSummaries: await this.practiceRepository.getSessionSkillSummaries(
         session.id
       ),
+      objectiveSummaries: (await this.practiceRepository.getSessionObjectiveSummaries(
+        session.id
+      )) as PracticeSessionSummary["objectiveSummaries"],
     };
   }
 }

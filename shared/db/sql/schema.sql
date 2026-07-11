@@ -862,6 +862,95 @@ CREATE TABLE IF NOT EXISTS learner_skill_states (
   PRIMARY KEY (user_id, grammar_point_id, skill_dimension)
 );
 
+-- Practice generation V2 is additive: legacy dimensions and evidence remain readable.
+ALTER TABLE exercise_blueprints
+  ADD COLUMN IF NOT EXISTS grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS sense_key TEXT,
+  ADD COLUMN IF NOT EXISTS blueprint_version INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS learning_objective TEXT,
+  ADD COLUMN IF NOT EXISTS cognitive_operation TEXT,
+  ADD COLUMN IF NOT EXISTS supported_transfer_levels JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS supported_registers JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS supported_scenarios JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS misconception_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS context_requirements JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS difficulty_rules JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS answer_policy JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS hint_plan JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE practice_sessions
+  ADD COLUMN IF NOT EXISTS plan_snapshot JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS planner_version INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE exercise_instances
+  ADD COLUMN IF NOT EXISTS practice_intent_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS answer_contract JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS rubric JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS blueprint_version INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS prompt_id TEXT,
+  ADD COLUMN IF NOT EXISTS prompt_version INTEGER,
+  ADD COLUMN IF NOT EXISTS schema_version INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS grammar_content_version TEXT,
+  ADD COLUMN IF NOT EXISTS model TEXT,
+  ADD COLUMN IF NOT EXISTS validation_results JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS reviewer_result JSONB,
+  ADD COLUMN IF NOT EXISTS generation_retry_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS network_retry_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS fallback_reason TEXT,
+  ADD COLUMN IF NOT EXISTS degradation_reason TEXT,
+  ADD COLUMN IF NOT EXISTS generation_latency_ms INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE practice_attempts
+  ADD COLUMN IF NOT EXISTS rubric_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS evidence_kind TEXT;
+
+ALTER TABLE mastery_evidence
+  ADD COLUMN IF NOT EXISTS sense_key TEXT,
+  ADD COLUMN IF NOT EXISTS learning_objective TEXT,
+  ADD COLUMN IF NOT EXISTS evidence_kind TEXT,
+  ADD COLUMN IF NOT EXISTS dimension_scores JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS learner_objective_states (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  grammar_point_id UUID NOT NULL REFERENCES grammar_points(id) ON DELETE CASCADE,
+  sense_key TEXT NOT NULL,
+  learning_objective TEXT NOT NULL CHECK (learning_objective IN (
+    'meaning',
+    'form_connection',
+    'grammar_selection',
+    'register_control',
+    'collocation_naturalness',
+    'discourse_function'
+  )),
+  estimate NUMERIC(4,3) NOT NULL DEFAULT 0.35 CHECK (estimate BETWEEN 0 AND 1),
+  confidence NUMERIC(4,3) NOT NULL DEFAULT 0 CHECK (confidence BETWEEN 0 AND 1),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  assisted_attempts INTEGER NOT NULL DEFAULT 0 CHECK (assisted_attempts >= 0),
+  exposure_count INTEGER NOT NULL DEFAULT 0 CHECK (exposure_count >= 0),
+  recent_error_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  last_practiced_at TIMESTAMPTZ,
+  next_review_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, grammar_point_id, sense_key, learning_objective)
+);
+
+CREATE INDEX IF NOT EXISTS idx_learner_objective_states_due
+  ON learner_objective_states (user_id, next_review_at, estimate);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_instances_generation_metrics
+  ON exercise_instances (created_at DESC, generation_source, fallback_reason);
+
+CREATE INDEX IF NOT EXISTS idx_mastery_evidence_objective
+  ON mastery_evidence (
+    user_id,
+    grammar_point_id,
+    sense_key,
+    learning_objective,
+    created_at DESC
+  )
+  WHERE learning_objective IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_grammar_points_search
   ON grammar_points
   USING gin (to_tsvector('simple', grammar_point || ' ' || coalesce(reading, '') || ' ' || coalesce(core_meaning, '') || ' ' || coalesce(natural_translation, '')));
@@ -1636,6 +1725,64 @@ ON CONFLICT (slug) DO UPDATE SET
   rubric_template = EXCLUDED.rubric_template,
   status = EXCLUDED.status,
   updated_at = NOW();
+
+UPDATE exercise_blueprints
+SET
+  blueprint_version = 2,
+  learning_objective = CASE slug
+    WHEN 'meaning_choice' THEN 'meaning'
+    WHEN 'form_repair' THEN 'form_connection'
+    WHEN 'contrast_choice' THEN 'grammar_selection'
+    WHEN 'register_rewrite' THEN 'register_control'
+    WHEN 'guided_translation' THEN 'form_connection'
+    WHEN 'contextual_response' THEN 'register_control'
+  END,
+  cognitive_operation = CASE slug
+    WHEN 'meaning_choice' THEN 'recognize'
+    WHEN 'form_repair' THEN 'repair'
+    WHEN 'contrast_choice' THEN 'select'
+    WHEN 'register_rewrite' THEN 'transform'
+    WHEN 'guided_translation' THEN 'constrained_produce'
+    WHEN 'contextual_response' THEN 'respond'
+  END,
+  supported_transfer_levels = CASE slug
+    WHEN 'contextual_response' THEN '["near_transfer","far_transfer"]'::jsonb
+    WHEN 'meaning_choice' THEN '["reproduction","near_transfer"]'::jsonb
+    ELSE '["reproduction","near_transfer"]'::jsonb
+  END,
+  supported_registers = '["casual","polite","business"]'::jsonb,
+  supported_scenarios = '["daily_life","hospital","workplace","customer_service","school","friend_chat","shopping","transportation","government_office","email"]'::jsonb,
+  misconception_codes = CASE slug
+    WHEN 'form_repair' THEN '["conjugation_error","connection_error","particle_error","tense_aspect_error"]'::jsonb
+    WHEN 'contrast_choice' THEN '["particle_error","semantic_error","giving_receiving_direction_error"]'::jsonb
+    WHEN 'register_rewrite' THEN '["register_mismatch"]'::jsonb
+    ELSE '["semantic_error","unnatural_expression"]'::jsonb
+  END,
+  context_requirements = CASE slug
+    WHEN 'contextual_response' THEN '["participants","relationship","previousTurn","communicativeGoal"]'::jsonb
+    WHEN 'register_rewrite' THEN '["participants","relationship","register"]'::jsonb
+    ELSE '["scenario","register"]'::jsonb
+  END,
+  difficulty_rules = jsonb_build_object('minimum', minimum_difficulty, 'maximum', maximum_difficulty),
+  answer_policy = jsonb_build_object(
+    'responseMode', response_mode,
+    'allowEquivalentAnswers', response_mode = 'text',
+    'requireExactChoice', response_mode = 'choice',
+    'maxAttempts', 2
+  ),
+  hint_plan = CASE response_mode
+    WHEN 'choice' THEN '["options","semantic_hint"]'::jsonb
+    ELSE '["semantic_hint","form_hint","partial_sentence"]'::jsonb
+  END,
+  updated_at = NOW()
+WHERE slug IN (
+  'meaning_choice',
+  'form_repair',
+  'contrast_choice',
+  'register_rewrite',
+  'guided_translation',
+  'contextual_response'
+);
 
 WITH scenario_seed(
   slug,

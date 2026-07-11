@@ -13,7 +13,9 @@ import {
 } from "@/app/lib/api-client";
 import {
   PRACTICE_EXERCISE_LABELS,
+  PRACTICE_OBJECTIVE_LABELS,
   PRACTICE_SKILL_LABELS,
+  PRACTICE_TRANSFER_LABELS,
 } from "@/features/grammar-learning/domain/practice";
 import type { PracticeReferenceAnswer } from "@/shared/types/grammar";
 import type {
@@ -345,21 +347,33 @@ export function PracticeClient({
             已完成 {summary.completedExerciseCount} 道练习。结果按具体语法用法和能力维度记录，不会因多重分类重复计算。
           </p>
           <div className="mt-7 divide-y divide-border border-y border-border">
-            {summary.skillSummaries.map((skill) => (
+            {(summary.objectiveSummaries?.length
+              ? summary.objectiveSummaries.map((objective) => ({
+                  key: objective.learningObjective,
+                  label: PRACTICE_OBJECTIVE_LABELS[objective.learningObjective],
+                  evidenceCount: objective.evidenceCount,
+                  averageScore: objective.averageScore,
+                }))
+              : summary.skillSummaries.map((skill) => ({
+                  key: skill.skillDimension,
+                  label: PRACTICE_SKILL_LABELS[skill.skillDimension],
+                  evidenceCount: skill.evidenceCount,
+                  averageScore: skill.averageScore,
+                }))).map((item) => (
               <div
-                key={skill.skillDimension}
+                key={item.key}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-4"
               >
                 <div>
                   <p className="text-sm font-semibold text-foreground/85">
-                    {PRACTICE_SKILL_LABELS[skill.skillDimension]}
+                    {item.label}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {skill.evidenceCount} 次有效作答
+                    {item.evidenceCount} 次有效作答
                   </p>
                 </div>
                 <p className="text-lg font-semibold text-foreground">
-                  {Math.round(skill.averageScore * 100)}%
+                  {Math.round(item.averageScore * 100)}%
                 </p>
               </div>
             ))}
@@ -413,7 +427,11 @@ export function PracticeClient({
           <span>
             第 {sessionData.progress.current} / {sessionData.progress.total} 题
           </span>
-          <span>{PRACTICE_SKILL_LABELS[exercise.skillDimension]}</span>
+          <span>
+            {exercise.learningObjective
+              ? PRACTICE_OBJECTIVE_LABELS[exercise.learningObjective]
+              : PRACTICE_SKILL_LABELS[exercise.skillDimension]}
+          </span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded bg-foreground/10">
           <div
@@ -442,6 +460,14 @@ export function PracticeClient({
               <dt className="text-muted">语体</dt>
               <dd className="text-foreground/75">{exercise.context.registerLabel}</dd>
             </div>
+            {exercise.transferLevel ? (
+              <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
+                <dt className="text-muted">迁移</dt>
+                <dd className="text-foreground/75">
+                  {PRACTICE_TRANSFER_LABELS[exercise.transferLevel]}
+                </dd>
+              </div>
+            ) : null}
             <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
               <dt className="text-muted">题型</dt>
               <dd className="text-foreground/75">
@@ -604,6 +630,7 @@ export function PracticeClient({
             embedded
             learnerAnswer={submittedAnswer}
             isRecorded={Boolean(attempt)}
+            rubricScores={attempt?.evidence.rubricScores}
           />
 
           {attempt?.canReveal && !isRevealed ? (

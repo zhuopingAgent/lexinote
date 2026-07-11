@@ -9,8 +9,11 @@ import {
   SELECT_EXERCISE_INSTANCE_SQL,
   SELECT_LEARNER_SKILL_STATES_SQL,
   SELECT_PRACTICE_BLUEPRINT_SQL,
+  SELECT_PRACTICE_PLANNER_HISTORY_SQL,
   SELECT_PRACTICE_SESSION_SQL,
   SELECT_PRACTICE_SESSION_SUMMARY_SQL,
+  SELECT_PRACTICE_GENERATION_METRICS_SQL,
+  SELECT_PRACTICE_SESSION_OBJECTIVE_SUMMARY_SQL,
   SELECT_RECENT_EXERCISE_SIGNATURES_SQL,
   SELECT_RECOMMENDED_PRACTICE_GRAMMAR_SQL,
   SELECT_SCENARIO_TEMPLATE_SQL,
@@ -32,11 +35,24 @@ import type {
   PracticeSkillState,
 } from "@/shared/types/practice";
 import type {
+  AnswerContract,
+  PracticeGenerationMetadata,
+  PracticeIntent,
+  PracticeRubric,
+  PracticeRubricScores,
+  MasteryEvidenceKind,
+  LearningObjective,
+  CognitiveOperation,
+  TransferLevel,
+  ScaffoldLevel,
+} from "@/features/grammar-learning/domain/practiceV2";
+import type {
   PracticeBlueprintRow,
   PracticeEvidenceResultRow,
   PracticeExerciseRow,
   PracticeRevealRow,
   PracticeScenarioTemplateRow,
+  PracticePlannerHistoryRow,
   PracticeSessionRow,
   PracticeSkillStateRow,
   PracticeSummaryRow,
@@ -126,6 +142,19 @@ export type PracticeBlueprintRecord = {
   maximumDifficulty: PracticeDifficulty;
   plannerConfig: Record<string, unknown>;
   rubricTemplate: Record<string, unknown>;
+  grammarPointId: string | null;
+  senseKey: string | null;
+  blueprintVersion: number;
+  learningObjective: LearningObjective | null;
+  cognitiveOperation: CognitiveOperation | null;
+  supportedTransferLevels: TransferLevel[];
+  supportedRegisters: string[];
+  supportedScenarios: string[];
+  misconceptionCodes: string[];
+  contextRequirements: string[];
+  difficultyRules: Record<string, unknown>;
+  answerPolicy: Record<string, unknown>;
+  hintPlan: ScaffoldLevel[];
 };
 
 export type ScenarioTemplateRecord = {
@@ -153,6 +182,8 @@ export type PracticeSessionRecord = PracticeSession & {
   generatedExerciseCount: number;
   preferredScene: string | null;
   preferredRegister: string | null;
+  planSnapshot: PracticeIntent[];
+  plannerVersion: number;
 };
 
 export type PracticeExerciseRecord = {
@@ -176,6 +207,10 @@ export type PracticeExerciseRecord = {
   generationSource: "ai" | "fallback" | "deterministic";
   status: PracticeExerciseStatus;
   attemptCount: number;
+  practiceIntent: PracticeIntent | null;
+  answerContract: AnswerContract | null;
+  rubric: PracticeRubric | null;
+  generationMetadata: PracticeGenerationMetadata | null;
 };
 
 function mapSession(row: PracticeSessionRow): PracticeSessionRecord {
@@ -192,6 +227,8 @@ function mapSession(row: PracticeSessionRow): PracticeSessionRecord {
     completedAt: toIsoString(row.completed_at),
     preferredScene: row.preferred_scene,
     preferredRegister: row.preferred_register,
+    planSnapshot: parseJsonArray(row.plan_snapshot) as PracticeIntent[],
+    plannerVersion: toNumber(row.planner_version, 1),
   };
 }
 
@@ -217,6 +254,34 @@ function mapExercise(row: PracticeExerciseRow): PracticeExerciseRecord {
     generationSource: row.generation_source as PracticeExerciseRecord["generationSource"],
     status: row.status as PracticeExerciseStatus,
     attemptCount: toNumber(row.attempt_count),
+    practiceIntent: Object.keys(parseJsonObject(row.practice_intent_snapshot)).length
+      ? (parseJsonObject(row.practice_intent_snapshot) as PracticeIntent)
+      : null,
+    answerContract: Object.keys(parseJsonObject(row.answer_contract)).length
+      ? (parseJsonObject(row.answer_contract) as AnswerContract)
+      : null,
+    rubric: Object.keys(parseJsonObject(row.rubric)).length
+      ? (parseJsonObject(row.rubric) as PracticeRubric)
+      : null,
+    generationMetadata: row.prompt_id
+      ? {
+          promptId: row.prompt_id,
+          promptVersion: toNumber(row.prompt_version ?? 1, 1),
+          schemaVersion: toNumber(row.schema_version, 1),
+          grammarContentVersion: row.grammar_content_version ?? "legacy",
+          model: row.model,
+          generationSource: row.generation_source as PracticeGenerationMetadata["generationSource"],
+          validationResults: parseJsonArray(row.validation_results) as PracticeGenerationMetadata["validationResults"],
+          reviewerResult: Object.keys(parseJsonObject(row.reviewer_result)).length
+            ? (parseJsonObject(row.reviewer_result) as PracticeGenerationMetadata["reviewerResult"])
+            : null,
+          generationRetryCount: toNumber(row.generation_retry_count),
+          networkRetryCount: toNumber(row.network_retry_count),
+          fallbackReason: row.fallback_reason,
+          degradationReason: row.degradation_reason,
+          latencyMs: toNumber(row.generation_latency_ms),
+        }
+      : null,
   };
 }
 
@@ -235,6 +300,8 @@ export class PracticeRepository {
     preferredRegister: string;
     plannedExerciseCount: number;
     metadata?: unknown;
+    planSnapshot?: PracticeIntent[];
+    plannerVersion?: number;
   }) {
     const rows = await query<IdRow>(UPSERT_PRACTICE_SESSION_SQL, [
       input.userId,
@@ -245,6 +312,8 @@ export class PracticeRepository {
       input.preferredRegister,
       input.plannedExerciseCount,
       JSON.stringify(input.metadata ?? {}),
+      JSON.stringify(input.planSnapshot ?? []),
+      input.plannerVersion ?? 1,
     ]);
     return rows[0]?.id ?? "";
   }
@@ -281,6 +350,19 @@ export class PracticeRepository {
           maximumDifficulty: toNumber(row.maximum_difficulty, 4) as PracticeDifficulty,
           plannerConfig: parseJsonObject(row.planner_config),
           rubricTemplate: parseJsonObject(row.rubric_template),
+          grammarPointId: row.grammar_point_id,
+          senseKey: row.sense_key,
+          blueprintVersion: toNumber(row.blueprint_version, 1),
+          learningObjective: row.learning_objective as LearningObjective | null,
+          cognitiveOperation: row.cognitive_operation as CognitiveOperation | null,
+          supportedTransferLevels: parseStringArray(row.supported_transfer_levels) as TransferLevel[],
+          supportedRegisters: parseStringArray(row.supported_registers),
+          supportedScenarios: parseStringArray(row.supported_scenarios),
+          misconceptionCodes: parseStringArray(row.misconception_codes),
+          contextRequirements: parseStringArray(row.context_requirements),
+          difficultyRules: parseJsonObject(row.difficulty_rules),
+          answerPolicy: parseJsonObject(row.answer_policy),
+          hintPlan: parseStringArray(row.hint_plan) as ScaffoldLevel[],
         }
       : null;
   }
@@ -328,6 +410,36 @@ export class PracticeRepository {
     }));
   }
 
+  async getPlannerHistory(userId: string, grammarPointId: string) {
+    const rows = await query<PracticePlannerHistoryRow>(
+      SELECT_PRACTICE_PLANNER_HISTORY_SQL,
+      [userId, grammarPointId]
+    );
+    const attempts = rows.filter((row) => row.is_correct !== null);
+    let consecutiveFailures = 0;
+    for (const row of attempts) {
+      if (row.is_correct) break;
+      consecutiveFailures += 1;
+    }
+    const recentErrorCodes = Array.from(
+      new Set(
+        attempts.flatMap((row) =>
+          parseJsonArray(row.issues).flatMap((issue) => {
+            const record = parseJsonObject(issue);
+            return typeof record.errorTypeCode === "string"
+              ? [record.errorTypeCode]
+              : [];
+          })
+        )
+      )
+    );
+    return {
+      consecutiveFailures,
+      recentErrorCodes,
+      prerequisiteReady: rows[0]?.prerequisite_ready ?? true,
+    };
+  }
+
   async listRecentSignatures(userId: string, grammarPointId: string) {
     const rows = await query<SignatureRow>(SELECT_RECENT_EXERCISE_SIGNATURES_SQL, [
       userId,
@@ -355,6 +467,10 @@ export class PracticeRepository {
     source: PracticeExerciseRecord["generationSource"];
     generationSeed: string;
     contentSignature: string;
+    practiceIntent?: PracticeIntent | null;
+    answerContract?: AnswerContract | null;
+    rubric?: PracticeRubric | null;
+    generationMetadata?: PracticeGenerationMetadata | null;
   }) {
     const rows = await query<IdRow>(INSERT_EXERCISE_INSTANCE_SQL, [
       input.sessionId,
@@ -375,6 +491,24 @@ export class PracticeRepository {
       input.source,
       input.generationSeed,
       input.contentSignature,
+      JSON.stringify(input.practiceIntent ?? {}),
+      JSON.stringify(input.answerContract ?? {}),
+      JSON.stringify(input.rubric ?? {}),
+      input.practiceIntent?.blueprintVersion ?? 1,
+      input.generationMetadata?.promptId ?? null,
+      input.generationMetadata?.promptVersion ?? null,
+      input.generationMetadata?.schemaVersion ?? 1,
+      input.generationMetadata?.grammarContentVersion ?? null,
+      input.generationMetadata?.model ?? null,
+      JSON.stringify(input.generationMetadata?.validationResults ?? []),
+      input.generationMetadata?.reviewerResult
+        ? JSON.stringify(input.generationMetadata.reviewerResult)
+        : null,
+      input.generationMetadata?.generationRetryCount ?? 0,
+      input.generationMetadata?.networkRetryCount ?? 0,
+      input.generationMetadata?.fallbackReason ?? null,
+      input.generationMetadata?.degradationReason ?? null,
+      input.generationMetadata?.latencyMs ?? 0,
     ]);
     return rows[0]?.id ?? "";
   }
@@ -423,6 +557,8 @@ export class PracticeRepository {
     evidenceScore: number;
     independent: boolean;
     contextNovelty: number;
+    rubricScores?: PracticeRubricScores | null;
+    evidenceKind?: MasteryEvidenceKind | null;
   }): Promise<PracticeMasteryEvidence & { attemptId: string }> {
     const rows = await query<PracticeEvidenceResultRow>(RECORD_PRACTICE_ATTEMPT_SQL, [
       input.exerciseId,
@@ -446,6 +582,8 @@ export class PracticeRepository {
       input.independent,
       input.contextNovelty,
       JSON.stringify(input.issues.map((issue) => issue.errorTypeCode)),
+      JSON.stringify(input.rubricScores ?? {}),
+      input.evidenceKind ?? null,
     ]);
     const row = rows[0];
     if (!row) {
@@ -466,6 +604,9 @@ export class PracticeRepository {
       estimate: toNumber(row.estimate),
       confidence: toNumber(row.confidence),
       nextReviewAt: new Date(row.next_review_at).toISOString(),
+      learningObjective: exercise.practiceIntent?.learningObjective,
+      evidenceKind: input.evidenceKind ?? undefined,
+      rubricScores: input.rubricScores ?? undefined,
     };
   }
 
@@ -488,6 +629,8 @@ export class PracticeRepository {
             estimate: toNumber(row.estimate),
             confidence: toNumber(row.confidence),
             nextReviewAt: new Date(row.next_review_at).toISOString(),
+            learningObjective: row.learning_objective as PracticeMasteryEvidence["learningObjective"],
+            evidenceKind: "exposure",
           } satisfies PracticeMasteryEvidence,
         }
       : null;
@@ -519,5 +662,30 @@ export class PracticeRepository {
         } satisfies PracticeSessionSkillSummary,
       ];
     });
+  }
+
+  async getGenerationMetrics(since?: string | null) {
+    const rows = await query<{ metrics: unknown }>(
+      SELECT_PRACTICE_GENERATION_METRICS_SQL,
+      [since ?? null]
+    );
+    return parseJsonObject(rows[0]?.metrics);
+  }
+
+  async getSessionObjectiveSummaries(sessionId: string) {
+    const rows = await query<{
+      learning_objective: string;
+      evidence_count: number | string;
+      average_score: number | string;
+      estimate: number | string | null;
+      confidence: number | string | null;
+    }>(SELECT_PRACTICE_SESSION_OBJECTIVE_SUMMARY_SQL, [sessionId]);
+    return rows.map((row) => ({
+      learningObjective: row.learning_objective,
+      evidenceCount: toNumber(row.evidence_count),
+      averageScore: toNumber(row.average_score),
+      estimate: toNumber(row.estimate ?? 0),
+      confidence: toNumber(row.confidence ?? 0),
+    }));
   }
 }
