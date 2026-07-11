@@ -59,7 +59,7 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
         <Link
           href={`/grammar/${grammarPoint.id}`}
           aria-describedby={titleId}
-          className="inline-flex h-9 items-center justify-center rounded-md px-2 text-sm font-medium text-muted transition hover:bg-surface-strong hover:text-foreground"
+          className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-muted transition hover:border-foreground/30 hover:bg-surface-strong hover:text-foreground"
         >
           查看说明
         </Link>
