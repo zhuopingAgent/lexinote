@@ -185,6 +185,7 @@ export default async function globalSetup() {
         (SELECT COUNT(*) FROM comparison_sets WHERE status = 'active') AS active_comparison_sets,
         (SELECT COUNT(*) FROM error_types WHERE status = 'active') AS active_error_types,
         (SELECT COUNT(*) FROM exercise_blueprints WHERE status = 'active') AS active_exercise_blueprints,
+        (SELECT COUNT(*) FROM exercise_blueprints WHERE status = 'hidden') AS hidden_exercise_blueprints,
         (SELECT COUNT(*) FROM scenario_templates WHERE status = 'active') AS active_scenario_templates,
         (SELECT COUNT(*) FROM learning_stages WHERE status = 'active') AS active_learning_stages,
         (SELECT COUNT(*) FROM learning_modules WHERE status = 'active') AS active_learning_modules,
@@ -533,7 +534,8 @@ export default async function globalSetup() {
       Number(integrity?.migrated_legacy_points) !== 11 ||
       Number(integrity?.active_comparison_sets) !== 27 ||
       Number(integrity?.active_error_types) !== 10 ||
-      Number(integrity?.active_exercise_blueprints) !== 6 ||
+      Number(integrity?.active_exercise_blueprints) !== 3 ||
+      Number(integrity?.hidden_exercise_blueprints) !== 3 ||
       Number(integrity?.active_scenario_templates) !== 10 ||
       Number(integrity?.active_learning_stages) !== 5 ||
       Number(integrity?.active_learning_modules) !== 19 ||

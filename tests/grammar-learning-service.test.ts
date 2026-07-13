@@ -583,8 +583,8 @@ describe("GrammarLearningService", () => {
 
     expect(result.prompt).toContain("日常生活");
     expect(result.prompt).toContain("一般礼貌");
-    expect(result.prompt).toContain("表达功能 / 时间与顺序");
-    expect(result.prompt).toContain("2 场景造句");
+    expect(result.prompt).toContain("请把下面这句中文翻译");
+    expect(result.prompt).toContain("2 接续应用");
     expect(result.prompt).not.toContain("daily_life");
     expect(result.prompt).not.toContain("polite");
 
@@ -595,7 +595,7 @@ describe("GrammarLearningService", () => {
       level: 5,
     });
 
-    expect(advancedResult.prompt).toContain("5 易混语法对比");
+    expect(advancedResult.prompt).toContain("5 易混辨析");
     expect(advancedResult.prompt).not.toBe(result.prompt);
   });
 

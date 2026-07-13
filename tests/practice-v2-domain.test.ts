@@ -105,7 +105,7 @@ describe("PracticeSessionPlanner", () => {
       source,
     });
     expect(plan[1]).toEqual(expect.objectContaining({
-      exerciseType: "register_rewrite",
+      exerciseType: "guided_translation",
       learningObjective: "register_control",
     }));
     expect(new Set(plan.map((item) => item.learningObjective))).toEqual(
@@ -122,6 +122,11 @@ describe("PracticeSessionPlanner", () => {
       source,
     });
     expect(plan).toHaveLength(5);
+    expect(plan.every((item) =>
+      ["meaning_choice", "contrast_choice", "guided_translation"].includes(
+        item.exerciseType
+      )
+    )).toBe(true);
     expect(new Set(plan.map((item) => item.learningObjective)).size).toBeLessThanOrEqual(2);
     expect(plan.some((item) => item.targetMisconceptionCode === "connection_error")).toBe(true);
     for (let index = 2; index < plan.length; index += 1) {

@@ -18,6 +18,7 @@ import {
   resolvePracticeSpecialization,
   type PracticeSpecialization,
 } from "@/features/grammar-learning/domain/practiceSpecializations";
+import { toActivePracticeIntent } from "@/features/grammar-learning/domain/practiceFormats";
 
 export type PracticePlannerSource = {
   now(): Date;
@@ -282,11 +283,11 @@ function selectionReason(input: {
 function alternateIntentType(intent: PracticeIntent): PracticeIntent {
   const candidates: Record<LearningObjective, PracticeExerciseType[]> = {
     meaning: ["meaning_choice", "guided_translation"],
-    form_connection: ["form_repair", "guided_translation"],
+    form_connection: ["guided_translation", "meaning_choice"],
     grammar_selection: ["contrast_choice", "meaning_choice", "guided_translation"],
-    register_control: ["register_rewrite", "guided_translation", "contextual_response"],
-    collocation_naturalness: ["form_repair", "guided_translation", "contextual_response"],
-    discourse_function: ["contrast_choice", "guided_translation", "contextual_response"],
+    register_control: ["guided_translation", "meaning_choice"],
+    collocation_naturalness: ["guided_translation", "meaning_choice"],
+    discourse_function: ["contrast_choice", "guided_translation", "meaning_choice"],
   };
   const specialization = findPracticeSpecialization(intent.specializationId);
   const exerciseType = candidates[intent.learningObjective].find(
@@ -533,15 +534,18 @@ export function buildPracticeSessionPlan(input: {
       planMetadata: { plannedAt, randomTieBreak: input.source.next() },
     } satisfies PracticeIntent;
   });
-  for (let index = 2; index < plan.length; index += 1) {
+  const activePlan = plan.map((intent) =>
+    toActivePracticeIntent(intent, supportsContrast(input.grammarPoint))
+  );
+  for (let index = 2; index < activePlan.length; index += 1) {
     if (
-      plan[index].exerciseType === plan[index - 1].exerciseType &&
-      plan[index].exerciseType === plan[index - 2].exerciseType
+      activePlan[index].exerciseType === activePlan[index - 1].exerciseType &&
+      activePlan[index].exerciseType === activePlan[index - 2].exerciseType
     ) {
-      plan[index] = alternateIntentType(plan[index]);
+      activePlan[index] = alternateIntentType(activePlan[index]);
     }
   }
-  return plan;
+  return activePlan;
 }
 
 export const defaultPracticePlannerSource: PracticePlannerSource = {

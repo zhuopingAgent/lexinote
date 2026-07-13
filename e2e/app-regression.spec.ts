@@ -288,11 +288,14 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   expect(second.exercise).toEqual(
     expect.objectContaining({
       sequenceNumber: 2,
-      exerciseType: "register_rewrite",
+      exerciseType: "guided_translation",
       learningObjective: "register_control",
     })
   );
-  expect(second.exercise.prompt).toContain("説明してもらえる？");
+  expect(second.exercise.prompt).toContain(
+    "不好意思，我没听清楚，能请您再说明一遍吗？"
+  );
+  expect(second.exercise.prompt).not.toContain("説明してもらえる？");
   expect(second.exercise).not.toHaveProperty("referenceAnswers");
 
   const registerResponse = await page.request.post(
@@ -376,9 +379,19 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     );
     expect(nextResponse.ok()).toBe(true);
     const next = (await nextResponse.json()) as {
-      exercise: { id: string; sequenceNumber: number; prompt: string };
+      exercise: {
+        id: string;
+        sequenceNumber: number;
+        prompt: string;
+        exerciseType: string;
+        responseMode: string;
+      };
     };
     expect(next.exercise.sequenceNumber).toBe(sequenceNumber);
+    expect(["meaning_choice", "contrast_choice", "guided_translation"]).toContain(
+      next.exercise.exerciseType
+    );
+    expect(["choice", "text"]).toContain(next.exercise.responseMode);
     expect(next.exercise).not.toHaveProperty("referenceAnswers");
     expect(next.exercise.prompt).not.toMatch(/\*\*|daily_life|register_rewrite/);
     const itemReveal = await page.request.post(
@@ -423,10 +436,14 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
   await expect(page.getByText("安排原因", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^(选择题|中译日)$/).first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText("练习设置");
   await expect(page.locator("body")).not.toContainText("需要表达");
   await expect(page.locator("body")).not.toContainText("daily_life");
   await expect(page.locator("body")).not.toContainText("polite");
+  await expect(page.locator("body")).not.toContainText("形式修复");
+  await expect(page.locator("body")).not.toContainText("语体转换");
+  await expect(page.locator("body")).not.toContainText("场景回应");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

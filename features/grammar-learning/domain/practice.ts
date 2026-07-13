@@ -34,7 +34,7 @@ export const PRACTICE_EXERCISE_LABELS: Record<PracticeExerciseType, string> = {
   form_repair: "形式修复",
   contrast_choice: "易混辨析",
   register_rewrite: "语体转换",
-  guided_translation: "受限中译日",
+  guided_translation: "中译日",
   contextual_response: "场景回应",
 };
 
@@ -136,8 +136,8 @@ function exerciseForSkill(
       };
     case "form_connection":
       return {
-        blueprintSlug: "form_repair",
-        exerciseType: "form_repair",
+        blueprintSlug: "guided_translation",
+        exerciseType: "guided_translation",
         responseMode: "text",
       };
     case "contrast_selection":
@@ -154,8 +154,8 @@ function exerciseForSkill(
           };
     case "register_control":
       return {
-        blueprintSlug: "register_rewrite",
-        exerciseType: "register_rewrite",
+        blueprintSlug: "guided_translation",
+        exerciseType: "guided_translation",
         responseMode: "text",
       };
     case "contextual_production":
@@ -166,8 +166,8 @@ function exerciseForSkill(
       };
     case "transfer_naturalness":
       return {
-        blueprintSlug: "contextual_response",
-        exerciseType: "contextual_response",
+        blueprintSlug: "guided_translation",
+        exerciseType: "guided_translation",
         responseMode: "text",
       };
   }

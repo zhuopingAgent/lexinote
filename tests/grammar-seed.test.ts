@@ -195,6 +195,10 @@ describe("grammar domain seed", () => {
     expect(scenarioBlock).toContain("'workplace', '公司'");
     expect(sql).toContain("UNIQUE (user_id, client_session_key)");
     expect(sql).toContain("UNIQUE (practice_session_id, sequence_number)");
+    expect(sql).toContain(
+      "WHEN exercise_type IN ('meaning_choice', 'contrast_choice', 'guided_translation')"
+    );
+    expect(sql).toContain("ELSE 'hidden'");
   });
 
   it("adds versioned V2 practice contracts without replacing legacy practice data", () => {

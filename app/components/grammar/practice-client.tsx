@@ -12,7 +12,6 @@ import {
   readJson,
 } from "@/app/lib/api-client";
 import {
-  PRACTICE_EXERCISE_LABELS,
   PRACTICE_OBJECTIVE_LABELS,
   PRACTICE_SKILL_LABELS,
   PRACTICE_TRANSFER_LABELS,
@@ -479,9 +478,9 @@ export function PracticeClient({
               </div>
             ) : null}
             <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
-              <dt className="text-muted">题型</dt>
+              <dt className="text-muted">形式</dt>
               <dd className="text-foreground/75">
-                {PRACTICE_EXERCISE_LABELS[exercise.exerciseType]}
+                {exercise.responseMode === "choice" ? "选择题" : "中译日"}
               </dd>
             </div>
             <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
@@ -524,7 +523,7 @@ export function PracticeClient({
 
           <section className="py-6" aria-labelledby="practice-task-title">
             <p className="text-xs font-semibold text-accent-strong">
-              {PRACTICE_EXERCISE_LABELS[exercise.exerciseType]}
+              {exercise.responseMode === "choice" ? "选择题" : "中译日"}
             </p>
             <h2
               id="practice-task-title"
