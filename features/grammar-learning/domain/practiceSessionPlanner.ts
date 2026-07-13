@@ -296,7 +296,7 @@ function alternateIntentType(intent: PracticeIntent): PracticeIntent {
       (!specialization || specialization.supportedExerciseTypes.includes(candidate))
   ) ?? intent.exerciseType;
   const responseMode =
-    exerciseType === "contrast_choice"
+    exerciseType === "meaning_choice" || exerciseType === "contrast_choice"
       ? "choice" as const
       : "text" as const;
   const cognitiveOperation: CognitiveOperation =

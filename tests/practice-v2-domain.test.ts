@@ -236,6 +236,15 @@ describe("PracticeSessionPlanner", () => {
       .toBeGreaterThanOrEqual(2);
     expect(plan.some((item) => item.selectionReasonZh.includes("提示"))).toBe(true);
     expect(plan.every((item) => item.transferLevel !== "far_transfer")).toBe(true);
+    expect(
+      plan.every((item) =>
+        item.exerciseType === "meaning_choice" || item.exerciseType === "contrast_choice"
+          ? item.answerPolicy.responseMode === "choice" &&
+            item.answerPolicy.requireExactChoice &&
+            !item.answerPolicy.allowEquivalentAnswers
+          : item.answerPolicy.responseMode === "text"
+      )
+    ).toBe(true);
   });
 
   it("starts stable due knowledge with an unassisted delayed recall", () => {
