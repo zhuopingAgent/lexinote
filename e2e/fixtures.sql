@@ -163,3 +163,24 @@ VALUES
     $json$::jsonb,
     '2026-04-20T09:50:00+09:00'
   );
+
+INSERT INTO review_records (
+  user_id,
+  grammar_point_id,
+  status,
+  mistake_count,
+  last_reviewed_at
+)
+SELECT
+  '00000000-0000-0000-0000-000000000001'::uuid,
+  grammar_points.id,
+  'mastered',
+  0,
+  NOW()
+FROM grammar_points
+WHERE grammar_points.seed_key = 'gp_a_wa_b_desu'
+ON CONFLICT (user_id, grammar_point_id) DO UPDATE SET
+  status = EXCLUDED.status,
+  mistake_count = EXCLUDED.mistake_count,
+  last_reviewed_at = EXCLUDED.last_reviewed_at,
+  updated_at = NOW();

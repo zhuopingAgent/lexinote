@@ -82,6 +82,7 @@ const grammarPoint: GrammarPointDetail = {
     },
   ],
   isFavorite: false,
+  learningStatus: null,
   notes: "日常礼貌请求非常实用。",
   jlptLevel: "N4",
   commonMistakes: ["句尾变成〜てもらえる？会明显变随便"],

@@ -115,6 +115,10 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("expression_function");
   await expect(page.getByText("已显示 36 个", { exact: true })).toBeVisible();
+  const masteredCard = page.locator("article").filter({
+    has: page.getByRole("link", { name: "AはBです", exact: true }),
+  });
+  await expect(masteredCard.getByText("已掌握", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "加载更多", exact: true }).click();
   await expect(page.getByText("已显示 72 个", { exact: true })).toBeVisible();
 

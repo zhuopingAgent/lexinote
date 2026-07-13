@@ -763,5 +763,8 @@ export function mapSummaryRow(row: GrammarSummaryRow): GrammarPointSummary {
     sceneTags: parseTags(row.scene_tags),
     registerTags: parseTags(row.register_tags),
     isFavorite: row.is_favorite,
+    learningStatus: row.learning_status
+      ? parseReviewStatus(row.learning_status)
+      : null,
   };
 }

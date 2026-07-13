@@ -123,6 +123,7 @@ function toGrammarPointSummary(grammarPoint: GrammarPointDetail): GrammarPointSu
     sceneTags: grammarPoint.sceneTags,
     registerTags: grammarPoint.registerTags,
     isFavorite: grammarPoint.isFavorite,
+    learningStatus: grammarPoint.learningStatus,
   };
 }
 

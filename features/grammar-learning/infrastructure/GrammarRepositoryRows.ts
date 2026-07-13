@@ -30,6 +30,7 @@ export type GrammarSummaryRow = {
   practicality: string;
   spoken_or_written: string;
   is_favorite: boolean;
+  learning_status: string | null;
   scene_tags: unknown;
   register_tags: unknown;
 };
