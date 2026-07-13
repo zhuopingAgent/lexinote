@@ -374,7 +374,13 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
       FROM favorites
       WHERE favorites.user_id = $4::uuid
         AND favorites.grammar_point_id = gp.id
-    ) AS is_favorite
+    ) AS is_favorite,
+    (
+      SELECT review_records.status
+      FROM review_records
+      WHERE review_records.user_id = $4::uuid
+        AND review_records.grammar_point_id = gp.id
+    ) AS learning_status
   FROM grammar_points gp
   ${GRAMMAR_POINT_SELECT_JOINS}
   WHERE gp.status = 'active'
@@ -462,7 +468,13 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
       FROM favorites
       WHERE favorites.user_id = $2::uuid
         AND favorites.grammar_point_id = gp.id
-    ) AS is_favorite
+    ) AS is_favorite,
+    (
+      SELECT review_records.status
+      FROM review_records
+      WHERE review_records.user_id = $2::uuid
+        AND review_records.grammar_point_id = gp.id
+    ) AS learning_status
   FROM grammar_points gp
   ${GRAMMAR_POINT_SELECT_JOINS}
   LEFT JOIN LATERAL (
@@ -764,7 +776,13 @@ export const DELETE_FAVORITE_SQL = `
 export const SELECT_FAVORITES_SQL = `
   SELECT
     ${GRAMMAR_POINT_SELECT_FIELDS},
-    TRUE AS is_favorite
+    TRUE AS is_favorite,
+    (
+      SELECT review_records.status
+      FROM review_records
+      WHERE review_records.user_id = $1::uuid
+        AND review_records.grammar_point_id = gp.id
+    ) AS learning_status
   FROM favorites
   JOIN grammar_points gp ON gp.id = favorites.grammar_point_id
   ${GRAMMAR_POINT_SELECT_JOINS}
@@ -786,6 +804,7 @@ export const SELECT_REVIEW_ITEMS_SQL = `
       WHERE favorites.user_id = rr.user_id
         AND favorites.grammar_point_id = gp.id
     ) AS is_favorite,
+    rr.status AS learning_status,
     latest_feedback.sentence AS latest_sentence,
     latest_feedback.feedback_text AS latest_feedback,
     latest_feedback.corrected_sentence,

@@ -281,6 +281,7 @@ export type GrammarPointSummary = {
   sceneTags: GrammarTag[];
   registerTags: GrammarTag[];
   isFavorite?: boolean;
+  learningStatus: ReviewStatus | null;
 };
 
 export type GrammarExample = {

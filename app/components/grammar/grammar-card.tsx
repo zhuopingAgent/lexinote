@@ -26,7 +26,14 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
             </p>
           ) : null}
         </div>
-        <PracticalityBadge practicality={grammarPoint.practicality} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {grammarPoint.learningStatus === "mastered" ? (
+            <span className="inline-flex min-h-7 items-center rounded-full border border-[#4ade8050] bg-[#4ade8014] px-3 py-1 text-xs font-semibold text-[#86efac]">
+              已掌握
+            </span>
+          ) : null}
+          <PracticalityBadge practicality={grammarPoint.practicality} />
+        </div>
       </div>
 
       <p className="mt-3 text-xs leading-5 text-muted">

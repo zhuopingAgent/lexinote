@@ -40,6 +40,7 @@ const grammarPoint = {
   spokenOrWritten: "spoken",
   sceneTags: [{ nameEn: "hospital", nameZh: "医院" }],
   registerTags: [{ nameEn: "polite", nameZh: "一般礼貌" }],
+  learningStatus: null,
   commonMistakes: ["对医生说成〜てもらえる？会显得太随便。"],
   connections: [
     {
