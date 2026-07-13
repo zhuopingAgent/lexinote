@@ -366,6 +366,25 @@ describe("practice V2 validators and fallback", () => {
     expect(result.prompt).not.toContain("会議ある？");
   });
 
+  it("falls back when compatibility planned generation throws", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const requester = vi.fn(async () => {
+      throw new Error("provider quota unavailable");
+    });
+    const client = new GrammarAiClient(requester as never);
+    const result = await client.generatePlannedExercise({
+      grammarPoint,
+      skillDimension: "contextual_production",
+      exerciseType: "guided_translation",
+      difficulty: 2,
+      context,
+      generationSeed: "planned-generation-fallback",
+    });
+    expect(requester).toHaveBeenCalledTimes(1);
+    expect(result.source).toBe("fallback");
+    expect(result.prompt).toContain("请把下面这句中文翻译");
+  });
+
   it("retries thrown network failures once and then uses validated fallback", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     const requester = vi.fn(async () => {
@@ -444,5 +463,25 @@ describe("practice V2 validators and fallback", () => {
     expect(feedback.isCorrect).toBe(true);
     expect(feedback.issues).toEqual([]);
     expect(feedback.explanation).toContain("这句可以");
+  });
+
+  it("falls back when sentence feedback request throws", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const requester = vi.fn(async () => {
+      throw new Error("provider quota unavailable");
+    });
+    const client = new GrammarAiClient(requester as never);
+    const intent = translationIntent();
+    const item = buildLocalFallbackV2({ intent, grammarPoint, fallbackReason: "TEST" });
+    const feedback = await client.evaluateSentence({
+      grammarPoint,
+      sentence: item.answerContract.allowedVariants[0],
+      sceneTag: "daily_life",
+      registerTag: "polite",
+      answerContract: item.answerContract,
+    });
+    expect(requester).toHaveBeenCalledTimes(1);
+    expect(feedback.source).toBe("fallback");
+    expect(feedback.isCorrect).toBe(true);
   });
 });
