@@ -242,7 +242,7 @@ export class GrammarAiClient {
       systemPrompt:
         "你只负责把确定的教学规格实现成自然日语练习。只返回严格 JSON。",
       userPrompt: buildPlannedExerciseGenerationPrompt(input),
-    });
+    }).catch(() => null);
     const parsed = responseText
       ? parsePracticeOutput(extractJsonObject(responseText))
       : null;
@@ -330,7 +330,7 @@ export class GrammarAiClient {
       systemPrompt:
         "你是日语语法反馈教练。你只返回严格 JSON，不返回 Markdown。",
       userPrompt: buildSentenceFeedbackPrompt(input),
-    });
+    }).catch(() => null);
     const parsed = responseText
       ? parseFeedbackOutput(extractJsonObject(responseText), input.grammarPoint.id)
       : null;

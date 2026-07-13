@@ -139,6 +139,7 @@ export function PracticeClient({
     async function startSession() {
       setIsLoading(true);
       setError(null);
+      setAiApiErrorMessage(null);
       try {
         const response = await fetch("/api/practice/sessions", {
           method: "POST",
@@ -153,6 +154,7 @@ export function PracticeClient({
           }),
         }).then((result) => readJson<PracticeSessionResponse>(result));
         if (!controller.signal.aborted) {
+          setAiApiErrorMessage(null);
           setSessionData(response);
         }
       } catch (requestError) {
@@ -183,6 +185,7 @@ export function PracticeClient({
     setReferenceAnswers([]);
     setIsRevealed(false);
     setError(null);
+    setAiApiErrorMessage(null);
   }
 
   function restartSession() {
@@ -307,6 +310,7 @@ export function PracticeClient({
         }
       ).then((result) => readJson<PracticeSessionResponse>(result));
       resetExerciseState();
+      setAiApiErrorMessage(null);
       setSessionData(response);
     } catch (requestError) {
       if (isAiQuotaExhaustedError(requestError)) {
