@@ -49,6 +49,7 @@ import {
   defaultPracticePlannerSource,
 } from "@/features/grammar-learning/domain/practiceSessionPlanner";
 import { GRAMMAR_PRACTICE_CONTENT_VERSION } from "@/features/grammar-learning/domain/practiceSpecializations";
+import { toActivePracticeIntent } from "@/features/grammar-learning/domain/practiceFormats";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -588,6 +589,10 @@ export class PracticeSessionService {
     intent: PracticeIntent;
   }): Promise<PracticeSessionResponse> {
     const sequenceNumber = input.session.generatedExerciseCount + 1;
+    const plannedIntent = toActivePracticeIntent(
+      input.intent,
+      input.grammarPoint.comparisonSets.some((set) => set.members.length >= 2)
+    );
     const recentSignatures = await this.practiceRepository.listRecentSignatures(
       input.userId,
       input.grammarPoint.id
@@ -595,7 +600,7 @@ export class PracticeSessionService {
     const generationSeed = randomUUID();
     const generated = await this.grammarAiClient.generatePracticeItemV2({
       grammarPoint: input.grammarPoint,
-      intent: input.intent,
+      intent: plannedIntent,
       generationSeed,
     });
     const actualIntent = generated.intent;

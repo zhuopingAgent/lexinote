@@ -11,15 +11,17 @@ import {
 import {
   CONSTRAINED_TRANSLATION_PROMPT,
   CONTRAST_CHOICE_PROMPT,
-  FORM_REPAIR_PROMPT,
   MEANING_CHOICE_PROMPT,
-  REGISTER_REWRITE_PROMPT,
   REPAIR_EXERCISE_PROMPT,
   REVIEW_GENERATED_EXERCISE_PROMPT,
-  SCENARIO_RESPONSE_PROMPT,
   SHARED_GENERATION_PROMPT,
   buildPracticeGenerationPromptV2,
 } from "@/features/grammar-learning/prompts/practiceV2";
+import {
+  ACTIVE_PRACTICE_GENERATION_TYPES,
+  isActivePracticeGenerationType,
+  toActivePracticeIntent,
+} from "@/features/grammar-learning/domain/practiceFormats";
 import type { GrammarPointDetail } from "@/shared/types/grammar";
 import type { PracticeContext } from "@/shared/types/practice";
 
@@ -49,6 +51,9 @@ const grammarPoint = {
   ],
   formSiblings: [],
   comparisonSets: [],
+  similarGrammar: [],
+  sceneTags: [{ nameEn: "daily_life", nameZh: "日常生活" }],
+  registerTags: [{ nameEn: "polite", nameZh: "一般礼貌" }],
 } as unknown as GrammarPointDetail;
 
 const context: PracticeContext = {
@@ -87,8 +92,13 @@ function translationIntent() {
 
 describe("practice V2 prompt contracts", () => {
   it("gives every prompt a stable version and structured JSON input", () => {
-    const prompts = [SHARED_GENERATION_PROMPT, MEANING_CHOICE_PROMPT, FORM_REPAIR_PROMPT, CONTRAST_CHOICE_PROMPT, REGISTER_REWRITE_PROMPT, CONSTRAINED_TRANSLATION_PROMPT, SCENARIO_RESPONSE_PROMPT, REPAIR_EXERCISE_PROMPT, REVIEW_GENERATED_EXERCISE_PROMPT];
-    expect(prompts.every((prompt) => prompt.id && prompt.version >= 2)).toBe(true);
+    const prompts = [SHARED_GENERATION_PROMPT, MEANING_CHOICE_PROMPT, CONTRAST_CHOICE_PROMPT, CONSTRAINED_TRANSLATION_PROMPT, REPAIR_EXERCISE_PROMPT, REVIEW_GENERATED_EXERCISE_PROMPT];
+    expect(prompts.every((prompt) => prompt.id && prompt.version >= 3)).toBe(true);
+    expect(ACTIVE_PRACTICE_GENERATION_TYPES).toEqual([
+      "meaning_choice",
+      "contrast_choice",
+      "guided_translation",
+    ]);
     const intent = translationIntent();
     const built = buildPracticeGenerationPromptV2({
       intent,
@@ -98,6 +108,18 @@ describe("practice V2 prompt contracts", () => {
     });
     expect(built.userPrompt).toContain("PRACTICE_INTENT_JSON:");
     expect(built.userPrompt).not.toMatch(/分析过程|思维链|chain of thought/i);
+  });
+
+  it("normalizes historical text intents before any generation call", () => {
+    const intent = translationIntent();
+    for (const exerciseType of ["form_repair", "register_rewrite", "contextual_response"] as const) {
+      const normalized = toActivePracticeIntent(
+        { ...intent, blueprintId: exerciseType, exerciseType },
+        false
+      );
+      expect(normalized.exerciseType).toBe("guided_translation");
+      expect(normalized.answerPolicy.responseMode).toBe("text");
+    }
   });
 
   it("strictly parses all six discriminated item schemas", () => {
@@ -192,6 +214,11 @@ describe("practice V2 validators and fallback", () => {
       expect(forms).toContain(form);
     }
     expect(fallbackSupportFor(grammarPoint).id).toBe("existence");
+    expect(PRACTICE_FALLBACK_SUPPORT_MATRIX.every((entry) =>
+      entry.supportedExerciseTypes.every((type) =>
+        isActivePracticeGenerationType(type)
+      )
+    )).toBe(true);
   });
 
   it("validates closed fallback items across the golden grammar families", () => {
@@ -316,6 +343,29 @@ describe("practice V2 validators and fallback", () => {
     )).toBe(true);
   });
 
+  it("rejects retired text forms from the compatibility generator", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const requester = vi.fn(async () => JSON.stringify({
+      task_zh: "把这句日语改成礼貌体：会議ある？",
+      reference_answers: [{
+        jp: "会議がありますか。",
+        zh: "有会议吗？",
+        note_zh: "礼貌表达。",
+      }],
+      hints: ["修改句尾。"],
+    }));
+    const client = new GrammarAiClient(requester as never);
+    const result = await client.generatePractice({
+      grammarPoint,
+      sceneTag: "daily_life",
+      registerTag: "polite",
+      level: 4,
+    });
+    expect(result.source).toBe("fallback");
+    expect(result.prompt).toContain("请把下面这句中文翻译");
+    expect(result.prompt).not.toContain("会議ある？");
+  });
+
   it("retries thrown network failures once and then uses validated fallback", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     const requester = vi.fn(async () => {
@@ -350,6 +400,9 @@ describe("practice V2 validators and fallback", () => {
     });
     const intent = plan[1];
     const item = buildLocalFallbackV2({ intent, grammarPoint: requestPoint, fallbackReason: "TEST" });
+    expect(item.exerciseType).toBe("guided_translation");
+    expect(item.prompt).toContain("不好意思，我没听清楚，能请您再说明一遍吗？");
+    expect(item.prompt).not.toContain("説明してもらえる？");
     const client = new GrammarAiClient();
     const wrong = await client.evaluateSentence({ grammarPoint: requestPoint, sentence: "先生、もう一度説明してもらえる？", sceneTag: "hospital", registerTag: "polite", answerContract: item.answerContract });
     expect(wrong.issues.map((issue) => issue.errorTypeCode)).toContain("register_mismatch");

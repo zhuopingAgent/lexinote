@@ -172,8 +172,10 @@ function resolveSceneLabel(input: {
 }) {
   return (
     input.sceneTagLabel ||
-    input.grammarPoint.sceneTags.find((tag) => tag.nameEn === input.sceneTag)?.nameZh ||
-    input.grammarPoint.sceneTags[0]?.nameZh ||
+    (input.grammarPoint.sceneTags ?? []).find(
+      (tag) => tag.nameEn === input.sceneTag
+    )?.nameZh ||
+    input.grammarPoint.sceneTags?.[0]?.nameZh ||
     "日常生活"
   );
 }
@@ -185,25 +187,19 @@ function resolveRegisterLabel(input: {
 }) {
   return (
     input.registerTagLabel ||
-    input.grammarPoint.registerTags.find((tag) => tag.nameEn === input.registerTag)
+    (input.grammarPoint.registerTags ?? []).find((tag) => tag.nameEn === input.registerTag)
       ?.nameZh ||
-    input.grammarPoint.registerTags[0]?.nameZh ||
+    input.grammarPoint.registerTags?.[0]?.nameZh ||
     "一般礼貌"
   );
 }
 
-function resolveCategoryPath(grammarPoint: GrammarPointDetail) {
-  return [grammarPoint.categoryGroupNameZh, grammarPoint.categoryNameZh]
-    .filter((item): item is string => Boolean(item))
-    .join(" / ") || "文法";
-}
-
 const PRACTICE_LEVEL_LABELS: Record<PracticeLevel, string> = {
-  1: "模仿造句",
-  2: "场景造句",
+  1: "基础理解",
+  2: "接续应用",
   3: "中译日",
-  4: "语体转换",
-  5: "易混语法对比",
+  4: "语体控制",
+  5: "易混辨析",
 };
 
 function resolvePracticeLevelLabel(level: PracticeLevel) {
@@ -262,12 +258,11 @@ export function buildFallbackPractice(input: {
 }): GeneratedPractice {
   const levelLabel = resolvePracticeLevelLabel(input.level);
   const variation = input.variation ?? buildPracticeVariation();
-  const variationSuffix = `本次变化：${variation.intentFocus}${variation.detailConstraint}${variation.outputTexture}`;
 
   if (isHospitalPoliteMoraemasuCase(input)) {
     return {
       prompt:
-        `你在医院听不懂医生的说明，想请医生再说明一遍。请使用「请求、许可与建议」分类中的「〜てもらえますか」造一句自然的日语句子。当前等级：${levelLabel}。${variationSuffix}`,
+        `你正在医院向医生提出请求。请使用「〜てもらえますか」，把下面这句中文翻译成自然日语：“不好意思，我没听清楚，能请您再说明一遍吗？”当前重点：${levelLabel}。`,
       referenceAnswers: [
         {
           jp: "すみません、もう一度説明してもらえますか。",
@@ -292,29 +287,14 @@ export function buildFallbackPractice(input: {
   const example = input.grammarPoint.examples[0];
   const scene = resolveSceneLabel(input);
   const register = resolveRegisterLabel(input);
-  const category = resolveCategoryPath(input.grammarPoint);
-  const comparisonSet = input.grammarPoint.comparisonSets[0];
-  const comparisonMembers = comparisonSet?.members
-    .filter((member) => member.grammarPointId !== input.grammarPoint.id)
-    .map((member) => member.grammarPoint)
-    .join("、");
-  const similarGrammarText =
-    comparisonMembers ||
-    input.grammarPoint.similarGrammar[0]?.similarGrammarPointText ||
-    "相近表达";
-  const comparisonRule = comparisonSet?.decisionRules[0]?.explanationZh;
-  const chineseCue =
+  const rawChineseCue =
     example?.zh ?? input.grammarPoint.naturalTranslation ?? input.grammarPoint.coreMeaning;
-  const promptByLevel: Record<PracticeLevel, string> = {
-    1: `请参考下面的答案结构，替换人物、地点或时间，在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语。重点是接续正确。${variationSuffix}`,
-    2: `你正在「${scene}」场景里和别人沟通。请设定一个具体听话对象和表达目的，用「${category}」分类中的「${input.grammarPoint.grammarPoint}」写一句能直接说出口的「${register}」语体日语。${variationSuffix}`,
-    3: `请把中文意图「${chineseCue}」改成自然日语。不要直译中文语序，必须使用「${input.grammarPoint.grammarPoint}」，并保持「${scene}」场景和「${register}」语体。${variationSuffix}`,
-    4: `请把同一个意思改成「${register}」语体的自然日语，并使用「${input.grammarPoint.grammarPoint}」。注意句尾和称呼不要混用随便体、礼貌体和商务表达。${variationSuffix}`,
-    5: `请在「${scene}」场景中用「${input.grammarPoint.grammarPoint}」写一句「${register}」语体的日语，并特别注意不要和「${similarGrammarText}」混淆。${comparisonRule ? `判断依据：${comparisonRule}` : "句子要体现目标语法自己的用法边界。"}${variationSuffix}`,
-  };
+  const chineseCue = /[。？！!?]$/.test(rawChineseCue)
+    ? rawChineseCue
+    : `${rawChineseCue}。`;
 
   return {
-    prompt: `${promptByLevel[input.level]}当前等级：${levelLabel}。`,
+    prompt: `在「${scene}」场景中，请把下面这句中文翻译成「${register}」语体的自然日语，并使用「${input.grammarPoint.grammarPoint}」：“${chineseCue}”当前重点：${levelLabel}。`,
     referenceAnswers: buildFallbackReferenceAnswers(input.grammarPoint),
     hints: [
       `练习等级：${levelLabel}`,

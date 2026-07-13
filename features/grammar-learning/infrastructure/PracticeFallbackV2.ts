@@ -11,6 +11,7 @@ import type {
   PracticeItemV2,
 } from "@/features/grammar-learning/domain/practiceV2";
 import { findPracticeSpecialization } from "@/features/grammar-learning/domain/practiceSpecializations";
+import { toActivePracticeIntent } from "@/features/grammar-learning/domain/practiceFormats";
 
 export type FallbackSupport = {
   id: string;
@@ -39,7 +40,7 @@ export const PRACTICE_FALLBACK_SUPPORT_MATRIX: FallbackSupport[] = [
   {
     id: "hospital-polite-request",
     canonicalForms: ["〜てもらえますか"],
-    supportedExerciseTypes: ["meaning_choice", "register_rewrite"],
+    supportedExerciseTypes: ["meaning_choice", "guided_translation"],
     supportedScenarios: ["hospital"],
     supportedRegisters: ["polite", "business"],
     validatedTemplates: ["hospital-repeat-request", "workplace-confirmation-request"],
@@ -268,25 +269,73 @@ function comparisonChoiceFallback(input: {
   };
 }
 
-function hospitalRegisterFallback(input: {
+function hospitalTranslationFallback(input: {
   intent: PracticeIntent;
   grammarPoint: GrammarPointDetail;
   fallbackReason: string;
 }): PracticeItemV2 {
   const root = base(input);
   const answer = {
+    jp: "すみません、もう一度説明してもらえますか。",
+    zh: "不好意思，能请您再说明一遍吗？",
+    noteZh: "使用目标语法完成一般礼貌请求。",
+  };
+  const polishedAnswer = {
     jp: "すみません、もう一度説明していただけますか。",
     zh: "不好意思，能请您再说明一遍吗？",
-    noteZh: "对医生使用更郑重、自然的请求。",
+    noteZh: "对医生时，这个说法更加郑重自然。",
   };
+  const chineseSentence = "不好意思，我没听清楚，能请您再说明一遍吗？";
   return {
     ...root,
-    referenceAnswers: [answer],
-    answerContract: { ...root.answerContract, allowedVariants: [answer.jp] },
-    exerciseType: "register_rewrite",
-    prompt: "你在医院没有听清医生的说明。下面的说法对医生过于随便：「先生、もう一度説明してもらえる？」请保留原意，改成自然礼貌的日语。",
-    sourceSentence: "先生、もう一度説明してもらえる？",
-    targetRegister: "polite",
+    referenceAnswers: [polishedAnswer, answer],
+    answerContract: {
+      ...root.answerContract,
+      allowedVariants: [polishedAnswer.jp, answer.jp],
+      requiredMeaningSlots: [chineseSentence],
+    },
+    exerciseType: "guided_translation",
+    instructionZh: "请把完整中文句子翻译成适合当前场景的自然日语。",
+    prompt: `你正在医院向医生提出请求。请把下面这句中文翻译成自然日语：“${chineseSentence}”`,
+    chineseSentence,
+  };
+}
+
+function verifiedExampleTranslationFallback(input: {
+  intent: PracticeIntent;
+  grammarPoint: GrammarPointDetail;
+  fallbackReason: string;
+}): PracticeItemV2 | null {
+  const example = input.grammarPoint.examples.find(
+    (candidate) =>
+      candidate.sceneTag?.nameEn === input.intent.context.sceneSlug &&
+      Boolean(candidate.zh)
+  ) ?? input.grammarPoint.examples.find((candidate) => Boolean(candidate.zh));
+  if (!example?.zh) return null;
+  const chineseSentence = /[。？！!?]$/.test(example.zh)
+    ? example.zh
+    : `${example.zh}。`;
+  const reference = {
+    jp: example.jp,
+    zh: chineseSentence,
+    noteZh: example.notes ?? "使用经过验证的语法例句。",
+  };
+  const root = base({
+    ...input,
+    degradationReason: "使用经过验证的例句生成封闭中译日",
+  });
+  return {
+    ...root,
+    exerciseType: "guided_translation",
+    instructionZh: "请把完整中文句子翻译成自然日语。",
+    prompt: `请把下面这句中文翻译成自然日语：“${chineseSentence}”`,
+    chineseSentence,
+    referenceAnswers: [reference],
+    answerContract: {
+      ...root.answerContract,
+      allowedVariants: [reference.jp],
+      requiredMeaningSlots: [chineseSentence],
+    },
   };
 }
 
@@ -314,7 +363,7 @@ function existenceTranslationFallback(input: {
   };
 }
 
-export function buildLocalFallbackV2(input: {
+function buildLocalFallbackV2ForActiveIntent(input: {
   intent: PracticeIntent;
   grammarPoint: GrammarPointDetail;
   fallbackReason: string;
@@ -329,11 +378,11 @@ export function buildLocalFallbackV2(input: {
   let item: PracticeItemV2;
   if (
     isDeclaredSupported &&
-    input.intent.exerciseType === "register_rewrite" &&
+    input.intent.exerciseType === "guided_translation" &&
     input.intent.context.sceneSlug === "hospital" &&
     input.grammarPoint.grammarPoint === "〜てもらえますか"
   ) {
-    item = hospitalRegisterFallback(input);
+    item = hospitalTranslationFallback(input);
   } else if (
     isDeclaredSupported &&
     input.intent.exerciseType === "guided_translation" &&
@@ -378,6 +427,25 @@ export function buildLocalFallbackV2(input: {
         },
       },
     });
+  } else if (input.intent.exerciseType === "guided_translation") {
+    item = verifiedExampleTranslationFallback(input) ?? meaningFallback({
+      ...input,
+      degradationReason: "缺少可直接翻译的已验证例句，降级为封闭意义确认",
+      intent: {
+        ...input.intent,
+        blueprintId: "meaning_choice",
+        exerciseType: "meaning_choice",
+        cognitiveOperation: "recognize",
+        scaffoldLevel: "options",
+        transferLevel: "reproduction",
+        answerPolicy: {
+          ...input.intent.answerPolicy,
+          responseMode: "choice",
+          requireExactChoice: true,
+          allowEquivalentAnswers: false,
+        },
+      },
+    });
   } else {
     const degradedIntent: PracticeIntent = input.intent.exerciseType === "meaning_choice"
       ? input.intent
@@ -399,6 +467,20 @@ export function buildLocalFallbackV2(input: {
     throw new Error(`Validated fallback failed: ${validation.errorCodes.join(",")}`);
   }
   return item;
+}
+
+export function buildLocalFallbackV2(input: {
+  intent: PracticeIntent;
+  grammarPoint: GrammarPointDetail;
+  fallbackReason: string;
+}): PracticeItemV2 {
+  return buildLocalFallbackV2ForActiveIntent({
+    ...input,
+    intent: toActivePracticeIntent(
+      input.intent,
+      input.grammarPoint.comparisonSets.some((set) => set.members.length >= 2)
+    ),
+  });
 }
 
 export function fallbackSupportFor(grammarPoint: GrammarPointDetail) {

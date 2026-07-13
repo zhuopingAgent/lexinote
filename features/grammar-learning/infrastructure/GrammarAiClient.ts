@@ -52,6 +52,7 @@ import {
   buildReviewGeneratedExercisePrompt,
 } from "@/features/grammar-learning/prompts/practiceV2";
 import { buildLocalFallbackV2 } from "@/features/grammar-learning/infrastructure/PracticeFallbackV2";
+import { toActivePracticeIntent } from "@/features/grammar-learning/domain/practiceFormats";
 
 export type {
   EvaluatedSentence,
@@ -64,9 +65,7 @@ const PRACTICE_V2_MAX_NETWORK_RETRIES = 1;
 const PRACTICE_V2_MAX_CONTENT_REPAIRS = 2;
 const SEMANTIC_REVIEW_TYPES = new Set([
   "contrast_choice",
-  "register_rewrite",
   "guided_translation",
-  "contextual_response",
 ]);
 
 type AiTextRequester = typeof requestAiGatewayText;
@@ -79,14 +78,21 @@ export class GrammarAiClient {
     intent: PracticeIntent;
     generationSeed: string;
   }): Promise<PracticeItemV2> {
+    const generationInput = {
+      ...input,
+      intent: toActivePracticeIntent(
+        input.intent,
+        input.grammarPoint.comparisonSets.some((set) => set.members.length >= 2)
+      ),
+    };
     const startedAt = Date.now();
-    const answerContract = buildAnswerContract(input);
+    const answerContract = buildAnswerContract(generationInput);
     const aiGatewayRequest = resolveAiGatewayRequest();
     let generationRetryCount = 0;
     let networkRetryCount = 0;
     const accumulatedValidationResults: GenerationValidationResult[] = [];
     const finalizeFallback = (fallbackReason: string) => {
-      const fallback = buildLocalFallbackV2({ ...input, fallbackReason });
+      const fallback = buildLocalFallbackV2({ ...generationInput, fallbackReason });
       fallback.generationMetadata.validationResults = [
         ...accumulatedValidationResults,
         ...fallback.generationMetadata.validationResults,
@@ -108,7 +114,7 @@ export class GrammarAiClient {
     };
 
     const generationPrompt = buildPracticeGenerationPromptV2({
-      ...input,
+      ...generationInput,
       answerContract,
     });
     let raw: unknown = null;
@@ -135,7 +141,7 @@ export class GrammarAiClient {
     while (generationRetryCount <= PRACTICE_V2_MAX_CONTENT_REPAIRS) {
       const metadata = buildEmptyGenerationMetadata({
         promptId: generationRetryCount === 0 ? generationPrompt.promptId : "practice.repair_exercise",
-        promptVersion: 2,
+        promptVersion: 3,
         model: resolveAiModel("defaultTeacher"),
         generationSource: "ai",
         generationRetryCount,
@@ -143,14 +149,14 @@ export class GrammarAiClient {
         latencyMs: Date.now() - startedAt,
       });
       const item = parsePracticeItemV2(raw, {
-        intent: input.intent,
-        grammarPoint: input.grammarPoint,
+        intent: generationInput.intent,
+        grammarPoint: generationInput.grammarPoint,
         answerContract,
         metadata,
       });
 
       if (item) {
-        const validation = validatePracticeItemV2(item, input.grammarPoint);
+        const validation = validatePracticeItemV2(item, generationInput.grammarPoint);
         accumulatedValidationResults.push(...validation.results);
         item.generationMetadata.validationResults = [...accumulatedValidationResults];
         const localReviewer = SEMANTIC_REVIEW_TYPES.has(item.exerciseType)
@@ -160,7 +166,7 @@ export class GrammarAiClient {
 
         if (validation.valid && localReviewer.valid && SEMANTIC_REVIEW_TYPES.has(item.exerciseType)) {
           const reviewPrompt = buildReviewGeneratedExercisePrompt({
-            intent: input.intent,
+            intent: generationInput.intent,
             answerContract,
             item,
           });
@@ -196,7 +202,7 @@ export class GrammarAiClient {
       if (generationRetryCount >= PRACTICE_V2_MAX_CONTENT_REPAIRS) break;
       generationRetryCount += 1;
       const repairPrompt = buildRepairExercisePrompt({
-        intent: input.intent,
+        intent: generationInput.intent,
         answerContract,
         item: raw,
         errorCodes: lastErrorCodes,
@@ -284,7 +290,12 @@ export class GrammarAiClient {
       ? parsePracticeOutput(extractJsonObject(responseText))
       : null;
 
-    return parsed
+    return parsed &&
+      isPlannedExerciseSafe({
+        ...parsed,
+        exerciseType: "guided_translation",
+        grammarPoint: input.grammarPoint.grammarPoint,
+      })
       ? {
           ...parsed,
           source: "ai",

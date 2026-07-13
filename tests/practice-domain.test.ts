@@ -168,14 +168,14 @@ describe("redesigned practice domain", () => {
       planPracticeExercise({ grammarPoint, sequenceNumber: 2, skillStates: [] })
     ).toMatchObject({
       skillDimension: "form_connection",
-      exerciseType: "form_repair",
+      exerciseType: "guided_translation",
       responseMode: "text",
     });
     expect(
       planPracticeExercise({ grammarPoint, sequenceNumber: 3, skillStates: [] })
     ).toMatchObject({
       skillDimension: "register_control",
-      exerciseType: "register_rewrite",
+      exerciseType: "guided_translation",
     });
   });
 
@@ -258,7 +258,7 @@ describe("redesigned practice domain", () => {
       ],
     });
     expect(result.skillDimension).toBe("transfer_naturalness");
-    expect(result.exerciseType).toBe("contextual_response");
+    expect(result.exerciseType).toBe("guided_translation");
   });
 
   it("uses independent correctness, retry, and hints as mastery evidence", () => {
@@ -294,7 +294,7 @@ describe("redesigned practice domain", () => {
     ).toBe(3);
   });
 
-  it("keeps fallback repair and register tasks targeted without exposing the answer", () => {
+  it("turns legacy text-task requests into complete Chinese translation tasks", () => {
     const repair = buildPlannedExerciseFallback({
       grammarPoint,
       skillDimension: "form_connection",
@@ -312,11 +312,11 @@ describe("redesigned practice domain", () => {
       generationSeed: "register",
     });
 
-    expect(repair.prompt).toContain("接续或活用问题");
-    expect(repair.prompt).toContain("読むてもらえますか");
+    expect(repair.prompt).toContain("请把下面这句中文翻译成自然日语");
+    expect(repair.prompt).toContain("不好意思，我没听清楚，能请您再说明一遍吗？");
     expect(repair.prompt).not.toContain(grammarPoint.examples[0].jp);
-    expect(register.prompt).toContain("不符合人物关系");
-    expect(register.prompt).toContain("説明してもらえる？");
+    expect(register.prompt).toContain("请把下面这句中文翻译成自然日语");
+    expect(register.prompt).not.toContain("説明してもらえる？");
     expect(register.prompt).not.toContain(grammarPoint.examples[0].jp);
     expect(register.prompt).not.toContain("hospital");
     expect(register.prompt).not.toContain("polite");
@@ -356,7 +356,7 @@ describe("redesigned practice domain", () => {
     ).toBe(true);
   });
 
-  it("builds a real repair sentence for placeholder existence patterns", () => {
+  it("turns a legacy existence repair request into safe Chinese translation", () => {
     const exercise = buildPlannedExerciseFallback({
       grammarPoint: existenceGrammarPoint,
       skillDimension: "form_connection",
@@ -366,20 +366,11 @@ describe("redesigned practice domain", () => {
       generationSeed: "clear-existence-repair",
     });
 
-    expect(
-      ["机の上で資料があります。", "近くで駅があります。"].some((sentence) =>
-        exercise.prompt.includes(sentence)
-      )
-    ).toBe(true);
-    expect(exercise.prompt).toContain("请保留原意");
-    expect(exercise.prompt).not.toContain("読みますAがあります");
+    expect(exercise.prompt).toContain("请把下面这句中文翻译成自然日语");
+    expect(exercise.prompt).toMatch(/“(?:桌子上有资料|附近有车站)。?”/);
+    expect(exercise.prompt).not.toContain("机の上に資料があります");
     expect(exercise.prompt).not.toContain("表达计划");
-    expect(exercise.referenceAnswers).toHaveLength(1);
-    expect(exercise.referenceAnswers[0]?.jp).toBe(
-      exercise.prompt.includes("机の上で資料があります。")
-        ? "机の上に資料があります。"
-        : "近くに駅があります。"
-    );
+    expect(exercise.referenceAnswers.length).toBeGreaterThan(0);
   });
 
   it("rejects generated translation tasks that contain a candidate Japanese answer", () => {

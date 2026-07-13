@@ -1801,7 +1801,11 @@ SELECT
   maximum_difficulty,
   planner_config,
   rubric_template,
-  'active'
+  CASE
+    WHEN exercise_type IN ('meaning_choice', 'contrast_choice', 'guided_translation')
+      THEN 'active'
+    ELSE 'hidden'
+  END
 FROM blueprint_seed
 ON CONFLICT (slug) DO UPDATE SET
   name_zh = EXCLUDED.name_zh,

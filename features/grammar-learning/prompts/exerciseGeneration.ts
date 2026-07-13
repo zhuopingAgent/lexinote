@@ -75,17 +75,14 @@ ${formatComparisons(input.grammarPoint) || "无"}
 ${referenceExamples || "无"}
 
 题型规则：
-- form_repair：给出一个存在接续、活用或形式问题的原始表达，要求学习者修复，不能提前写出正确答案。
-- register_rewrite：给出与目标人物关系不匹配的原始表达，要求改为目标语体；不能只要求机械替换句尾。
-- guided_translation：直接给出一整句语义完整、可以逐项核对的中文句子，要求翻成日语。必须把沟通目的和必要细节自然写进这句话，不能把抽象标签交给学习者自行补全。
-- contextual_response：给出具体事件、人物需求或待解决的问题，让学习者独立回应；不能只列“表达计划”“确认信息”等抽象目的。
+- 只生成中译日。直接给出一整句语义完整、可以逐项核对的中文句子，要求翻成日语。
+- 必须把人物、沟通目的和必要细节自然写进中文句子，不能把抽象标签交给学习者自行补全。
 
 输出要求：
 - task_zh 必须具体、可立即作答，且不能包含完整或接近完整的日语答案。
 - task_zh 必须是一段标点完整、语义连贯的自然中文，不能机械拼接“沟通目的 + 并提到 + 必要细节”。
-- guided_translation 应使用“请把下面这句中文翻译成自然日语：‘完整中文句子。’”这一信息结构。错误示例：“表达计划，并提到‘两次’。”正确示例：“这周还有两次会议。”
-- guided_translation 和 contextual_response 的作答内容必须只用中文描述；除了用书名号标出的目标语法标签，不得出现任何候选日语句子。
-- form_repair 和 register_rewrite 可以提供待修改的日语原句，但原句必须确实有错，且不能与 reference_answers 中的答案相同。
+- 使用“请把下面这句中文翻译成自然日语：‘完整中文句子。’”这一信息结构。错误示例：“表达计划，并提到‘两次’。”正确示例：“这周还有两次会议。”
+- 作答内容必须只用中文描述；除了用书名号标出的目标语法标签，不得出现任何候选日语句子。
 - reference_answers 必须准确回答 task_zh，并使用目标语法和目标语体。两个答案可以更换自然措辞，但不得改变题目中的人物、数量、时间或事实。
 - hints 必须依次为：意义方向、接续结构、句子骨架。第三条也不能给出完整答案。
 - 不能出现 daily_life、polite、business 等内部英文标签。
@@ -223,55 +220,14 @@ function buildFallbackTaskContent(
   };
 }
 
-function buildIncorrectConnection(
-  grammarPoint: GrammarPointDetail,
-  referenceSentence?: string
-) {
-  const canonicalForm = grammarPoint.canonicalForm ?? grammarPoint.grammarPoint;
-  if (canonicalForm === "Aがあります") {
-    const source = referenceSentence ?? grammarPoint.examples[0]?.jp ?? "";
-    const incorrect = source.replace(/に(?=[^。？！]*があります)/, "で");
-    if (incorrect !== source) {
-      return incorrect;
-    }
-  }
-
-  const requiredForm = grammarPoint.connections[0]?.requiredForm ?? "";
-  const suffix = grammarPoint.grammarPoint.replace(/^〜/, "");
-  const wrongBase =
-    requiredForm === "te_form" || requiredForm === "ta_form"
-      ? "読む"
-      : requiredForm === "nai_form" || requiredForm === "masu_stem"
-        ? "読みます"
-        : "読みます";
-
-  return `${wrongBase}${suffix}`;
-}
-
-function buildRegisterMismatchSource(
-  grammarPoint: GrammarPointDetail,
-  referenceSentence?: string
-) {
-  const example =
-    referenceSentence ?? grammarPoint.examples[0]?.jp ?? grammarPoint.grammarPoint;
-  return example
-    .replace(/ていただけますか。?$/, "てもらえる？")
-    .replace(/てもらえますか。?$/, "てもらえる？")
-    .replace(/てください。?$/, "て。")
-    .replace(/でしょうか。?$/, "？")
-    .replace(/ですか。?$/, "？")
-    .replace(/ますか。?$/, "？")
-    .replace(/です。?$/, "だ。")
-    .replace(/ます。?$/, "る。");
-}
-
-function ensureSentenceEnding(value: string) {
-  return /[。？！!?]$/.test(value) ? value : `${value}。`;
-}
-
 export function buildPlannedExerciseFallback(input: PlannedTextExerciseInput) {
   const taskContent = buildFallbackTaskContent(input);
-  const cue = taskContent.cueZh;
+  const isHospitalRequestAcceptance =
+    input.context.sceneSlug === "hospital" &&
+    input.grammarPoint.grammarPoint === "〜てもらえますか";
+  const cue = isHospitalRequestAcceptance
+    ? "不好意思，我没听清楚，能请您再说明一遍吗？"
+    : taskContent.cueZh;
   const speakerRole =
     input.context.speakerRole === "学习者" ? "你" : input.context.speakerRole;
   const listenerRole =
@@ -279,31 +235,7 @@ export function buildPlannedExerciseFallback(input: PlannedTextExerciseInput) {
       ? "一位不熟悉的人"
       : input.context.listenerRole;
   const contextLead = `在「${input.context.sceneLabel}」场景中，${speakerRole}正和${listenerRole}交流。`;
-  const incorrectConnection = buildIncorrectConnection(
-    input.grammarPoint,
-    taskContent.referenceAnswers[0]?.jp
-  );
-  const isHospitalRequestAcceptance =
-    input.exerciseType === "register_rewrite" &&
-    input.context.sceneSlug === "hospital" &&
-    input.grammarPoint.grammarPoint === "〜てもらえますか";
-  const registerMismatchSource = isHospitalRequestAcceptance
-    ? "先生、もう一度説明してもらえる？"
-    : buildRegisterMismatchSource(
-        input.grammarPoint,
-        taskContent.referenceAnswers[0]?.jp
-      );
-  const promptByType: Partial<Record<PracticeExerciseType, string>> = {
-    form_repair: `${contextLead}下面这句话存在接续或活用问题：「${ensureSentenceEnding(incorrectConnection)}」请保留原意，改成完整、自然的日语。`,
-    register_rewrite: `${contextLead}下面的说法不符合人物关系：「${ensureSentenceEnding(registerMismatchSource)}」请保留原意，改写成适合对${listenerRole}使用的「${input.context.registerLabel}」日语。`,
-    guided_translation: `${contextLead}请把下面这句中文翻译成自然日语，要求使用「${input.grammarPoint.grammarPoint}」和「${input.context.registerLabel}」语体：“${cue}”`,
-    contextual_response: `${contextLead}请根据场景，用日语向对方传达下面这条具体信息。表达中要使用「${input.grammarPoint.grammarPoint}」和「${input.context.registerLabel}」语体：“${cue}”`,
-  };
-  const baseReferenceAnswers =
-    input.exerciseType === "form_repair" ||
-    input.exerciseType === "register_rewrite"
-      ? taskContent.referenceAnswers.slice(0, 1)
-      : taskContent.referenceAnswers;
+  const baseReferenceAnswers = taskContent.referenceAnswers;
   const referenceAnswers =
     isHospitalRequestAcceptance
       ? [
@@ -318,8 +250,7 @@ export function buildPlannedExerciseFallback(input: PlannedTextExerciseInput) {
 
   return {
     prompt:
-      promptByType[input.exerciseType] ??
-      `${contextLead}请使用「${input.grammarPoint.grammarPoint}」完成表达。`,
+      `${contextLead}请把下面这句中文翻译成自然日语，要求使用「${input.grammarPoint.grammarPoint}」和「${input.context.registerLabel}」语体：“${cue}”`,
     referenceAnswers:
       referenceAnswers.length > 0
         ? referenceAnswers
@@ -346,6 +277,9 @@ export function isPlannedExerciseSafe(input: {
   exerciseType: PracticeExerciseType;
   grammarPoint: string;
 }) {
+  if (input.exerciseType !== "guided_translation") {
+    return false;
+  }
   if (!input.prompt.trim() || input.referenceAnswers.length === 0) {
     return false;
   }
@@ -362,10 +296,7 @@ export function isPlannedExerciseSafe(input: {
   ) {
     return false;
   }
-  if (
-    input.exerciseType === "guided_translation" &&
-    !/[“"]([^”"]{4,}[。？！?])[”"]/.test(input.prompt)
-  ) {
+  if (!/[“"]([^”"]{4,}[。？！?])[”"]/.test(input.prompt)) {
     return false;
   }
 
@@ -389,13 +320,6 @@ export function isPlannedExerciseSafe(input: {
     })
   ) {
     return false;
-  }
-
-  if (
-    input.exerciseType !== "guided_translation" &&
-    input.exerciseType !== "contextual_response"
-  ) {
-    return true;
   }
 
   const grammarMentionForms = Array.from(
