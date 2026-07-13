@@ -342,7 +342,7 @@ export class LlmClient {
       systemPrompt:
         "你是日语词形归一助手。请把用户输入转换成最适合查词的日语词典形或基本形，只返回要求的 JSON。",
       userPrompt: buildJaWordBaseFormPrompt(word, context),
-    });
+    }).catch(() => null);
 
     return responseText ? parseLookupWord(responseText) : null;
   }

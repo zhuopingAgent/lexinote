@@ -68,6 +68,28 @@ describe("LlmClient", () => {
     });
   });
 
+  it("returns null when base-form resolution hits an AI quota error", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const quotaResponse = {
+      ok: false,
+      status: 429,
+      clone() {
+        return quotaResponse;
+      },
+      json: async () => ({
+        error: {
+          code: "insufficient_quota",
+          message: "You exceeded your current quota, please check billing.",
+        },
+      }),
+    };
+    global.fetch = vi.fn().mockResolvedValue(quotaResponse) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(client.resolveLookupWord("見通せない")).resolves.toBeNull();
+  });
+
   it("includes context in base-form resolution prompts", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({
