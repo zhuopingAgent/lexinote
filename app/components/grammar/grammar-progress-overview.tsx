@@ -58,7 +58,7 @@ export function GrammarProgressOverview({
           </Link>
           <Link
             href="/review"
-            aria-label={reviewCount > 0 ? `待复习 ${reviewCount}` : "复习"}
+            aria-label={reviewCount > 0 ? `待完成 ${reviewCount}` : "复习"}
             className={
               reviewCount > 0
                 ? "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong"
@@ -67,7 +67,7 @@ export function GrammarProgressOverview({
           >
             <BookOpenIcon className="size-4" />
             <span className="hidden min-[360px]:inline">
-              {reviewCount > 0 ? "待复习" : "复习"}
+              {reviewCount > 0 ? "待完成" : "复习"}
             </span>
             {reviewCount > 0 ? (
               <span className="tabular-nums">{reviewCount}</span>
