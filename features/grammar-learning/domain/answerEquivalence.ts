@@ -17,6 +17,44 @@ const CONTENT_STOP_WORDS = new Set([
   "します", "しました", "できます", "あります", "います", "ください",
 ]);
 
+const REQUIRED_MEANING_SLOT_RULES = [
+  {
+    label: "还有／剩余",
+    slotPattern: /还有|剩余|仍有/,
+    sentencePattern:
+      /(?:あと|まだ|もう(?:一つ|一回|[一二三四五六七八九十0-9０-９]+(?:つ|回|個|件|枚|本|台)))/,
+  },
+  {
+    label: "两次",
+    slotPattern: /两次|二次/,
+    sentencePattern: /(?:二|2|２)(?:回|度)/,
+  },
+  {
+    label: "再次／一遍",
+    slotPattern:
+      /(?:再|又).*(?:说明|告诉)|(?:再|又)说(?:一遍|一次)|(?:一遍|再一次|再次)/,
+    sentencePattern: /(?:もう一度|もう一回|再度)/,
+  },
+  {
+    label: "慢一点",
+    slotPattern: /慢一点|慢些|说慢/,
+    sentencePattern: /ゆっくり/,
+  },
+] as const;
+
+function failedRequiredMeaningSlots(slots: string[], sentence: string) {
+  return Array.from(new Set(
+    slots.flatMap((slot) =>
+      REQUIRED_MEANING_SLOT_RULES
+        .filter(
+          (rule) =>
+            rule.slotPattern.test(slot) && !rule.sentencePattern.test(sentence)
+        )
+        .map((rule) => rule.label)
+    )
+  ));
+}
+
 function normalizeJapanese(value: string) {
   return value
     .normalize("NFKC")
@@ -37,7 +75,7 @@ function formFragments(grammarPoint: GrammarPointDetail) {
     .map(normalizeJapanese)
     .filter((fragment) => fragment.length >= 2);
   const connectionFragments = (grammarPoint.connections ?? [])
-    .flatMap((connection) => connection.pattern.split(/[+＋/]/))
+    .flatMap((connection) => connection.pattern?.split(/[+＋/]/) ?? [])
     .map((fragment) =>
       normalizeJapanese(
         fragment.replace(/^(?:V|A|N|动词|名词|普通形|て形|た形|ない形)+/i, "")
@@ -189,10 +227,16 @@ export function evaluateAnswerEquivalence(input: {
     input.grammarPoint
   );
   const matchedContentAnchors = anchors.filter((anchor) => sentence.includes(anchor));
+  const failedMeaningSlots = failedRequiredMeaningSlots(
+    input.answerContract.requiredMeaningSlots,
+    input.sentence
+  );
   const requiredAnchorCount = anchors.length === 0
     ? 0
     : Math.min(2, Math.max(1, Math.ceil(anchors.length / 2)));
-  const meaningSatisfied = matchedContentAnchors.length >= requiredAnchorCount;
+  const meaningSatisfied =
+    matchedContentAnchors.length >= requiredAnchorCount &&
+    failedMeaningSlots.length === 0;
   const equivalent = grammarFeatureSatisfied && meaningSatisfied && registerSatisfied;
 
   return {
@@ -210,7 +254,9 @@ export function evaluateAnswerEquivalence(input: {
           ? "存在对象需要用「が」标记。"
           : "没有确认到目标语法形式或所需接续。"
       : !meaningSatisfied
-        ? "目标形式存在，但关键信息还不足。"
+        ? failedMeaningSlots.length > 0
+          ? `目标形式存在，但题目要求的“${failedMeaningSlots.join("、")}”还没有表达出来。`
+          : "目标形式存在，但关键信息还不足。"
         : !registerSatisfied
           ? "语法和意思基本成立，但语体不符合当前场景。"
           : "目标形式、关键信息和语体均满足答案契约。",

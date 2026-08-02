@@ -8,12 +8,13 @@ export const runtime = "nodejs";
 type PracticePageProps = {
   searchParams: Promise<{
     grammarId?: string;
+    comparisonSetId?: string;
     mode?: string;
   }>;
 };
 
 export default async function PracticePage({ searchParams }: PracticePageProps) {
-  const { grammarId, mode } = await searchParams;
+  const { grammarId, comparisonSetId, mode } = await searchParams;
   const entryMode =
     mode === "daily" || mode === "review"
       ? mode
@@ -25,7 +26,11 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
       <AppHeader navItems={getTopNavigationItems("grammar")} />
       <section className="flex-1 px-[clamp(16px,4vw,40px)] py-[clamp(28px,4vw,44px)]">
-        <PracticeClient grammarPointId={grammarId} entryMode={entryMode} />
+        <PracticeClient
+          grammarPointId={grammarId}
+          comparisonSetId={comparisonSetId}
+          entryMode={entryMode}
+        />
       </section>
     </main>
   );

@@ -119,17 +119,85 @@ function hints(intent: PracticeIntent, grammarPoint: GrammarPointDetail): Practi
     .slice(0, 2)
     .join("、");
   if (intent.answerPolicy.responseMode === "choice") {
+    const canonical = grammarPoint.canonicalForm ?? grammarPoint.grammarPoint;
+    if (intent.learningObjective === "form_connection") {
+      return [
+        {
+          level: "semantic_hint",
+          content: "先判断目标表达前面需要名词、动词的哪种活用，还是一个完整小句。",
+          revealsForm: false,
+          revealsAnswer: false,
+        },
+        {
+          level: "form_hint",
+          content: `核对接续骨架：${grammarPoint.connections[0]?.pattern ?? grammarPoint.structure ?? "语法说明中的接续"}`,
+          revealsForm: true,
+          revealsAnswer: false,
+        },
+      ];
+    }
+    if (intent.learningObjective === "grammar_selection") {
+      return [
+        {
+          level: "semantic_hint",
+          content: "先圈出题目真正要求区分的条件，例如话题与主语、存在地点与动作地点，或直接与柔和的语气。",
+          revealsForm: false,
+          revealsAnswer: false,
+        },
+        {
+          level: "form_hint",
+          content: "再逐个检查选项是否同时满足意思、接续和当前语体，不要只看中文翻译相近。",
+          revealsForm: false,
+          revealsAnswer: false,
+        },
+      ];
+    }
+    if (canonical === "Aがあります" || canonical === "Aがいます") {
+      const isInanimate = canonical === "Aがあります";
+      return [
+        {
+          level: "semantic_hint",
+          content: "先判断存在的是人或动物，还是物品、设施、活动等无生命事物。",
+          revealsForm: false,
+          revealsAnswer: false,
+        },
+        {
+          level: "form_hint",
+          content: isInanimate
+            ? "物品、设施和事情的存在用「あります」；人和动物通常用「います」。"
+            : "人和动物的存在通常用「います」；物品、设施和事情用「あります」。",
+          revealsForm: true,
+          revealsAnswer: false,
+        },
+      ];
+    }
+    if (canonical === "AはBです") {
+      return [
+        {
+          level: "semantic_hint",
+          content: "先判断句子是在说明 A 的身份或性质，还是在表达存在、变化或选择。",
+          revealsForm: false,
+          revealsAnswer: false,
+        },
+        {
+          level: "form_hint",
+          content: "「は」提出要谈的 A，「です」对 A 作出判断。",
+          revealsForm: true,
+          revealsAnswer: false,
+        },
+      ];
+    }
     return [
       {
         level: "semantic_hint",
-        content: `先用自己的话概括「${grammarPoint.grammarPoint}」在当前用法中的核心意思，再逐项核对。`,
+        content: "先判断这个表达主要在说明存在、变化、原因、条件，还是说话人的判断与态度。",
         revealsForm: false,
         revealsAnswer: false,
       },
       {
         level: "form_hint",
-        content: "排除只描述其他语法功能、对象类型或使用条件的选项。",
-        revealsForm: false,
+        content: `留意接续「${grammarPoint.connections[0]?.pattern ?? grammarPoint.structure ?? grammarPoint.grammarPoint}」，用它排除功能不同的选项。`,
+        revealsForm: true,
         revealsAnswer: false,
       },
     ];
@@ -199,6 +267,28 @@ function choices(labels: string[], correctIndex = 0) {
   const unique = Array.from(new Set(labels.filter(Boolean))).slice(0, 4);
   const options: PracticeExerciseOption[] = unique.map((label, index) => ({ id: `option-${index + 1}`, label }));
   return { options, correctChoiceId: options[correctIndex]?.id ?? options[0]?.id ?? "option-1" };
+}
+
+function comparisonSetForIntent(
+  grammarPoint: GrammarPointDetail,
+  intent: PracticeIntent
+) {
+  const requestedIds = new Set([
+    grammarPoint.id,
+    ...intent.comparisonGrammarPointIds,
+  ]);
+  const eligibleSets = grammarPoint.comparisonSets.filter(
+    (set) => set.members.length >= 2 && set.decisionRules.length > 0
+  );
+  return eligibleSets.find(
+    (set) =>
+      set.members.length === requestedIds.size &&
+      set.members.every((member) => requestedIds.has(member.grammarPointId))
+  ) ?? eligibleSets.find((set) =>
+    set.members.some((member) =>
+      intent.comparisonGrammarPointIds.includes(member.grammarPointId)
+    )
+  );
 }
 
 function meaningFallback(input: {
@@ -300,9 +390,7 @@ function comparisonChoiceFallback(input: {
   grammarPoint: GrammarPointDetail;
   fallbackReason: string;
 }): PracticeItemV2 | null {
-  const comparison = input.grammarPoint.comparisonSets.find(
-    (set) => set.members.length >= 2 && set.decisionRules.length > 0
-  );
+  const comparison = comparisonSetForIntent(input.grammarPoint, input.intent);
   if (!comparison) return null;
   const rule = comparison.decisionRules[0];
   const preferredIndex = Math.max(0, rule.preferredMemberPosition - 1);
@@ -328,7 +416,7 @@ function comparisonChoiceFallback(input: {
     ...root,
     referenceAnswers: pairReferences,
     exerciseType: "contrast_choice",
-    prompt: `${input.intent.context.scenario}场景中，${rule.conditionZh}请选择最合适的表达。`,
+    prompt: `在「${input.intent.context.scenario}」场景中，如果要表达“${rule.conditionZh.trim().replace(/[，,。；;]+$/, "")}”，请选择最合适的日语形式。`,
     choices: choiceData.options,
     correctChoiceId: choiceData.correctChoiceId,
     distractorReasons: Object.fromEntries(
@@ -463,11 +551,15 @@ function buildLocalFallbackV2ForActiveIntent(input: {
 }): PracticeItemV2 {
   const canonical = input.grammarPoint.canonicalForm ?? input.grammarPoint.grammarPoint;
   const declaredSupport = fallbackSupportFor(input.grammarPoint);
+  const hasStructuredComparison =
+    input.intent.exerciseType === "contrast_choice" &&
+    Boolean(comparisonSetForIntent(input.grammarPoint, input.intent));
   const isDeclaredSupported =
-    declaredSupport.supportedExerciseTypes.includes(input.intent.exerciseType) &&
-    (declaredSupport.supportedScenarios.includes("*") ||
-      declaredSupport.supportedScenarios.includes(input.intent.context.sceneSlug)) &&
-    declaredSupport.supportedRegisters.includes(input.intent.context.registerPreset);
+    hasStructuredComparison ||
+    (declaredSupport.supportedExerciseTypes.includes(input.intent.exerciseType) &&
+      (declaredSupport.supportedScenarios.includes("*") ||
+        declaredSupport.supportedScenarios.includes(input.intent.context.sceneSlug)) &&
+      declaredSupport.supportedRegisters.includes(input.intent.context.registerPreset));
   let item: PracticeItemV2;
   if (
     isDeclaredSupported &&

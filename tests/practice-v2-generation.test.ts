@@ -192,6 +192,32 @@ describe("practice V2 validators and fallback", () => {
     expect(validatePracticeItemV2(item, grammarPoint).valid).toBe(true);
   });
 
+  it("gives choice learners a concrete, target-specific hint", () => {
+    const intent = translationIntent();
+    const item = buildLocalFallbackV2({
+      intent: {
+        ...intent,
+        blueprintId: "meaning_choice",
+        exerciseType: "meaning_choice",
+        learningObjective: "meaning",
+        cognitiveOperation: "recognize",
+        scaffoldLevel: "options",
+        answerPolicy: {
+          ...intent.answerPolicy,
+          responseMode: "choice",
+          requireExactChoice: true,
+          allowEquivalentAnswers: false,
+        },
+      },
+      grammarPoint,
+      fallbackReason: "TEST",
+    });
+    expect(item.exerciseType).toBe("meaning_choice");
+    expect(item.hints[0]?.content).toContain("人或动物");
+    expect(item.hints[0]?.content).not.toContain("概括");
+    expect(item.hints.every((hint) => !hint.revealsAnswer)).toBe(true);
+  });
+
   it("varies high-frequency existence translations and keeps each explanation relevant", () => {
     const baseIntent = translationIntent();
     const reproduction = buildLocalFallbackV2({
@@ -347,6 +373,62 @@ describe("practice V2 validators and fallback", () => {
     };
     const item = buildLocalFallbackV2({ intent, grammarPoint: point, fallbackReason: "GOLDEN_TEST" });
     expect(item.exerciseType).toBe("contrast_choice");
+    expect(validatePracticeItemV2(item, point).valid).toBe(true);
+  });
+
+  it("uses structured comparison content even outside the fixed form support list", () => {
+    const targetId = "55555555-5555-4555-8555-555555555555";
+    const siblingId = "66666666-6666-4666-8666-666666666666";
+    const point = {
+      ...grammarPoint,
+      id: targetId,
+      grammarPoint: "〜かねます",
+      canonicalForm: "〜かねます",
+      senseKey: "kanemasu_polite_inability",
+      comparisonSets: [{
+        id: "77777777-7777-4777-8777-777777777777",
+        slug: "kanemasu_vs_koto_ga_dekimasen",
+        nameZh: "かねます与ことができません",
+        summary: "委婉拒绝与客观不可用",
+        commonMeaning: "都可以表达难以完成",
+        decisionRules: [{ conditionZh: "表达组织立场上的委婉拒绝时，", preferredMemberPosition: 1, explanationZh: "用かねます表达立场上的委婉拒绝。" }],
+        connectionDifferences: [],
+        registerDifferences: [],
+        interchangeableCases: [],
+        nonInterchangeableCases: [],
+        minimalPairExamples: [{ contextZh: "客服说明无法受理", sentences: [{ memberPosition: 1, jp: "そのご要望にはお応えしかねます。", zh: "该请求恕难满足。" }, { memberPosition: 2, jp: "この端末では対応することができません。", zh: "这台设备无法处理。" }], explanationZh: "前者表示组织立场，后者表示客观能力。" }],
+        learnerMistakes: [],
+        status: "active",
+        members: [{ grammarPointId: targetId, grammarPoint: "〜かねます", canonicalForm: "〜かねます", senseKey: "kanemasu_polite_inability", sortOrder: 1 }, { grammarPointId: siblingId, grammarPoint: "〜ことができません", canonicalForm: "〜ことができません", senseKey: "koto_ga_dekimasen_objective_inability", sortOrder: 2 }],
+      }],
+    } as unknown as GrammarPointDetail;
+    const intent = {
+      ...translationIntent(),
+      targetGrammarPointId: targetId,
+      targetSenseKey: "kanemasu_polite_inability",
+      blueprintId: "contrast_choice",
+      exerciseType: "contrast_choice" as const,
+      learningObjective: "grammar_selection" as const,
+      cognitiveOperation: "select" as const,
+      scaffoldLevel: "options" as const,
+      comparisonGrammarPointIds: [siblingId],
+      answerPolicy: {
+        responseMode: "choice" as const,
+        requireExactChoice: true,
+        allowEquivalentAnswers: false,
+        maxAttempts: 2,
+      },
+    };
+
+    const item = buildLocalFallbackV2({ intent, grammarPoint: point, fallbackReason: "TEST" });
+    expect(item.exerciseType).toBe("contrast_choice");
+    if (item.exerciseType !== "contrast_choice") throw new Error("unexpected type");
+    expect(item.choices.map((choice) => choice.label)).toEqual([
+      "〜かねます",
+      "〜ことができません",
+    ]);
+    expect(item.prompt).toContain("如果要表达");
+    expect(item.prompt).toContain("组织立场上的委婉拒绝");
     expect(validatePracticeItemV2(item, point).valid).toBe(true);
   });
 

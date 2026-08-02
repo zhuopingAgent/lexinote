@@ -93,6 +93,25 @@ function normalizeOptionalSlug(value: unknown) {
   return SAFE_KEY_PATTERN.test(normalized) ? normalized : undefined;
 }
 
+function comparisonSetIdForIntent(
+  grammarPoint: GrammarPointDetail,
+  intent: PracticeIntent
+) {
+  const requestedIds = new Set([
+    grammarPoint.id,
+    ...intent.comparisonGrammarPointIds,
+  ]);
+  return grammarPoint.comparisonSets.find(
+    (set) =>
+      set.members.length === requestedIds.size &&
+      set.members.every((member) => requestedIds.has(member.grammarPointId))
+  )?.id ?? grammarPoint.comparisonSets.find((set) =>
+    set.members.some((member) =>
+      intent.comparisonGrammarPointIds.includes(member.grammarPointId)
+    )
+  )?.id ?? null;
+}
+
 function toGrammarPointSummary(grammarPoint: GrammarPointDetail): GrammarPointSummary {
   return {
     id: grammarPoint.id,
@@ -174,6 +193,9 @@ export class PracticeSessionService {
     const requestedGrammarPointId = input.grammarPointId
       ? normalizeUuid(input.grammarPointId, "grammarPointId")
       : null;
+    const requestedComparisonSetId = input.comparisonSetId
+      ? normalizeUuid(input.comparisonSetId, "comparisonSetId")
+      : null;
     const grammarPointId =
       requestedGrammarPointId ??
       (await this.practiceRepository.findRecommendedGrammarPointId(userId));
@@ -188,6 +210,14 @@ export class PracticeSessionService {
     );
     if (!grammarPoint) {
       throw new NotFoundError("未找到这个语法点。");
+    }
+    const selectedComparisonSet = requestedComparisonSetId
+      ? grammarPoint.comparisonSets.find(
+          (comparisonSet) => comparisonSet.id === requestedComparisonSetId
+        ) ?? null
+      : null;
+    if (requestedComparisonSetId && !selectedComparisonSet) {
+      throw new ValidationError("这个对比组不包含当前语法点。");
     }
 
     const preferredScene =
@@ -227,6 +257,9 @@ export class PracticeSessionService {
         context: firstContext,
         skillStates,
         objectiveStates,
+        comparisonGrammarPointIds: selectedComparisonSet?.members.map(
+          (member) => member.grammarPointId
+        ),
         history: plannerHistory,
         count: plannedExerciseCount,
         source: defaultPracticePlannerSource,
@@ -264,6 +297,7 @@ export class PracticeSessionService {
         grammarPracticeContentVersion: useV2
           ? GRAMMAR_PRACTICE_CONTENT_VERSION
           : null,
+        comparisonSetId: selectedComparisonSet?.id ?? null,
       },
       planSnapshot,
       plannerVersion: useV2 ? 2 : 1,
@@ -644,11 +678,7 @@ export class PracticeSessionService {
       generated.exerciseType === "contrast_choice";
     const options = isChoice ? generated.choices : [];
     const comparisonSetId = generated.exerciseType === "contrast_choice"
-      ? input.grammarPoint.comparisonSets.find((set) =>
-          set.members.some((member) =>
-            actualIntent.comparisonGrammarPointIds.includes(member.grammarPointId)
-          )
-        )?.id ?? null
+      ? comparisonSetIdForIntent(input.grammarPoint, actualIntent)
       : null;
     const expectedFeatures = {
       requiredGrammarPointId: input.grammarPoint.id,

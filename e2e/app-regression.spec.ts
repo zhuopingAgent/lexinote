@@ -274,7 +274,7 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("expression_function");
-  await expect(page.getByText("当前显示 36 个", { exact: true })).toBeVisible();
+  await expect(page.getByText("已显示 36 个，还有更多", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "待完成 2", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /^待复习/ })).toHaveCount(0);
   const masteredCard = page.locator("article").filter({
@@ -282,7 +282,7 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   });
   await expect(masteredCard.getByText("已掌握", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "加载更多", exact: true }).click();
-  await expect(page.getByText("当前显示 72 个", { exact: true })).toBeVisible();
+  await expect(page.getByText("已显示 72 个，还有更多", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "形态、活用与时间体" }).click();
   await expect(page.getByText("组织词形变化、时态、否定、体和派生形。")).toBeVisible();
@@ -317,10 +317,17 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await page.getByRole("link", { name: "易混对比", exact: true }).click();
   await expect(page).toHaveURL(/\/grammar\/comparisons$/);
   await expect(page.getByRole("heading", { name: "易混语法对比" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "かねます 与 ことができません" })).toBeVisible();
   await page.getByRole("searchbox", { name: "搜索易混语法" }).fill("に与で");
   await page.getByText("に与で", { exact: true }).click();
   await expect(page.getByText("存在地点和动作地点不同。", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("comparison_set");
+  const comparisonPracticeLink = page.getByRole("link", { name: "开始对比练习" });
+  await expect(comparisonPracticeLink).toHaveCount(1);
+  await expect(comparisonPracticeLink).toHaveAttribute(
+    "href",
+    /\/practice\?grammarId=[0-9a-f-]+&mode=focus&comparisonSetId=[0-9a-f-]+/
+  );
 
   await page.goto("/grammar/gp_wa_vs_ga");
   await expect(page.getByRole("link", { name: "开始练习", exact: true })).toHaveCount(0);
@@ -454,7 +461,9 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   expect(first.exercise).not.toHaveProperty("hintLadder");
 
   const correctOption = first.exercise.options.find(
-    (option) => option.label === grammarPoint?.coreMeaning
+    (option) =>
+      option.label === grammarPoint?.coreMeaning ||
+      option.label === grammarPoint?.grammarPoint
   );
   const wrongOption = first.exercise.options.find(
     (option) => option.id !== correctOption?.id
@@ -692,7 +701,17 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.getByRole("radio", { name: wrongOption?.label, exact: true }).check();
+  const visibleOptionLabels = await page.getByRole("radio").evaluateAll((radios) =>
+    radios.map((radio) => radio.closest("label")?.textContent?.trim() ?? "")
+  );
+  const visibleWrongOption = visibleOptionLabels.find(
+    (label) =>
+      label &&
+      label !== grammarPoint?.coreMeaning &&
+      label !== grammarPoint?.grammarPoint
+  );
+  expect(visibleWrongOption).toBeDefined();
+  await page.getByRole("radio", { name: visibleWrongOption, exact: true }).check();
   await page.getByRole("button", { name: "提交答案", exact: true }).click();
   await expect(page.getByRole("button", { name: "修改后再试", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "放弃本题并查看参考答案", exact: true }).click();
@@ -708,10 +727,11 @@ test("structured fallback feedback feeds multidimensional review", async ({ page
     learningStages: Array<{ slug: string }>;
     learningModules: Array<{ slug: string; nameZh: string }>;
     comparisonSets: Array<{
+      id: string;
       slug: string;
       commonMeaning: string;
       decisionRules: unknown[];
-      members: Array<{ grammarPointId: string }>;
+      members: Array<{ grammarPointId: string; grammarPoint: string }>;
     }>;
     errorTypes: Array<{ code: string }>;
   };
@@ -737,6 +757,47 @@ test("structured fallback feedback feeds multidimensional review", async ({ page
   for (const member of requestComparison?.members ?? []) {
     expect(member.grammarPointId).toMatch(/^[0-9a-f-]{36}$/);
   }
+
+  const comparisonSessionResponse = await page.request.post(
+    "/api/practice/sessions",
+    {
+      data: {
+        clientSessionKey: `e2e-comparison-${Date.now()}`,
+        grammarPointId: requestComparison?.members[0]?.grammarPointId,
+        comparisonSetId: requestComparison?.id,
+        entryMode: "focus",
+        plannedExerciseCount: 5,
+      },
+    }
+  );
+  expect(comparisonSessionResponse.status()).toBe(201);
+  const comparisonFirst = (await comparisonSessionResponse.json()) as {
+    session: { id: string };
+    exercise: { id: string };
+  };
+  const comparisonRevealResponse = await page.request.post(
+    `/api/practice/exercises/${comparisonFirst.exercise.id}/reveal`,
+    { data: {} }
+  );
+  expect(comparisonRevealResponse.ok()).toBe(true);
+  const comparisonNextResponse = await page.request.post(
+    `/api/practice/sessions/${comparisonFirst.session.id}/next`,
+    { data: {} }
+  );
+  expect(comparisonNextResponse.ok()).toBe(true);
+  const comparisonNext = (await comparisonNextResponse.json()) as {
+    exercise: {
+      exerciseType: string;
+      prompt: string;
+      options: Array<{ label: string }>;
+    };
+  };
+  expect(comparisonNext.exercise.exerciseType).toBe("contrast_choice");
+  expect(comparisonNext.exercise.options.map((option) => option.label)).toEqual(
+    requestComparison?.members.map((member) => member.grammarPoint)
+  );
+  expect(comparisonNext.exercise.prompt).toContain("如果要表达");
+  expect(comparisonNext.exercise.prompt).not.toMatch(/接受请选择|请求请选择/);
   expect(taxonomy.errorTypes.map((errorType) => errorType.code)).toEqual(
     expect.arrayContaining([
       "register_mismatch",

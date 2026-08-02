@@ -7,6 +7,7 @@ type GrammarSearchProps = {
   query: string;
   isLoading: boolean;
   resultCount: number;
+  hasMore: boolean;
   onQueryChange: (query: string) => void;
   onClearQuery: () => void;
   onSubmit: () => void;
@@ -20,6 +21,7 @@ export function GrammarSearch({
   query,
   isLoading,
   resultCount,
+  hasMore,
   onQueryChange,
   onClearQuery,
   onSubmit,
@@ -92,7 +94,11 @@ export function GrammarSearch({
       </select>
 
       <p aria-live="polite" className="col-span-2 text-right text-xs tabular-nums text-muted sm:col-span-3">
-        {isLoading ? "正在查找..." : `当前显示 ${resultCount} 个`}
+        {isLoading
+          ? "正在查找..."
+          : hasMore
+            ? `已显示 ${resultCount} 个，还有更多`
+            : `共 ${resultCount} 个`}
       </p>
     </div>
   );

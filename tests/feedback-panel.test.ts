@@ -49,4 +49,22 @@ describe("FeedbackPanel", () => {
     expect(html).toContain("本次作答已记录");
     expect(html).toContain("查看本次评分");
   });
+
+  it("does not repeat the same conversational opening", () => {
+    const positiveFeedback: AIFeedbackResult = {
+      ...feedback,
+      isCorrect: true,
+      issues: [],
+      mistakeTypes: [],
+      feedbackText: "这句可以。目标语法、意思和语体都符合题目。",
+      explanation: "这句可以。目标形式、关键信息和语体均满足答案契约。",
+      correctedSentence: null,
+    };
+    const html = renderToStaticMarkup(
+      createElement(FeedbackPanel, { feedback: positiveFeedback })
+    );
+
+    expect(html.match(/这句可以。/g)).toHaveLength(1);
+    expect(html).toContain("目标形式、关键信息和语体均满足答案契约。");
+  });
 });

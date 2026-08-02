@@ -299,6 +299,41 @@ describe("PracticeSessionPlanner", () => {
     expect(first.scaffoldLevel).toBe("none");
     expect(first.selectionReasonZh).toContain("10天");
   });
+
+  it("keeps every intent inside an explicitly selected comparison set", () => {
+    const comparisonIds = [
+      "22222222-2222-4222-8222-222222222222",
+      "33333333-3333-4333-8333-333333333333",
+    ];
+    const comparisonPoint = {
+      ...grammarPoint,
+      comparisonSets: [{
+        members: [
+          { grammarPointId: grammarPoint.id },
+          ...comparisonIds.map((grammarPointId) => ({ grammarPointId })),
+        ],
+      }],
+    } as unknown as GrammarPointDetail;
+    const plan = buildPracticeSessionPlan({
+      grammarPoint: comparisonPoint,
+      context,
+      skillStates: [],
+      comparisonGrammarPointIds: comparisonIds,
+      history: { consecutiveFailures: 0, recentErrorCodes: [], prerequisiteReady: true },
+      source,
+    });
+
+    expect(plan.every((intent) =>
+      intent.comparisonGrammarPointIds.join(",") === comparisonIds.join(",")
+    )).toBe(true);
+    expect(plan.filter((intent) => intent.exerciseType === "contrast_choice"))
+      .toHaveLength(3);
+    expect(plan.filter((intent) => intent.learningObjective === "grammar_selection"))
+      .toHaveLength(3);
+    expect(plan.some((intent) =>
+      intent.selectionReasonZh.includes("所选对比卡")
+    )).toBe(true);
+  });
 });
 
 describe("answer equivalence and specialization", () => {
@@ -343,6 +378,59 @@ describe("answer equivalence and specialization", () => {
     });
     expect(differentGrammar.equivalent).toBe(false);
     expect(differentGrammar.grammarFeatureSatisfied).toBe(false);
+  });
+
+  it("requires explicit meaning details that Japanese content anchors cannot detect", () => {
+    const existencePoint = {
+      ...grammarPoint,
+      grammarPoint: "Aがあります",
+      canonicalForm: "Aがあります",
+      senseKey: "aru_inanimate_existence",
+      connections: [{ baseType: "clause", requiredForm: "existence", pattern: "Aがあります", notes: "", sortOrder: 1 }],
+    } as unknown as GrammarPointDetail;
+    const countContract: AnswerContract = {
+      ...contract,
+      requiredMeaningSlots: ["这周还有两次会议。"],
+      requiredGrammarFeatures: ["sense:aru_inanimate_existence"],
+      allowedVariants: ["今週は会議があと二回あります。"],
+    };
+    const missingRemaining = evaluateAnswerEquivalence({
+      sentence: "今週は二回会議があります。",
+      answerContract: countContract,
+      grammarPoint: existencePoint,
+    });
+    expect(missingRemaining.equivalent).toBe(false);
+    expect(missingRemaining.reasonZh).toContain("还有／剩余");
+    expect(evaluateAnswerEquivalence({
+      sentence: "今週は会議があと2回あります。",
+      answerContract: countContract,
+      grammarPoint: existencePoint,
+    }).equivalent).toBe(true);
+
+    const missingRepeat = evaluateAnswerEquivalence({
+      sentence: "説明してもらえますか。",
+      answerContract: contract,
+      grammarPoint: {
+        ...grammarPoint,
+        canonicalForm: "〜てもらえますか",
+      } as unknown as GrammarPointDetail,
+    });
+    expect(missingRepeat.equivalent).toBe(false);
+    expect(missingRepeat.reasonZh).toContain("再次／一遍");
+
+    const slowRequestContract: AnswerContract = {
+      ...contract,
+      requiredMeaningSlots: ["不好意思，能请您再说慢一点吗？"],
+      allowedVariants: ["すみません、もう少しゆっくり話してもらえますか。"],
+    };
+    expect(evaluateAnswerEquivalence({
+      sentence: "もっとゆっくり話してもらえますか。",
+      answerContract: slowRequestContract,
+      grammarPoint: {
+        ...grammarPoint,
+        canonicalForm: "〜てもらえますか",
+      } as unknown as GrammarPointDetail,
+    }).equivalent).toBe(true);
   });
 
   it("keeps specialization IDs unique and covers the high-frequency families", () => {
