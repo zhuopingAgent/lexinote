@@ -465,7 +465,23 @@ export class PracticeSessionService {
       const correctOptionId = exercise.expectedFeatures.correctOptionId;
       const isCorrect =
         typeof correctOptionId === "string" && selectedOptionId === correctOptionId;
-      feedback = buildChoiceFeedback({ isCorrect, grammarPoint });
+      const selectedOption = exercise.options.find((option) => option.id === selectedOptionId);
+      const distractorReasons = exercise.expectedFeatures.distractorReasons;
+      const selectedOptionReason =
+        distractorReasons && typeof distractorReasons === "object" && !Array.isArray(distractorReasons)
+          ? (distractorReasons as Record<string, unknown>)[selectedOptionId]
+          : null;
+      feedback = buildChoiceFeedback({
+        isCorrect,
+        grammarPoint,
+        exerciseType: exercise.exerciseType === "contrast_choice"
+          ? "contrast_choice"
+          : "meaning_choice",
+        selectedOptionLabel: selectedOption?.label ?? "当前选项",
+        selectedOptionReason: typeof selectedOptionReason === "string"
+          ? selectedOptionReason
+          : null,
+      });
       await Promise.all([
         this.grammarRepository.updateReviewRecord({
           userId,

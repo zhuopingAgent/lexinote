@@ -320,7 +320,7 @@ export function buildFallbackFeedback(input: {
   if (isHospitalPoliteMoraemasuCase(input)) {
     const explanation =
       "意思可以理解，目标语法也接近正确，但「もらえる？」对医生有点太随便。医院场景建议用「もらえますか」或更礼貌的「いただけますか」。";
-    const correction = "すみません、もう一度説明していただけますか。";
+    const correction = "すみません、もう一度説明してもらえますか。";
     const nextHint = "先用「すみません」缓冲，再把请求句尾改成礼貌形。";
 
     return {
@@ -351,12 +351,12 @@ export function buildFallbackFeedback(input: {
         {
           sentence: "すみません、もう一度説明してもらえますか。",
           registerTag: "polite",
-          explanationZh: "一般礼貌表达，可以用于医院。",
+          explanationZh: "本题目标形式；改成礼貌句尾后可以用于医院。",
         },
         {
           sentence: "すみません、もう一度説明していただけますか。",
           registerTag: "business",
-          explanationZh: "更礼貌，更适合对医生、老师、客户或上司说。",
+          explanationZh: "更郑重的说法，也适合对医生、老师、客户或上司说。",
         },
       ],
       mistakeTypes: ["register_mismatch"],
@@ -497,7 +497,55 @@ export function applyAnswerContractEquivalence(
     answerContract: input.answerContract,
     grammarPoint: input.grammarPoint,
   });
-  if (!equivalence.equivalent || equivalence.confidence < 0.8) return feedback;
+  if (!equivalence.equivalent || equivalence.confidence < 0.8) {
+    if (!feedback.isCorrect || equivalence.registerSatisfied === false) {
+      return feedback;
+    }
+
+    const failedFeature = equivalence.failedGrammarFeatures[0] ?? "target-sense";
+    const errorTypeCode: AIFeedbackIssue["errorTypeCode"] =
+      failedFeature === "location-ni" || failedFeature === "subject-ga"
+        ? "particle_error"
+        : failedFeature === "te-form-request" || failedFeature.startsWith("connection:")
+          ? "connection_error"
+          : "semantic_error";
+    const correction = input.answerContract.allowedVariants[0] ?? "";
+    const issue = withIssueMetadata(
+      [{
+        errorTypeCode,
+        severity: "high",
+        explanation: equivalence.reasonZh,
+        correction,
+        relatedGrammarPointId: input.grammarPoint.id,
+      }],
+      input.sentence
+    );
+    const verdict = errorTypeCode === "particle_error"
+      ? "意思能懂，但存在句的助词需要调整。"
+      : "这句话可以理解，但没有完成本题指定的语法用法。";
+
+    return {
+      ...feedback,
+      isCorrect: false,
+      grammarScore: errorTypeCode === "semantic_error" ? 3 : 2,
+      meaningScore: errorTypeCode === "particle_error" ? 3 : 2,
+      issues: issue,
+      explanation: `${verdict}${equivalence.reasonZh}`,
+      nextHint: correction
+        ? `对照题目要求，再试一次。参考修改方向：${correction}`
+        : "对照目标语法和接续要求，再试一次。",
+      feedbackText: verdict,
+      correctedSentence: correction || null,
+      betterVersions: correction
+        ? [{
+            sentence: correction,
+            registerTag: input.answerContract.allowedRegisterRange[0] ?? null,
+            explanationZh: "这个版本满足本题的目标语法和表达要求。",
+          }]
+        : [],
+      mistakeTypes: [errorTypeCode],
+    };
+  }
 
   return {
     ...feedback,

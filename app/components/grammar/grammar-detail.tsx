@@ -5,6 +5,7 @@ import { useState } from "react";
 import type {
   ComparisonSet,
   GrammarPointDetail,
+  GrammarPointSummary,
   GrammarTaxonomyTag,
 } from "@/shared/types/grammar";
 import { displayGrammarPointTypeLabel } from "@/app/components/grammar/display-labels";
@@ -18,7 +19,23 @@ import { getErrorMessage } from "@/app/lib/api-client";
 type GrammarDetailProps = {
   grammarPoint: GrammarPointDetail;
   onFavoriteChange?: (isFavorite: boolean) => Promise<void>;
+  curriculumNeighbors?: {
+    previous: GrammarPointSummary | null;
+    next: GrammarPointSummary | null;
+  };
 };
+
+function isUsefulTeachingNote(value?: string | null) {
+  if (!value?.trim()) return false;
+  return !/(结构化兼容记录|兼容旧字段|自然使用.+的表达|的自然例句[。.]?$)/.test(value);
+}
+
+function learningStatusLabel(status: GrammarPointDetail["learningStatus"]) {
+  if (status === "mastered") return "已掌握";
+  if (status === "learning" || status === "reviewing") return "学习中";
+  if (status === "new") return "已开始";
+  return "未开始";
+}
 
 function comparisonMemberAt(comparisonSet: ComparisonSet, position: number) {
   return comparisonSet.members.find((member) => member.sortOrder === position);
@@ -27,6 +44,7 @@ function comparisonMemberAt(comparisonSet: ComparisonSet, position: number) {
 export function GrammarDetail({
   grammarPoint,
   onFavoriteChange,
+  curriculumNeighbors,
 }: GrammarDetailProps) {
   const [isFavorite, setIsFavorite] = useState(Boolean(grammarPoint.isFavorite));
   const [isSavingFavorite, setIsSavingFavorite] = useState(false);
@@ -34,6 +52,9 @@ export function GrammarDetail({
   const taxonomyGroups = Array.from(
     grammarPoint.taxonomyTags.reduce(
       (groups, tag) => {
+        if (tag.id === grammarPoint.primaryCategory?.id) {
+          return groups;
+        }
         const group = groups.get(tag.dimensionSlug) ?? {
           dimensionNameZh: tag.dimensionNameZh,
           tags: [] as GrammarTaxonomyTag[],
@@ -47,6 +68,17 @@ export function GrammarDetail({
         { dimensionNameZh: string; tags: GrammarTaxonomyTag[] }
       >()
     ).values()
+  );
+  const siblingHeading = grammarPoint.formSiblings.every(
+    (sibling) => sibling.canonicalForm === grammarPoint.canonicalForm
+  )
+    ? "同形不同用法"
+    : "相关形式";
+  const visibleMistakes = grammarPoint.commonMistakes.filter(
+    (mistake) => !(
+      /只按中文意思套用.*忽略.*接续.*语体.*搭配/.test(mistake) ||
+      /只记住中文意思.*忽略.*形式和接续/.test(mistake)
+    )
   );
 
   async function handleFavoriteToggle() {
@@ -70,6 +102,17 @@ export function GrammarDetail({
 
   return (
     <article className="mx-auto w-full max-w-[1000px]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Link href="/grammar" className="text-sm font-medium text-white/48 transition hover:text-white/76">
+          返回文法
+        </Link>
+        {grammarPoint.curriculum ? (
+          <span className="text-xs text-white/38">
+            {grammarPoint.curriculum.stage.nameZh}
+            {grammarPoint.curriculum.module ? ` · ${grammarPoint.curriculum.module.nameZh}` : ""}
+          </span>
+        ) : null}
+      </div>
       <section className="rounded-[22px] border border-white/10 bg-[#1e1e1eb3] p-[clamp(20px,3vw,30px)]">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -77,6 +120,7 @@ export function GrammarDetail({
               <PracticalityBadge practicality={grammarPoint.practicality} />
               <SpokenOrWrittenBadge value={grammarPoint.spokenOrWritten} />
               <TagBadge tag={displayGrammarPointTypeLabel(grammarPoint.pointType)} />
+              <TagBadge tag={learningStatusLabel(grammarPoint.learningStatus)} />
               {grammarPoint.jlptLevel ? <TagBadge tag={grammarPoint.jlptLevel} /> : null}
               {grammarPoint.curriculum ? (
                 <TagBadge
@@ -92,7 +136,7 @@ export function GrammarDetail({
             <h1 className="mt-4 break-words text-[clamp(36px,6vw,58px)] leading-tight font-semibold text-white/84">
               {grammarPoint.grammarPoint}
             </h1>
-            {grammarPoint.reading ? (
+            {grammarPoint.reading && grammarPoint.reading !== grammarPoint.grammarPoint ? (
               <p className="mt-2 text-lg leading-7 text-white/46">
                 {grammarPoint.reading}
               </p>
@@ -139,9 +183,8 @@ export function GrammarDetail({
 
         {grammarPoint.formSiblings.length > 0 ? (
           <section className="mt-5 border-t border-white/8 pt-5">
-            <p className="text-sm font-semibold text-white/48">同形不同用法</p>
+            <p className="text-sm font-semibold text-white/48">{siblingHeading}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <TagBadge tag={grammarPoint.grammarPoint} />
               {grammarPoint.formSiblings.map((sibling) => (
                 <Link
                   key={sibling.id}
@@ -178,7 +221,7 @@ export function GrammarDetail({
                     <p className="font-mono text-sm leading-7 text-white/72">
                       {connection.pattern}
                     </p>
-                    {connection.notes ? (
+                    {isUsefulTeachingNote(connection.notes) ? (
                       <p className="mt-1 text-xs leading-5 text-white/42">
                         {connection.notes}
                       </p>
@@ -239,7 +282,7 @@ export function GrammarDetail({
           ))}
         </div>
 
-        {(grammarPoint.usage ?? grammarPoint.notes) ? (
+        {isUsefulTeachingNote(grammarPoint.usage ?? grammarPoint.notes) ? (
           <p className="mt-6 rounded-[16px] border border-white/8 bg-white/5 px-4 py-3 text-sm leading-6 text-white/56">
             <span className="mr-2 font-semibold text-white/66">使用说明</span>
             {grammarPoint.usage ?? grammarPoint.notes}
@@ -251,7 +294,7 @@ export function GrammarDetail({
         <section className="mt-6 rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
           <h2 className="text-lg font-semibold text-white/74">前置知识</h2>
           <div className="mt-4 flex flex-wrap gap-2">
-            {grammarPoint.prerequisites.map((prerequisite) => (
+                {grammarPoint.prerequisites.map((prerequisite) => (
               <Link
                 key={prerequisite.grammarPointId}
                 href={`/grammar/${prerequisite.senseKey}`}
@@ -260,6 +303,8 @@ export function GrammarDetail({
                 {prerequisite.relationType === "required" ? "必修" : "建议"}
                 <span className="mx-2 text-white/24">·</span>
                 {prerequisite.grammarPoint}
+                <span className="mx-2 text-white/24">·</span>
+                {learningStatusLabel(prerequisite.learningStatus)}
               </Link>
             ))}
           </div>
@@ -435,7 +480,7 @@ export function GrammarDetail({
                   ) : null}
                   <TagBadge tag={`难度 ${example.difficulty}`} />
                 </div>
-                {example.notes ? (
+                {isUsefulTeachingNote(example.notes) ? (
                   <p className="mt-3 text-xs leading-5 text-white/38">{example.notes}</p>
                 ) : null}
               </article>
@@ -448,11 +493,11 @@ export function GrammarDetail({
         </div>
       </section>
 
-      {grammarPoint.commonMistakes.length > 0 ? (
+      {visibleMistakes.length > 0 ? (
         <section className="mt-6 rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
           <h2 className="text-lg font-semibold text-white/74">常见误区</h2>
           <ul className="mt-4 space-y-3">
-            {grammarPoint.commonMistakes.map((mistake) => (
+            {visibleMistakes.map((mistake) => (
               <li key={mistake} className="text-sm leading-6 text-white/56">
                 {mistake}
               </li>
@@ -489,6 +534,25 @@ export function GrammarDetail({
             ))}
           </div>
         </section>
+      ) : null}
+
+      {curriculumNeighbors && (curriculumNeighbors.previous || curriculumNeighbors.next) ? (
+        <nav aria-label="课程前后语法" className="mt-6 grid gap-3 sm:grid-cols-2">
+          {curriculumNeighbors.previous ? (
+            <Link href={`/grammar/${curriculumNeighbors.previous.id}`} className="rounded-lg border border-white/10 bg-[#1e1e1ecc] p-4 transition hover:border-white/22">
+              <span className="text-xs text-white/38">上一项</span>
+              <span className="mt-1 block text-lg font-semibold text-white/76">{curriculumNeighbors.previous.grammarPoint}</span>
+              <span className="mt-1 line-clamp-1 block text-sm text-white/42">{curriculumNeighbors.previous.coreMeaning}</span>
+            </Link>
+          ) : <span />}
+          {curriculumNeighbors.next ? (
+            <Link href={`/grammar/${curriculumNeighbors.next.id}`} className="rounded-lg border border-white/10 bg-[#1e1e1ecc] p-4 text-right transition hover:border-white/22">
+              <span className="text-xs text-white/38">下一项</span>
+              <span className="mt-1 block text-lg font-semibold text-white/76">{curriculumNeighbors.next.grammarPoint}</span>
+              <span className="mt-1 line-clamp-1 block text-sm text-white/42">{curriculumNeighbors.next.coreMeaning}</span>
+            </Link>
+          ) : null}
+        </nav>
       ) : null}
     </article>
   );

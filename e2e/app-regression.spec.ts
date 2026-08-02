@@ -122,15 +122,15 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("expression_function");
-  await expect(page.getByText("已显示 36 个", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前显示 36 个", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "待完成 2", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "待复习 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^待复习/ })).toHaveCount(0);
   const masteredCard = page.locator("article").filter({
     has: page.getByRole("link", { name: "AはBです", exact: true }),
   });
   await expect(masteredCard.getByText("已掌握", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "加载更多", exact: true }).click();
-  await expect(page.getByText("已显示 72 个", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前显示 72 个", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "形态、活用与时间体" }).click();
   await expect(page.getByText("组织词形变化、时态、否定、体和派生形。")).toBeVisible();
@@ -160,6 +160,15 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByText("天気予報によると、明日は雨が降るそうです。")).toBeVisible();
   await expect(page.getByText("易混语法对比")).toBeVisible();
   await expect(page.getByRole("heading", { name: "そうだ（传闻）与らしい" })).toBeVisible();
+
+  await page.goto("/grammar");
+  await page.getByRole("link", { name: "易混对比", exact: true }).click();
+  await expect(page).toHaveURL(/\/grammar\/comparisons$/);
+  await expect(page.getByRole("heading", { name: "易混语法对比" })).toBeVisible();
+  await page.getByRole("searchbox", { name: "搜索易混语法" }).fill("に与で");
+  await page.getByText("に与で", { exact: true }).click();
+  await expect(page.getByText("存在地点和动作地点不同。", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("comparison_set");
 
   await page.goto("/grammar");
   await page.getByRole("button", { name: "课程顺序", exact: true }).click();
@@ -223,9 +232,9 @@ test("review consolidates objective progress into one record per grammar point",
     page.getByRole("link", { name: "Aがあります", exact: true })
   ).toHaveCount(1);
   await expect(page.getByText("综合掌握 26%", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "待复习", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "之后复习", exact: true })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "待复习", exact: true }).locator("..").getByRole(
+    page.getByRole("heading", { name: "之后复习", exact: true }).locator("..").getByRole(
       "link",
       { name: "AはBです", exact: true }
     )
@@ -377,11 +386,11 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   expect(registerFeedback.feedback.issues).toEqual([
     expect.objectContaining({
       errorTypeCode: "register_mismatch",
-      correction: "すみません、もう一度説明していただけますか。",
+      correction: "すみません、もう一度説明してもらえますか。",
     }),
   ]);
   expect(registerFeedback.feedback.correctedSentence).toBe(
-    "すみません、もう一度説明していただけますか。"
+    "すみません、もう一度説明してもらえますか。"
   );
   expect(registerFeedback.feedback.explanation).toContain("太随便");
   expect(registerFeedback.referenceAnswers).toEqual([]);
@@ -419,7 +428,7 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     evidence: { score: number; independent: boolean; evidenceKind?: string };
   };
   expect(reveal.referenceAnswers[0]?.jp).toBe(
-    "すみません、もう一度説明していただけますか。"
+    "すみません、もう一度説明してもらえますか。"
   );
   expect(reveal.evidence).toEqual(
     expect.objectContaining({ score: 0.2, independent: false, evidenceKind: "exposure" })
@@ -502,7 +511,7 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     page.getByRole("heading", { name: "〜てもらえますか", exact: true })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
-  await expect(page.getByText("安排原因", { exact: true })).toBeVisible();
+  await expect(page.getByText("安排原因", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/^(选择题|中译日)$/).first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText("练习设置");
   await expect(page.locator("body")).not.toContainText("需要表达");
@@ -594,7 +603,7 @@ test("structured fallback feedback feeds multidimensional review", async ({ page
     expect.objectContaining({ errorTypeCode: "register_mismatch" }),
   ]);
   expect(feedback.correctedSentence).toBe(
-    "すみません、もう一度説明していただけますか。"
+    "すみません、もう一度説明してもらえますか。"
   );
   expect(feedback.explanation).toContain("太随便");
   expect(feedback.nextHint).toBeTruthy();
@@ -623,6 +632,7 @@ test("structured fallback feedback feeds multidimensional review", async ({ page
   );
 
   await page.goto("/review");
+  await page.getByText("筛选复习记录", { exact: true }).click();
   await expect(page.getByText("语体不匹配").first()).toBeVisible();
   await expect(page.getByText("医院").first()).toBeVisible();
   await expect(page.getByText("一般礼貌").first()).toBeVisible();

@@ -2782,6 +2782,12 @@ WITH RECURSIVE classified_points AS (
       ) THEN 'foundations'
       WHEN grammar_points.seed_key IN ('gp_plain_style', 'gp_polite_style')
         THEN 'conjugation'
+      WHEN grammar_points.seed_key IN (
+        'gp_te_morau',
+        'gp_te_itadaku',
+        'gp_te_moraemasu_ka',
+        'gp_te_itadakemasu_ka'
+      ) THEN 'functional_patterns'
       WHEN taxonomy_nodes.slug IN (
         'verb_conjugation_basics',
         'adjective_noun_conjugation',
@@ -2795,9 +2801,7 @@ WITH RECURSIVE classified_points AS (
       ) OR grammar_points.seed_key IN (
         'gp_rareru_potential',
         'gp_rareru_honorific',
-        'gp_rareru_spontaneous',
-        'gp_te_moraemasu_ka',
-        'gp_te_itadakemasu_ka'
+        'gp_rareru_spontaneous'
       ) THEN 'voice_aspect_benefit'
       WHEN taxonomy_nodes.slug = 'honorifics_and_politeness'
         THEN 'natural_advanced_use'

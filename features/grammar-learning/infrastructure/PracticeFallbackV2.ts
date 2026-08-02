@@ -118,16 +118,32 @@ function hints(intent: PracticeIntent, grammarPoint: GrammarPointDetail): Practi
   const emphasis = findPracticeSpecialization(intent.specializationId)?.hintEmphasis
     .slice(0, 2)
     .join("、");
+  if (intent.answerPolicy.responseMode === "choice") {
+    return [
+      {
+        level: "semantic_hint",
+        content: `先用自己的话概括「${grammarPoint.grammarPoint}」在当前用法中的核心意思，再逐项核对。`,
+        revealsForm: false,
+        revealsAnswer: false,
+      },
+      {
+        level: "form_hint",
+        content: "排除只描述其他语法功能、对象类型或使用条件的选项。",
+        revealsForm: false,
+        revealsAnswer: false,
+      },
+    ];
+  }
   return [
     {
       level: "semantic_hint",
       content: emphasis
-        ? `先确认核心意思，并留意：${emphasis}。`
-        : `先确认核心意思：${grammarPoint.coreMeaning}`,
+        ? `先把中文意图拆成“谁、做什么、对谁或在哪里”，并留意：${emphasis}。`
+        : `先确认这句话要表达的关系：${grammarPoint.coreMeaning}`,
       revealsForm: false,
       revealsAnswer: false,
     },
-    { level: "form_hint", content: `接续要求：${grammarPoint.connections[0]?.pattern ?? grammarPoint.structure ?? "查看语法说明中的接续"}`, revealsForm: true, revealsAnswer: false },
+    { level: "form_hint", content: `再按这个结构组织句子：${grammarPoint.connections[0]?.pattern ?? grammarPoint.structure ?? "查看语法说明中的接续"}`, revealsForm: true, revealsAnswer: false },
   ];
 }
 
@@ -159,6 +175,26 @@ function base(input: {
   };
 }
 
+function requiredFeaturesForItem(
+  support: FallbackSupport,
+  referenceAnswers: PracticeReferenceAnswer[]
+) {
+  const references = referenceAnswers.map((answer) => answer.jp);
+  return support.requiredGrammarFeatures.filter((feature) => {
+    if (feature === "location-ni") {
+      return references.some((sentence) =>
+        /に[^。？！!?]*(?:が|は)[^。？！!?]*(?:あります|います)/.test(sentence)
+      );
+    }
+    if (feature === "subject-ga") {
+      return references.some((sentence) =>
+        /が[^。？！!?]*(?:あります|います)/.test(sentence)
+      );
+    }
+    return true;
+  });
+}
+
 function choices(labels: string[], correctIndex = 0) {
   const unique = Array.from(new Set(labels.filter(Boolean))).slice(0, 4);
   const options: PracticeExerciseOption[] = unique.map((label, index) => ({ id: `option-${index + 1}`, label }));
@@ -172,11 +208,33 @@ function meaningFallback(input: {
   degradationReason?: string | null;
 }): PracticeItemV2 {
   const siblingMeanings = input.grammarPoint.formSiblings.map((sibling) => sibling.coreMeaning);
+  const canonical = input.grammarPoint.canonicalForm ?? input.grammarPoint.grammarPoint;
+  const knownDistractors: Record<string, string[]> = {
+    "Aがあります": [
+      "某处有人或动物",
+      "某事物发生了变化",
+      "把某事物设定为某种状态",
+    ],
+    "Aがいます": [
+      "某处有物品、设施等无生命事物",
+      "某事物发生了变化",
+      "把某事物设定为某种状态",
+    ],
+    "AはBです": [
+      "某处存在B",
+      "A发生了变化并成为B",
+      "把A决定或设定为B",
+    ],
+  };
+  const fallbackDistractors = knownDistractors[canonical] ?? [
+    "表示前项是后项发生的原因",
+    "表示从他人处听到的信息",
+    "表示某个条件成立后的结果",
+  ];
   const choiceData = choices([
     input.grammarPoint.coreMeaning,
     ...siblingMeanings,
-    "只改变句子的礼貌程度，不改变意义",
-    "只表示动作已经结束",
+    ...fallbackDistractors,
   ]);
   const root = base(input);
   return {
@@ -186,7 +244,16 @@ function meaningFallback(input: {
     choices: choiceData.options,
     correctChoiceId: choiceData.correctChoiceId,
     distractorReasons: Object.fromEntries(
-      choiceData.options.filter((option) => option.id !== choiceData.correctChoiceId).map((option) => [option.id, "不符合当前具体用法。"])
+      choiceData.options
+        .filter((option) => option.id !== choiceData.correctChoiceId)
+        .map((option) => [
+          option.id,
+          canonical === "Aがあります" && option.label.includes("有人或动物")
+            ? "人和动物的存在通常用「います」，这里学习的是无生命事物的存在。"
+            : canonical === "Aがいます" && option.label.includes("无生命")
+              ? "物品和设施等无生命事物通常用「あります」。"
+              : `「${option.label}」不是这个具体用法表达的核心意思。`,
+        ])
     ),
   };
 }
@@ -280,18 +347,13 @@ function hospitalTranslationFallback(input: {
     zh: "不好意思，能请您再说明一遍吗？",
     noteZh: "使用目标语法完成一般礼貌请求。",
   };
-  const polishedAnswer = {
-    jp: "すみません、もう一度説明していただけますか。",
-    zh: "不好意思，能请您再说明一遍吗？",
-    noteZh: "对医生时，这个说法更加郑重自然。",
-  };
   const chineseSentence = "不好意思，我没听清楚，能请您再说明一遍吗？";
   return {
     ...root,
-    referenceAnswers: [polishedAnswer, answer],
+    referenceAnswers: [answer],
     answerContract: {
       ...root.answerContract,
-      allowedVariants: [polishedAnswer.jp, answer.jp],
+      allowedVariants: [answer.jp],
       requiredMeaningSlots: [chineseSentence],
     },
     exerciseType: "guided_translation",
@@ -461,6 +523,13 @@ function buildLocalFallbackV2ForActiveIntent(input: {
     item = meaningFallback({ ...input, intent: degradedIntent, degradationReason: input.intent.exerciseType === "meaning_choice" ? null : `从${input.intent.exerciseType}降级为已验证封闭题` });
   }
 
+  item.answerContract = {
+    ...item.answerContract,
+    requiredGrammarFeatures: Array.from(new Set([
+      ...item.answerContract.requiredGrammarFeatures,
+      ...requiredFeaturesForItem(fallbackSupportFor(input.grammarPoint), item.referenceAnswers),
+    ])),
+  };
   const validation = validatePracticeItemV2(item, input.grammarPoint);
   item.generationMetadata.validationResults = validation.results;
   if (!validation.valid) {

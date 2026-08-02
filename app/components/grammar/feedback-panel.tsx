@@ -14,6 +14,7 @@ type FeedbackPanelProps = {
   learnerAnswer?: string | null;
   isRecorded?: boolean;
   rubricScores?: PracticeMasteryEvidence["rubricScores"];
+  responseMode?: "text" | "choice";
 };
 
 const SCORE_ITEMS = [
@@ -39,6 +40,7 @@ export function FeedbackPanel({
   learnerAnswer,
   isRecorded = false,
   rubricScores,
+  responseMode = "text",
 }: FeedbackPanelProps) {
   if (isLoading) {
     return (
@@ -102,7 +104,11 @@ export function FeedbackPanel({
             <h2 className="text-sm font-semibold text-foreground/85">
               LexiNote 教练
             </h2>
-            <TagBadge tag={feedback.isCorrect ? "表达自然" : "需要调整"} />
+            <TagBadge
+              tag={feedback.isCorrect
+                ? responseMode === "choice" ? "回答正确" : "表达自然"
+                : responseMode === "choice" ? "回答不正确" : "需要调整"}
+            />
           </div>
 
           <p className="mt-3 text-base font-semibold leading-7 text-foreground">
@@ -218,7 +224,7 @@ export function FeedbackPanel({
                         ? rubricScores[RUBRIC_SCORE_KEYS[key]] === "not_assessed"
                           ? "未评估"
                           : `${rubricScores[RUBRIC_SCORE_KEYS[key]]}/3`
-                        : `${feedback[key]}/5`}
+                        : `${Math.round((feedback[key] / 5) * 3)}/3`}
                     </dd>
                   </div>
                 ))}

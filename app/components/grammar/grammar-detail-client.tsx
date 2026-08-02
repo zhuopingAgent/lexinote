@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GrammarDetailResponse, GrammarPointDetail } from "@/shared/types/grammar";
+import type {
+  GrammarDetailResponse,
+  GrammarPointDetail,
+  GrammarPointSummary,
+  GrammarSearchResponse,
+} from "@/shared/types/grammar";
 import { GrammarDetail } from "@/app/components/grammar/grammar-detail";
 import { getErrorMessage, readJson } from "@/app/lib/api-client";
 
@@ -13,6 +18,10 @@ export function GrammarDetailClient({
   const [grammarPoint, setGrammarPoint] = useState<GrammarPointDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [curriculumNeighbors, setCurriculumNeighbors] = useState<{
+    previous: GrammarPointSummary | null;
+    next: GrammarPointSummary | null;
+  } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -26,6 +35,30 @@ export function GrammarDetailClient({
           signal: controller.signal,
         }).then((response) => readJson<GrammarDetailResponse>(response));
         setGrammarPoint(detail.grammarPoint);
+        const curriculum = detail.grammarPoint.curriculum;
+        if (curriculum?.module) {
+          try {
+            const params = new URLSearchParams({
+              stage: curriculum.stage.slug,
+              module: curriculum.module.slug,
+              limit: "80",
+            });
+            const moduleItems = await fetch(`/api/grammar?${params.toString()}`, {
+              signal: controller.signal,
+            }).then((response) => readJson<GrammarSearchResponse>(response));
+            const currentIndex = moduleItems.items.findIndex(
+              (item) => item.id === detail.grammarPoint.id
+            );
+            setCurriculumNeighbors(currentIndex >= 0 ? {
+              previous: moduleItems.items[currentIndex - 1] ?? null,
+              next: moduleItems.items[currentIndex + 1] ?? null,
+            } : null);
+          } catch {
+            if (!controller.signal.aborted) setCurriculumNeighbors(null);
+          }
+        } else {
+          setCurriculumNeighbors(null);
+        }
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setError(getErrorMessage(loadError, "语法详情加载失败，请稍后再试。"));
@@ -100,6 +133,7 @@ export function GrammarDetailClient({
       key={grammarPoint.id}
       grammarPoint={grammarPoint}
       onFavoriteChange={onFavoriteChange}
+      curriculumNeighbors={curriculumNeighbors ?? undefined}
     />
   );
 }

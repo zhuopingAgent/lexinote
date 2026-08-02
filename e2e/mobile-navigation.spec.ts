@@ -49,6 +49,13 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
   await expect(page.getByRole("link", { name: "辞書" })).toBeVisible();
   await expect(page.getByRole("link", { name: "文法" })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "搜索语法" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "易混对比", exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole("link", { name: "待完成 2", exact: true }).click();
+  await expect(page).toHaveURL(/\/review#pending$/);
+  await expect(page.getByText("筛选复习记录", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "待完成", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   expectNoBrowserErrors(browserErrors);
