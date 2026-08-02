@@ -2,6 +2,7 @@ import {
   MAX_CONTEXT_MESSAGES,
   MAX_CONVERSATION_INPUT_LENGTH,
   isConversationMode,
+  selectConversationGrammarCandidates,
   trimConversationContextMessages,
 } from "@/features/conversation/domain/conversation";
 import type { ConversationAiClient } from "@/features/conversation/infrastructure/ConversationAiClient";
@@ -21,7 +22,6 @@ import type {
   ConversationGrammarCandidate,
   ConversationMessage,
   ConversationMode,
-  ConversationPreferences,
   ConversationRegister,
   ConversationSessionResponse,
   ConversationStreamEvent,
@@ -280,29 +280,26 @@ export class ConversationService {
     input: UpdateConversationPreferencesRequest,
     userId = DEFAULT_GRAMMAR_USER_ID
   ) {
-    const current = await this.repository.getPreferences(userId);
-    const defaultCollectionId =
-      input.defaultCollectionId === undefined
-        ? current.defaultCollectionId
-        : input.defaultCollectionId;
-    if (
-      defaultCollectionId !== null &&
-      (!Number.isInteger(defaultCollectionId) || defaultCollectionId <= 0)
-    ) {
-      throw new ValidationError("defaultCollectionId is invalid");
+    const next: UpdateConversationPreferencesRequest = {};
+    if (input.defaultMode !== undefined) {
+      next.defaultMode = normalizeMode(input.defaultMode, "auto");
     }
-    if (defaultCollectionId !== null) {
-      await this.collectionService.getCollectionDetail(defaultCollectionId);
+    if (input.defaultRegister !== undefined) {
+      next.defaultRegister = normalizeRegister(input.defaultRegister);
     }
-    const next: ConversationPreferences = {
-      defaultMode: normalizeMode(input.defaultMode, current.defaultMode),
-      translationStyle: "natural_first",
-      defaultRegister:
-        input.defaultRegister === undefined
-          ? current.defaultRegister
-          : normalizeRegister(input.defaultRegister),
-      defaultCollectionId,
-    };
+    if (input.defaultCollectionId !== undefined) {
+      const defaultCollectionId = input.defaultCollectionId;
+      if (
+        defaultCollectionId !== null &&
+        (!Number.isInteger(defaultCollectionId) || defaultCollectionId <= 0)
+      ) {
+        throw new ValidationError("defaultCollectionId is invalid");
+      }
+      if (defaultCollectionId !== null) {
+        await this.collectionService.getCollectionDetail(defaultCollectionId);
+      }
+      next.defaultCollectionId = defaultCollectionId;
+    }
     return this.repository.updatePreferences(userId, next);
   }
 
@@ -407,6 +404,7 @@ export class ConversationService {
     const mode = normalizeMode(input.mode, session.mode);
     let userMessage = null;
     let assistantMessage = null;
+    let retryAssistantMessageId: string | null = null;
     if (input.retryParentMessageId) {
       assertUuid(input.retryParentMessageId, "retryParentMessageId");
       const retryParent = await this.repository.findMessage(
@@ -422,11 +420,35 @@ export class ConversationService {
       }
       userMessage = retryParent;
       content = retryParent.content;
-      assistantMessage = await this.repository.findMessageByClientId(
-        sessionId,
-        userId,
-        `retry:${clientMessageId}`
+      if (!input.retryAssistantMessageId) {
+        throw new ValidationError("retryAssistantMessageId is required");
+      }
+      assertUuid(input.retryAssistantMessageId, "retryAssistantMessageId");
+      const retryAssistant = await this.repository.findMessage(
+        input.retryAssistantMessageId,
+        userId
       );
+      if (
+        !retryAssistant ||
+        retryAssistant.sessionId !== sessionId ||
+        retryAssistant.role !== "assistant" ||
+        retryAssistant.parentMessageId !== retryParent.id
+      ) {
+        throw new NotFoundError("未找到要重试的助手消息。");
+      }
+      if (
+        retryAssistant.status === "completed" ||
+        retryAssistant.status === "streaming"
+      ) {
+        assistantMessage = retryAssistant;
+      } else if (
+        retryAssistant.status === "failed" ||
+        retryAssistant.status === "cancelled"
+      ) {
+        retryAssistantMessageId = retryAssistant.id;
+      } else {
+        throw new ValidationError("这条助手消息不能重试。");
+      }
     } else {
       userMessage = await this.repository.findMessageByClientId(
         sessionId,
@@ -463,24 +485,30 @@ export class ConversationService {
     if (assistantMessage) {
       return replayMessageStream(userMessage, assistantMessage);
     }
-    const assistantClientMessageId = input.retryParentMessageId
-      ? `retry:${clientMessageId}`
-      : `assistant:${clientMessageId}`;
-    assistantMessage = await this.repository.insertAssistantMessage({
-      sessionId,
-      userId,
-      mode,
-      parentMessageId: userMessage.id,
-      modelName: resolveAiTextModel("defaultTeacher"),
-      clientMessageId: assistantClientMessageId,
-    });
-    if (!assistantMessage) {
-      const concurrentAssistant =
-        await this.repository.findMessageByClientId(
+    const assistantClientMessageId = `assistant:${clientMessageId}`;
+    assistantMessage = retryAssistantMessageId
+      ? await this.repository.restartAssistantMessage({
+          messageId: retryAssistantMessageId,
+          userId,
+          mode,
+          modelName: resolveAiTextModel("defaultTeacher"),
+        })
+      : await this.repository.insertAssistantMessage({
           sessionId,
           userId,
-          assistantClientMessageId
-        );
+          mode,
+          parentMessageId: userMessage.id,
+          modelName: resolveAiTextModel("defaultTeacher"),
+          clientMessageId: assistantClientMessageId,
+        });
+    if (!assistantMessage) {
+      const concurrentAssistant = retryAssistantMessageId
+        ? await this.repository.findMessage(retryAssistantMessageId, userId)
+        : await this.repository.findMessageByClientId(
+            sessionId,
+            userId,
+            assistantClientMessageId
+          );
       if (!concurrentAssistant) {
         throw new DependencyError("assistant message could not be created");
       }
@@ -689,13 +717,16 @@ export class ConversationService {
             limit: 5,
             userId,
           });
-          grammarCandidates = search.items.map((candidate) => ({
-            grammarPointId: candidate.id,
-            grammarPoint: candidate.grammarPoint,
-            canonicalForm: candidate.canonicalForm,
-            senseKey: candidate.senseKey,
-            coreMeaning: candidate.coreMeaning,
-          }));
+          grammarCandidates = selectConversationGrammarCandidates(
+            item.surfaceForm,
+            search.items.map((candidate) => ({
+              grammarPointId: candidate.id,
+              grammarPoint: candidate.grammarPoint,
+              canonicalForm: candidate.canonicalForm,
+              senseKey: candidate.senseKey,
+              coreMeaning: candidate.coreMeaning,
+            }))
+          );
         }
         learningItems.push(
           await this.repository.insertLearningItem({

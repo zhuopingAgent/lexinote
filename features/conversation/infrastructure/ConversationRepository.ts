@@ -20,6 +20,7 @@ import {
   LIST_CONVERSATION_MESSAGES_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
   LIST_CONVERSATION_SESSIONS_SQL,
+  RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   SELECT_CONVERSATION_LEARNING_ITEM_SQL,
   SELECT_CONVERSATION_MEMORY_SQL,
   SELECT_CONVERSATION_MESSAGE_BY_CLIENT_ID_SQL,
@@ -51,6 +52,7 @@ import type {
   ConversationPreferences,
   ConversationRegister,
   ConversationSession,
+  UpdateConversationPreferencesRequest,
 } from "@/shared/types/conversation";
 
 type SessionRow = {
@@ -328,14 +330,19 @@ export class ConversationRepository {
     };
   }
 
-  async updatePreferences(userId: string, preferences: ConversationPreferences) {
+  async updatePreferences(
+    userId: string,
+    preferences: UpdateConversationPreferencesRequest
+  ) {
     await this.getPreferences(userId);
     const rows = await query<PreferenceRow>(UPDATE_CONVERSATION_PREFERENCES_SQL, [
       userId,
-      preferences.defaultMode,
-      preferences.translationStyle,
-      preferences.defaultRegister,
-      preferences.defaultCollectionId,
+      preferences.defaultMode !== undefined,
+      preferences.defaultMode ?? null,
+      preferences.defaultRegister !== undefined,
+      preferences.defaultRegister ?? null,
+      preferences.defaultCollectionId !== undefined,
+      preferences.defaultCollectionId ?? null,
     ]);
     const row = rows[0];
     if (!row) {
@@ -427,6 +434,19 @@ export class ConversationRepository {
       input.modelName,
       input.clientMessageId,
     ]);
+    return rows[0] ? this.mapMessage(rows[0]) : null;
+  }
+
+  async restartAssistantMessage(input: {
+    messageId: string;
+    userId: string;
+    mode: ConversationMode;
+    modelName: string;
+  }) {
+    const rows = await query<MessageRow>(
+      RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+      [input.messageId, input.userId, input.mode, input.modelName]
+    );
     return rows[0] ? this.mapMessage(rows[0]) : null;
   }
 

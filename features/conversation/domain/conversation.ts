@@ -1,4 +1,5 @@
 import type {
+  ConversationGrammarCandidate,
   ConversationLearningItemKind,
   ConversationMemoryKind,
   ConversationMemoryScope,
@@ -62,6 +63,27 @@ function readStringArray(value: unknown, limit: number, maxLength: number) {
 export function isConversationMode(value: unknown): value is ConversationMode {
   return typeof value === "string" &&
     CONVERSATION_MODES.includes(value as ConversationMode);
+}
+
+function normalizeGrammarForm(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/[~～]/g, "〜")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+export function selectConversationGrammarCandidates(
+  surfaceForm: string,
+  candidates: ConversationGrammarCandidate[]
+) {
+  const normalizedSurface = normalizeGrammarForm(surfaceForm);
+  const exact = candidates.filter(
+    (candidate) =>
+      normalizeGrammarForm(candidate.canonicalForm) === normalizedSurface ||
+      normalizeGrammarForm(candidate.grammarPoint) === normalizedSurface
+  );
+  return exact.length > 0 ? exact : candidates;
 }
 
 export function trimConversationContextMessages(

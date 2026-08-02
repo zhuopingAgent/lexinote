@@ -5,6 +5,8 @@ import {
   CLAIM_CONVERSATION_ANALYSIS_SQL,
   DELETE_CONVERSATION_SESSION_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
+  RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  UPDATE_CONVERSATION_PREFERENCES_SQL,
   UPDATE_CONVERSATION_SUMMARY_SQL,
 } from "@/shared/db/sql/conversation.sql";
 import { UPSERT_REVIEW_RECORD_FROM_CONVERSATION_SQL } from "@/shared/db/sql/grammar.sql";
@@ -51,6 +53,33 @@ describe("conversation schema and persistence semantics", () => {
       "status IN ('needs_review', 'failed')"
     );
     expect(LIST_CONVERSATION_REVIEW_INBOX_SQL).not.toContain("'suggested'");
+  });
+
+  it("updates preferences as atomic partial mutations", () => {
+    expect(UPDATE_CONVERSATION_PREFERENCES_SQL).toContain(
+      "WHEN $2::boolean THEN $3::text"
+    );
+    expect(UPDATE_CONVERSATION_PREFERENCES_SQL).toContain(
+      "WHEN $4::boolean THEN $5::text"
+    );
+    expect(UPDATE_CONVERSATION_PREFERENCES_SQL).toContain(
+      "WHEN $6::boolean THEN $7::bigint"
+    );
+    expect(UPDATE_CONVERSATION_PREFERENCES_SQL).not.toContain(
+      "default_mode = $2::text"
+    );
+  });
+
+  it("restarts failed answers in place without changing their idempotency key", () => {
+    expect(RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL).toContain(
+      "status IN ('failed', 'cancelled')"
+    );
+    expect(RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL).toContain(
+      "status = 'streaming'"
+    );
+    expect(RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL).not.toContain(
+      "client_message_id ="
+    );
   });
 
   it("leases failed or stale analysis and protects the first automatic title", () => {

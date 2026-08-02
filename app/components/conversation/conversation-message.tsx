@@ -203,7 +203,7 @@ function LearningItemCard({
                 </option>
               ))}
             </select>
-            <button type="button" title="新建单词本" aria-label="新建单词本" onClick={() => setIsCreatingCollection((current) => !current)} className="inline-flex size-9 items-center justify-center rounded-md border border-border text-muted transition hover:text-foreground">
+            <button type="button" title="新建单词本" aria-label="新建单词本" disabled={isBusy} onClick={() => setIsCreatingCollection((current) => !current)} className="inline-flex size-9 items-center justify-center rounded-md border border-border text-muted transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45">
               <PlusIcon className="size-4" />
             </button>
             {pronunciationOptions.length > 0 ? (
@@ -227,7 +227,7 @@ function LearningItemCard({
       </div>
       {item.kind !== "grammar" && isCreatingCollection ? (
         <div className="mt-2 flex max-w-md gap-2">
-          <input aria-label="单词本名称" value={newCollectionName} maxLength={80} onChange={(event) => setNewCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createCollection(); } }} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-foreground/30" />
+          <input aria-label="单词本名称" value={newCollectionName} disabled={isBusy} maxLength={80} onChange={(event) => setNewCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createCollection(); } }} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-55" />
           <button type="button" disabled={isBusy || !newCollectionName.trim()} onClick={() => void createCollection()} className="inline-flex h-9 items-center rounded-md bg-accent px-3 text-sm font-semibold text-black disabled:opacity-45">创建</button>
         </div>
       ) : null}

@@ -147,6 +147,7 @@ export type SendConversationMessageRequest = {
   content: string;
   mode?: ConversationMode;
   retryParentMessageId?: string;
+  retryAssistantMessageId?: string;
 };
 
 export type UpdateConversationPreferencesRequest = Partial<
