@@ -3,10 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  getErrorMessage,
-  readResponseErrorMessage,
-} from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
+import { removeCollectionWord } from "@/app/lib/collection-api";
 import type { CollectionWordItem } from "@/shared/types/collections";
 
 type CollectionWordGridProps = {
@@ -43,16 +41,7 @@ export function CollectionWordGrid({
     setBusyWordId(wordId);
 
     try {
-      const response = await fetch(
-        `/api/collections/${collectionId}/words/${wordId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(await readResponseErrorMessage(response, "请求失败"));
-      }
+      await removeCollectionWord(collectionId, wordId);
 
       setCurrentWords((currentItems) =>
         currentItems.filter((word) => word.wordId !== wordId)

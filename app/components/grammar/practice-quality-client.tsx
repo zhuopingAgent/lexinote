@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
+import { fetchPracticeGenerationMetrics } from "@/app/lib/practice-api";
 import type { PracticeGenerationMetrics } from "@/shared/types/practice";
 
 const VALIDATION_LABELS: Record<string, string> = {
@@ -41,8 +42,7 @@ export function PracticeQualityClient() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/practice/metrics", { signal: controller.signal, cache: "no-store" })
-      .then((response) => readJson<PracticeGenerationMetrics>(response))
+    void fetchPracticeGenerationMetrics(controller.signal)
       .then(setMetrics)
       .catch((requestError) => {
         if (!controller.signal.aborted) {

@@ -9,6 +9,8 @@ import {
   SELECT_ACTIVE_ENTRY_AUTO_FILTER_JOB_SQL,
 } from "@/shared/db/sql/auto-filter-jobs.sql";
 import { query } from "@/shared/db/query";
+import { isUniqueViolation } from "@/shared/db/postgres-errors";
+import { toInteger } from "@/shared/db/values";
 
 const AUTO_FILTER_JOB_LEASE_SECONDS = 300;
 
@@ -32,17 +34,6 @@ type AutoFilterJobRow = {
   max_attempts: number | string;
 };
 
-function toInteger(value: number | string, fieldName: string) {
-  const nextValue =
-    typeof value === "string" ? Number.parseInt(value, 10) : value;
-
-  if (!Number.isInteger(nextValue)) {
-    throw new Error(`${fieldName} must be an integer`);
-  }
-
-  return nextValue;
-}
-
 function mapJobRow(row: AutoFilterJobRow): AutoFilterJob {
   return {
     jobId: toInteger(row.job_id, "job_id"),
@@ -59,15 +50,6 @@ function mapJobRow(row: AutoFilterJobRow): AutoFilterJob {
     attemptCount: toInteger(row.attempt_count, "attempt_count"),
     maxAttempts: toInteger(row.max_attempts, "max_attempts"),
   };
-}
-
-function isUniqueViolation(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
-  );
 }
 
 export class CollectionAutoFilterJobRepository {

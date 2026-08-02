@@ -32,25 +32,27 @@
   - `app/api/words/lookup/route.ts`: lookup endpoint returning the lookup payload
   - `app/api/words/route.ts`: overview listing endpoint with search and pagination
   - `app/api/collections/*`: collection CRUD and collection-word APIs
+  - `app/lib/*-api.ts`: typed browser API boundaries for collection, conversation, dictionary, grammar, and practice endpoints
 - `features/`: business modules
   - `features/grammar-learning/`: grammar search/detail, practice generation, sentence feedback, favorites, review, and grammar AI prompts/fallbacks
   - `features/vocabulary-core/`: stable vocabulary-entry boundary shared by lookup, collections, and future study features
   - `features/word-lookup/`: orchestration service
-  - `features/japanese-dictionary/`: Japanese-specific dictionary lookup
+  - `features/japanese-dictionary/`: Japanese-specific dictionary lookup and pure reading conversion helpers
   - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
-  - `features/collections/`: collection CRUD, collection-word workflows, and auto-filter job processing
-  - `features/conversation/`: conversation services, AI client, prompts, output validation, and repository access
+  - `features/collections/`: collection CRUD, collection-word workflows, shared auto-filter rule matching, and job processing
+  - `features/conversation/`: conversation services, shared identifier validation, AI client, prompts, output validation, and repository access
 - `shared/`: cross-cutting code
   - `shared/ai/`: AI Gateway model roles, request construction, quota handling,
     and response text extraction shared by feature clients
   - `shared/auth/`: Basic Auth-adjacent two-factor helpers, TOTP verification, and signed 2FA session cookies
-  - `shared/db/`: centralized PostgreSQL access and SQL
+  - `shared/db/`: centralized PostgreSQL access, SQL, strict row-value mapping, and PostgreSQL error guards
+  - `shared/server/service-container.ts`: server-only dependency composition shared by route handlers and Server Pages
   - `shared/types/`: domain DTOs split across `grammar.ts`, `practice.ts`, `dictionary.ts`, and `collections.ts`; `api.ts` remains the compatibility barrel
   - `shared/utils/`: app-level errors
 - `types/`: local ambient typings
 - Root configs: `next.config.ts`, `tsconfig.json`, `eslint.config.mjs`, `postcss.config.mjs`
 - Root proxy: `proxy.ts` enforces deployment-level Basic Auth and optional TOTP before app routes and APIs run
-- E2E coverage: `playwright.config.ts`, `e2e/*`
+- CI and E2E coverage: `.github/workflows/ci.yml`, `playwright.config.ts`, `e2e/*`
 - AI docs index: root `Memory.md` (with `AGENTS.md` compatibility alias) -> `docs/ai/*`
 
 ## Access Protection

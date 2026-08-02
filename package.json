@@ -10,6 +10,8 @@
     "build": "npm run typecheck && next build",
     "start": "next start",
     "auth:reset-2fa": "node scripts/reset-two-factor.mjs",
+    "check": "npm run lint && npm run test && npm run build",
+    "check:ci": "npm audit && npm run check",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -23,6 +23,7 @@
 - `PG_POOL_MAX` can override the PostgreSQL pool size. It defaults to `1` on Vercel/serverless and `10` elsewhere.
 - `PG_CONNECTION_TIMEOUT_MS` defaults to `5000`; `PG_IDLE_TIMEOUT_MS` defaults to `10000`.
 - `E2E_DATABASE_URL` is required for `npm run test:e2e` and should point to a local test database such as `lexinote_e2e`.
+- `E2E_PORT` overrides the Playwright server port when the default `3100` is already in use by another worktree.
 - `E2E_RUN_LIVE_AI=1` opts the Playwright server into using locally configured Gateway credentials for the live AI auto-filter case. The default E2E run clears Gateway credentials and skips that cost-bearing case.
 - `AI_GATEWAY_API_KEY` is optional for local development. Vercel deployments can use `VERCEL_OIDC_TOKEN` instead. If neither Gateway credential is available, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
 - Common Japanese inflections and adjective forms can still resolve locally without AI Gateway credentials when the conservative local base-form fallback hits an existing persisted entry.
@@ -106,6 +107,10 @@
 
 ## Quality Checks
 
+- Complete local quality gate:
+  `npm run check`
+- CI quality gate, including dependency audit:
+  `npm run check:ci`
 - Lint:
   `npm run lint`
 - Unit and route tests:
@@ -150,7 +155,7 @@
 - Check that local PostgreSQL is running and reachable from that connection string.
 - Run `npx playwright install chromium` once if the Playwright browser binaries are missing.
 - `e2e/global-setup.mjs` applies `schema.sql` and `grammar-content.sql`, validates the grammar domain, truncates the E2E fixture tables, and then loads `e2e/fixtures.sql` before the test starts.
-- `npm run test:e2e` starts a production-style server on `127.0.0.1:3100` via `npm run build && npm run start`, so it should not share a running `next dev` process or assume port `3000`.
+- `npm run test:e2e` starts a production-style server on `127.0.0.1:3100` by default via `npm run build && npm run start`; set `E2E_PORT` for parallel worktrees.
 - The Playwright server clears app-level Basic Auth and 2FA secrets so local deployment-protection settings do not block product-flow tests.
 
 ## MCP Setup

@@ -1,4 +1,5 @@
 import { query } from "@/shared/db/query";
+import { toIsoString, toNullableIsoString } from "@/shared/db/values";
 import {
   CLAIM_CONVERSATION_ANALYSIS_SQL,
   COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL,
@@ -121,14 +122,6 @@ type LearningItemRow = {
   created_at: string | Date;
   updated_at: string | Date;
 };
-
-function toIsoString(value: string | Date) {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function toNullableIsoString(value: string | Date | null) {
-  return value ? toIsoString(value) : null;
-}
 
 function toNullableInteger(value: number | string | null) {
   if (value === null) {

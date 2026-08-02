@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { SearchIcon, TrashIcon } from "@/app/components/icons";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
+import {
+  dismissConversationLearningItem,
+  fetchConversationReviewInbox,
+  promoteConversationLearningItem,
+} from "@/app/lib/conversation-api";
+import { fetchGrammarSearch } from "@/app/lib/grammar-api";
 import type {
   ConversationGrammarCandidate,
   ConversationLearningItem,
-  ConversationReviewInboxResponse,
-  PromoteConversationLearningItemResponse,
 } from "@/shared/types/conversation";
-import type { GrammarSearchResponse } from "@/shared/types/grammar";
 
 function InboxItem({
   item,
@@ -33,9 +36,10 @@ function InboxItem({
     setIsBusy(true);
     setNotice(null);
     try {
-      const result = await fetch(
-        `/api/grammar?query=${encodeURIComponent(search.trim())}&limit=5`
-      ).then((response) => readJson<GrammarSearchResponse>(response));
+      const result = await fetchGrammarSearch({
+        query: search.trim(),
+        limit: 5,
+      });
       const nextCandidates: ConversationGrammarCandidate[] = result.items.map(
         (candidate) => ({
           grammarPointId: candidate.id,
@@ -60,13 +64,9 @@ function InboxItem({
     setIsBusy(true);
     setNotice(null);
     try {
-      await fetch(`/api/conversation/learning-items/${item.id}/promote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grammarPointId: selectedId }),
-      }).then((response) =>
-        readJson<PromoteConversationLearningItemResponse>(response)
-      );
+      await promoteConversationLearningItem(item.id, {
+        grammarPointId: selectedId,
+      });
       onSaved(item.id);
     } catch (saveError) {
       setNotice(getErrorMessage(saveError, "加入复习失败，请重试。"));
@@ -78,9 +78,7 @@ function InboxItem({
   async function dismiss() {
     setIsBusy(true);
     try {
-      await fetch(`/api/conversation/learning-items/${item.id}`, {
-        method: "DELETE",
-      }).then((response) => readJson(response));
+      await dismissConversationLearningItem(item.id);
       onDismissed(item.id);
     } finally {
       setIsBusy(false);
@@ -135,8 +133,7 @@ export function ConversationReviewInbox({
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/conversation/review-inbox", { signal: controller.signal })
-      .then((response) => readJson<ConversationReviewInboxResponse>(response))
+    void fetchConversationReviewInbox(controller.signal)
       .then((result) => {
         setItems(result.items);
       })

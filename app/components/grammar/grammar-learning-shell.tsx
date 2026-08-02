@@ -3,10 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type {
-  GrammarBootstrapResponse,
   GrammarPointSummary,
   GrammarProgressResponse,
-  GrammarSearchResponse,
   KnowledgeDimension,
   LearningModule,
   LearningStage,
@@ -17,7 +15,12 @@ import { GrammarCard } from "@/app/components/grammar/grammar-card";
 import { GrammarPathNavigation } from "@/app/components/grammar/grammar-path-navigation";
 import { GrammarProgressOverview } from "@/app/components/grammar/grammar-progress-overview";
 import { GrammarSearch } from "@/app/components/grammar/grammar-search";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
+import {
+  fetchGrammarBootstrap,
+  fetchGrammarSearch,
+  type GrammarSearchParams,
+} from "@/app/lib/grammar-api";
 
 const GRAMMAR_PAGE_SIZE = 36;
 const GRAMMAR_FETCH_LIMIT = GRAMMAR_PAGE_SIZE + 1;
@@ -25,6 +28,41 @@ const DEFAULT_DIMENSION_SLUG = "expression_function";
 const DEFAULT_STAGE_SLUG = "foundations";
 
 type GrammarBrowseMode = "knowledge" | "curriculum";
+
+function getGrammarSearchParams({
+  submittedQuery,
+  browseMode,
+  categorySlug,
+  dimensionSlug,
+  stageSlug,
+  moduleSlug,
+  practicality,
+  learningStatus,
+  offset,
+}: {
+  submittedQuery: string;
+  browseMode: GrammarBrowseMode;
+  categorySlug: string;
+  dimensionSlug: string;
+  stageSlug: string;
+  moduleSlug: string;
+  practicality: string;
+  learningStatus: string;
+  offset?: number;
+}): GrammarSearchParams {
+  return {
+    query: submittedQuery.trim() || undefined,
+    category: browseMode === "knowledge" ? categorySlug || undefined : undefined,
+    dimension:
+      browseMode === "knowledge" ? dimensionSlug || undefined : undefined,
+    stage: browseMode === "curriculum" ? stageSlug || undefined : undefined,
+    module: browseMode === "curriculum" ? moduleSlug || undefined : undefined,
+    practicality: practicality || undefined,
+    learningStatus: learningStatus || undefined,
+    limit: GRAMMAR_FETCH_LIMIT,
+    offset,
+  };
+}
 
 export function GrammarLearningShell() {
   const [query, setQuery] = useState("");
@@ -74,14 +112,14 @@ export function GrammarLearningShell() {
     setHasMore(false);
 
     async function loadBootstrap() {
-      const params = new URLSearchParams();
-
-      params.set("dimension", DEFAULT_DIMENSION_SLUG);
-      params.set("limit", String(GRAMMAR_FETCH_LIMIT));
       try {
-        const result = await fetch(`/api/grammar/bootstrap?${params.toString()}`, {
-          signal: controller.signal,
-        }).then((response) => readJson<GrammarBootstrapResponse>(response));
+        const result = await fetchGrammarBootstrap(
+          {
+            dimension: DEFAULT_DIMENSION_SLUG,
+            limit: GRAMMAR_FETCH_LIMIT,
+          },
+          controller.signal
+        );
 
         if (controller.signal.aborted || searchGenerationRef.current !== generation) {
           return;
@@ -147,30 +185,20 @@ export function GrammarLearningShell() {
         setIsSearchLoading(true);
         setSearchError(null);
 
-        const params = new URLSearchParams();
-        if (submittedQuery.trim()) {
-          params.set("query", submittedQuery.trim());
-        }
-        if (browseMode === "knowledge" && categorySlug) {
-          params.set("category", categorySlug);
-        }
-        if (browseMode === "knowledge" && dimensionSlug) {
-          params.set("dimension", dimensionSlug);
-        }
-        if (browseMode === "curriculum" && stageSlug) {
-          params.set("stage", stageSlug);
-        }
-        if (browseMode === "curriculum" && moduleSlug) {
-          params.set("module", moduleSlug);
-        }
-        if (practicality) params.set("practicality", practicality);
-        if (learningStatus) params.set("learningStatus", learningStatus);
-        params.set("limit", String(GRAMMAR_FETCH_LIMIT));
-
         try {
-          const result = await fetch(`/api/grammar?${params.toString()}`, {
-            signal: controller.signal,
-          }).then((response) => readJson<GrammarSearchResponse>(response));
+          const result = await fetchGrammarSearch(
+            getGrammarSearchParams({
+              submittedQuery,
+              browseMode,
+              categorySlug,
+              dimensionSlug,
+              stageSlug,
+              moduleSlug,
+              practicality,
+              learningStatus,
+            }),
+            controller.signal
+          );
 
           if (searchGenerationRef.current === generation) {
             setItems(result.items.slice(0, GRAMMAR_PAGE_SIZE));
@@ -261,31 +289,21 @@ export function GrammarLearningShell() {
     setIsLoadingMore(true);
     setLoadMoreError(null);
 
-    const params = new URLSearchParams();
-    if (submittedQuery.trim()) {
-      params.set("query", submittedQuery.trim());
-    }
-    if (browseMode === "knowledge" && categorySlug) {
-      params.set("category", categorySlug);
-    }
-    if (browseMode === "knowledge" && dimensionSlug) {
-      params.set("dimension", dimensionSlug);
-    }
-    if (browseMode === "curriculum" && stageSlug) {
-      params.set("stage", stageSlug);
-    }
-    if (browseMode === "curriculum" && moduleSlug) {
-      params.set("module", moduleSlug);
-    }
-    if (practicality) params.set("practicality", practicality);
-    if (learningStatus) params.set("learningStatus", learningStatus);
-    params.set("limit", String(GRAMMAR_FETCH_LIMIT));
-    params.set("offset", String(items.length));
-
     try {
-      const result = await fetch(`/api/grammar?${params.toString()}`, {
-        signal: controller.signal,
-      }).then((response) => readJson<GrammarSearchResponse>(response));
+      const result = await fetchGrammarSearch(
+        getGrammarSearchParams({
+          submittedQuery,
+          browseMode,
+          categorySlug,
+          dimensionSlug,
+          stageSlug,
+          moduleSlug,
+          practicality,
+          learningStatus,
+          offset: items.length,
+        }),
+        controller.signal
+      );
 
       if (searchGenerationRef.current === generation) {
         const nextItems = result.items.slice(0, GRAMMAR_PAGE_SIZE);

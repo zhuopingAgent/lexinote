@@ -1,4 +1,5 @@
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
+import { ruleTextMatchesEntry } from "@/features/collections/domain/auto-filter-rule";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import { hasAiGatewayCredentials } from "@/shared/ai/gateway";
@@ -41,38 +42,6 @@ function chunkEntries<T>(items: T[], size: number) {
   }
 
   return chunks;
-}
-
-function normalizeRuleText(value: string) {
-  return value.toLowerCase().replace(/\s+/g, "");
-}
-
-function tokenizeEntryForRuleMatch(entry: AutoFilterDictionaryEntry) {
-  return Array.from(
-    new Set(
-      [
-        entry.word,
-        entry.pronunciation,
-        entry.meaningZh,
-        entry.partOfSpeech,
-        ...entry.meaningZh.split(/[；;、,，。/／\s]+/),
-      ]
-        .map((token) => token.trim())
-        .filter((token) => token.length >= 2)
-    )
-  );
-}
-
-function ruleTextMatchesEntry(ruleText: string, entry: AutoFilterDictionaryEntry) {
-  const normalizedRuleText = normalizeRuleText(ruleText);
-
-  if (!normalizedRuleText) {
-    return false;
-  }
-
-  return tokenizeEntryForRuleMatch(entry).some((token) =>
-    normalizedRuleText.includes(normalizeRuleText(token))
-  );
 }
 
 function findExplicitRuleWordIds(

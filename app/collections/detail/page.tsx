@@ -3,10 +3,9 @@ import { notFound } from "next/navigation";
 import { AppHeader } from "@/app/components/app-header";
 import { CollectionWordGrid } from "@/app/components/collection-word-grid";
 import { CollectionIcon } from "@/app/components/icons";
-import { CollectionService } from "@/features/collections/application/CollectionService";
-import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { NotFoundError } from "@/shared/utils/errors";
 import { getTopNavigationItems } from "@/app/lib/top-navigation";
+import { getCollectionService } from "@/shared/server/service-container";
+import { NotFoundError } from "@/shared/utils/errors";
 
 type CollectionDetailPageProps = {
   searchParams: Promise<{
@@ -15,7 +14,7 @@ type CollectionDetailPageProps = {
   }>;
 };
 
-const collectionService = new CollectionService(new CollectionRepository());
+const collectionService = getCollectionService();
 
 function formatWordCount(count: number) {
   return `${count} 个单词`;

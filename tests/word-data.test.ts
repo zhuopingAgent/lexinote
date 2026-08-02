@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildResultDifferenceNotes,
   buildResultDifferenceOverview,
-} from "@/app/lib/word-data";
+} from "@/app/lib/word-result-differences";
 import type { DictionaryEntry } from "@/shared/types/dictionary";
 
 describe("word-data difference helpers", () => {

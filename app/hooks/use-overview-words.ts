@@ -5,14 +5,11 @@ import type { AppView } from "@/app/lib/app-view";
 import {
   getErrorMessage,
   isAbortError,
-  readResponseErrorMessage,
 } from "@/app/lib/api-client";
+import { fetchDictionaryOverview } from "@/app/lib/dictionary-api";
 import { isPositiveInteger } from "@/app/lib/number";
 import { mergeUniqueWordEntriesById } from "@/app/lib/word-list";
-import type {
-  DictionaryOverviewItem,
-  DictionaryOverviewResponse,
-} from "@/shared/types/dictionary";
+import type { DictionaryOverviewItem } from "@/shared/types/dictionary";
 import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
 
 export function useOverviewWords(activeView: AppView) {
@@ -80,26 +77,14 @@ export function useOverviewWords(activeView: AppView) {
     }
 
     try {
-      const searchParams = new URLSearchParams();
-      searchParams.set("limit", String(WORD_PAGE_SIZE));
-      if (normalizedQuery) {
-        searchParams.set("query", normalizedQuery);
-      }
-      if (normalizedCursor) {
-        searchParams.set("cursor", normalizedCursor);
-      }
-
-      const response = await fetch(`/api/words?${searchParams.toString()}`, {
+      const payload = await fetchDictionaryOverview({
+        query: normalizedQuery || undefined,
+        cursor: normalizedCursor,
+        limit: WORD_PAGE_SIZE,
         signal: reset
           ? overviewAbortControllerRef.current?.signal
           : overviewLoadMoreAbortControllerRef.current?.signal,
       });
-
-      if (!response.ok) {
-        throw new Error(await readResponseErrorMessage(response, "请求失败"));
-      }
-
-      const payload = (await response.json()) as DictionaryOverviewResponse;
       const validEntries = payload.words.filter((entry) =>
         isPositiveInteger(entry.wordId)
       );

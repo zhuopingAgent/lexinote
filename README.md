@@ -86,12 +86,16 @@ It exposes schema resources plus a `query_readonly` tool for debugging local dat
 ## Scripts
 
 - `npm run dev`
+- `npm run check`
+- `npm run check:ci`
 - `npm run lint`
 - `npm run build`
 - `npm run test`
 - `npm run test:e2e`
 
-`npm run test:e2e` requires `E2E_DATABASE_URL` and a local PostgreSQL test database. The Playwright global setup applies `shared/db/sql/schema.sql` and `shared/db/sql/grammar-content.sql`, validates the repeatable grammar seed, truncates the fixture tables, and loads `e2e/fixtures.sql` before the browser test starts.
+`npm run test:e2e` requires `E2E_DATABASE_URL` and a local PostgreSQL test database. Set `E2E_PORT` when the default port `3100` is unavailable. The Playwright global setup applies `shared/db/sql/schema.sql` and `shared/db/sql/grammar-content.sql`, validates the repeatable grammar seed, truncates the fixture tables, and loads `e2e/fixtures.sql` before the browser test starts.
+
+Pull requests and pushes to `main` run `.github/workflows/ci.yml`. The workflow executes the dependency audit, lint, unit tests, production build, and the complete Playwright suite against an isolated PostgreSQL service.
 
 ## Current Scope
 

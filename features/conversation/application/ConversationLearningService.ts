@@ -2,6 +2,7 @@ import type { CollectionWordService } from "@/features/collections/application/C
 import type { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import type { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import type { WordLookupService } from "@/features/word-lookup/application/WordLookupService";
+import { assertUuid } from "@/features/conversation/domain/validation";
 import type { ConversationRepository } from "@/features/conversation/infrastructure/ConversationRepository";
 import { DEFAULT_GRAMMAR_USER_ID } from "@/shared/db/sql/grammar.sql";
 import type {
@@ -9,15 +10,6 @@ import type {
   PromoteConversationLearningItemResponse,
 } from "@/shared/types/conversation";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function assertUuid(value: string, fieldName: string) {
-  if (!UUID_PATTERN.test(value)) {
-    throw new ValidationError(`${fieldName} must be a valid UUID`);
-  }
-}
 
 export class ConversationLearningService {
   constructor(

@@ -79,3 +79,28 @@ export async function readJson<T>(response: Response): Promise<T> {
 
   return data as T;
 }
+
+export async function requestJson<T>(url: string, init?: RequestInit) {
+  return readJson<T>(await fetch(url, init));
+}
+
+export function jsonRequest(
+  method: string,
+  body: unknown,
+  options: Omit<RequestInit, "method" | "headers" | "body"> = {}
+): RequestInit {
+  return {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    ...options,
+  };
+}
+
+export async function requestWithoutResponseBody(
+  url: string,
+  init: RequestInit
+) {
+  const response = await fetch(url, init);
+  if (!response.ok) await readJson<never>(response);
+}
