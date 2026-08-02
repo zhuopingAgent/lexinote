@@ -1,7 +1,7 @@
 "use client";
 
-import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { FormEvent } from "react";
 import {
   isAutoFilterSyncActive,
   isImportantAutoFilterStatus,
@@ -140,28 +140,7 @@ export function CollectionPanel({
   onResyncCollection,
   onDeleteCollection,
 }: CollectionPanelProps) {
-  const router = useRouter();
   const showsEmptyState = !isLoading && collections.length === 0;
-
-  function onOpenCollection(collectionId: number) {
-    router.push(`/collections/detail?collectionId=${collectionId}`);
-  }
-
-  function onCardKeyDown(
-    event: KeyboardEvent<HTMLDivElement>,
-    collectionId: number
-  ) {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-
-    event.preventDefault();
-    onOpenCollection(collectionId);
-  }
-
-  function stopCardNavigation(event: MouseEvent<HTMLElement>) {
-    event.stopPropagation();
-  }
 
   return (
     <div className="mx-auto w-full max-w-[920px]">
@@ -256,32 +235,21 @@ export function CollectionPanel({
             );
 
             return (
-              <div
+              <article
                 key={collection.collectionId}
-                role={isEditing ? undefined : "link"}
-                tabIndex={isEditing ? undefined : 0}
-                onClick={
-                  isEditing ? undefined : () => onOpenCollection(collection.collectionId)
-                }
-                onKeyDown={
-                  isEditing
-                    ? undefined
-                    : (event) => onCardKeyDown(event, collection.collectionId)
-                }
                 className={
                   isEditing
                     ? "flex min-h-[170px] flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)]"
-                    : "flex min-h-[170px] cursor-pointer flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition hover:border-white/16 hover:bg-[#232323f0] focus:outline-none focus:ring-2 focus:ring-white/14"
+                    : "flex min-h-[170px] flex-col rounded-[20px] border border-white/10 bg-[#1e1e1ecc] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.18)] transition hover:border-white/16 hover:bg-[#232323f0]"
                 }
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-1 items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     {isEditing ? (
                       <form
                         onSubmit={(event) =>
                           onSaveEditing(event, collection.collectionId)
                         }
-                        onClick={stopCardNavigation}
                         className="mt-4 space-y-3"
                       >
                         <input
@@ -354,7 +322,11 @@ export function CollectionPanel({
                         </div>
                       </form>
                     ) : (
-                      <>
+                      <Link
+                        href={`/collections/detail?collectionId=${collection.collectionId}`}
+                        aria-label={`打开单词本 ${collection.name}`}
+                        className="block rounded-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/18 focus-visible:ring-offset-4 focus-visible:ring-offset-[#1e1e1e]"
+                      >
                         <p className="truncate text-[22px] font-medium tracking-[-0.04em] text-white/76">
                           {collection.name}
                         </p>
@@ -375,7 +347,7 @@ export function CollectionPanel({
                             {autoFilterStatusHint}
                           </p>
                         ) : null}
-                      </>
+                      </Link>
                     )}
                   </div>
                 </div>
@@ -384,10 +356,7 @@ export function CollectionPanel({
                   <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/8 pt-4">
                     <button
                       type="button"
-                      onClick={(event) => {
-                        stopCardNavigation(event);
-                        onStartEditing(collection);
-                      }}
+                      onClick={() => onStartEditing(collection)}
                       disabled={isBusy}
                       className="inline-flex h-10 items-center justify-center rounded-full bg-white/8 px-4 text-sm text-white/68 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-45"
                     >
@@ -396,10 +365,7 @@ export function CollectionPanel({
                     {showsResyncButton ? (
                       <button
                         type="button"
-                        onClick={(event) => {
-                          stopCardNavigation(event);
-                          void onResyncCollection(collection.collectionId);
-                        }}
+                        onClick={() => void onResyncCollection(collection.collectionId)}
                         disabled={isBusy || isAutoFilterBusy}
                         className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/56 transition hover:border-white/18 hover:text-white/68 disabled:cursor-not-allowed disabled:opacity-45"
                       >
@@ -408,10 +374,7 @@ export function CollectionPanel({
                     ) : null}
                     <button
                       type="button"
-                      onClick={(event) => {
-                        stopCardNavigation(event);
-                        void onDeleteCollection(collection.collectionId);
-                      }}
+                      onClick={() => void onDeleteCollection(collection.collectionId)}
                       disabled={isBusy}
                       className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/48 transition hover:border-white/18 hover:text-white/62 disabled:cursor-not-allowed disabled:opacity-45"
                     >
@@ -419,7 +382,7 @@ export function CollectionPanel({
                     </button>
                   </div>
                 ) : null}
-              </div>
+              </article>
             );
           })}
         </div>
