@@ -38,7 +38,7 @@ export class CollectionWordService {
 
     const collection = await this.collectionRepository.findById(collectionId);
     if (!collection) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
 
     const candidates = await this.vocabularyCoreService.findEntryCandidates(word);
@@ -79,7 +79,7 @@ export class CollectionWordService {
 
     const collection = await this.collectionRepository.findById(collectionId);
     if (!collection) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
 
     const uniqueWordIds = Array.from(
@@ -110,7 +110,7 @@ export class CollectionWordService {
 
     const collection = await this.collectionRepository.findById(collectionId);
     if (!collection) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
 
     const removed = await this.collectionRepository.removeWordFromCollection(
@@ -119,7 +119,7 @@ export class CollectionWordService {
     );
 
     if (!removed) {
-      throw new NotFoundError("这个词条不在当前 collection 中。");
+      throw new NotFoundError("这个词条不在当前单词本中。");
     }
   }
 }

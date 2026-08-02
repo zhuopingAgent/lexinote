@@ -53,7 +53,7 @@ describe("CollectionService", () => {
     const service = new CollectionService(repository as never);
 
     await expect(service.createCollection("商务表达")).rejects.toMatchObject({
-      message: "这个 collection 名称已经存在，请换一个。",
+      message: "这个单词本名称已经存在，请换一个。",
     });
   });
 
@@ -351,7 +351,7 @@ describe("CollectionService", () => {
     const service = new CollectionService(repository as never);
 
     await expect(service.deleteCollection(99)).rejects.toMatchObject({
-      message: "未找到这个 collection。",
+      message: "未找到这个单词本。",
     });
   });
 });

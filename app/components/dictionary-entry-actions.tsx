@@ -7,6 +7,7 @@ import type { CollectionSummary, DictionaryEntry } from "@/shared/types/api";
 
 type DictionaryEntryActionsProps = {
   entry: DictionaryEntry;
+  isIncomplete?: boolean;
   canAddToCollection: boolean;
   addDisabledReason?: string;
   collections: CollectionSummary[];
@@ -22,6 +23,7 @@ type DictionaryEntryActionsProps = {
 
 export function DictionaryEntryActions({
   entry,
+  isIncomplete = false,
   canAddToCollection,
   addDisabledReason,
   collections,
@@ -39,6 +41,9 @@ export function DictionaryEntryActions({
     ? addDisabledReason ?? "当前结果还不能加入单词本。"
     : null;
   const displayedNotice = unavailableReason ?? notice;
+  const entryAccessibleName = isIncomplete
+    ? entry.word
+    : `${entry.word} ${entry.pronunciation}`;
 
   async function onTogglePicker() {
     setNotice(null);
@@ -99,7 +104,7 @@ export function DictionaryEntryActions({
           disabled={Boolean(unavailableReason) || isPreparingCollections || isCollectionsLoading}
           aria-expanded={isPickerOpen}
           aria-describedby={displayedNotice ? noticeId : undefined}
-          aria-label={`${isPickerOpen ? "收起单词本" : "加入单词本"} ${entry.word} ${entry.pronunciation}`}
+          aria-label={`${isPickerOpen ? "收起单词本" : "加入单词本"} ${entryAccessibleName}`}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-strong disabled:text-muted disabled:opacity-100"
         >
           <CollectionIcon className="size-4" />
@@ -108,7 +113,11 @@ export function DictionaryEntryActions({
         <button
           type="button"
           onClick={() => onStartRetryWithEntry(entry)}
-          aria-label={`按此读音重查 ${entry.word} ${entry.pronunciation}`}
+          aria-label={
+            isIncomplete
+              ? `补充语境重新查询 ${entry.word}`
+              : `按此读音重查 ${entry.word} ${entry.pronunciation}`
+          }
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
         >
           <SearchIcon className="size-4" />

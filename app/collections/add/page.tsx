@@ -15,6 +15,7 @@ type CollectionAddPageProps = {
 };
 
 const collectionService = new CollectionService(new CollectionRepository());
+
 function formatWordCount(count: number) {
   return `${count} 个单词`;
 }
@@ -53,20 +54,20 @@ export default async function CollectionAddPage({
             href={`/collections/detail?collectionId=${collection.collectionId}`}
             className="inline-flex items-center rounded-full border border-white/10 px-4 py-2 text-sm text-white/48 transition hover:border-white/18 hover:text-white/66"
           >
-            返回 collection 详情
+            返回单词本详情
           </Link>
 
           <div className="mt-5 rounded-[22px] border border-white/10 bg-[#1e1e1ecc] p-[clamp(20px,2.8vw,28px)] shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.18em] text-white/28">
-                  Add To Collection
+                  添加到单词本
                 </p>
                 <h1 className="mt-3 break-words text-[clamp(28px,4vw,36px)] font-medium tracking-[-0.04em] text-white/80">
                   {collection.name}
                 </h1>
                 <p className="mt-3 max-w-[42rem] text-sm leading-6 text-white/42">
-                  通过勾选列表或搜索结果，把本地词典中的词条加入这个 collection。
+                  通过勾选列表或搜索结果，把本地词典中的词条加入这个单词本。
                 </p>
               </div>
 

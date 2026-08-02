@@ -51,7 +51,7 @@ export function CollectionWordGrid({
   async function onRemoveWord(event: MouseEvent<HTMLButtonElement>, wordId: number) {
     stopCardNavigation(event);
 
-    const confirmed = window.confirm("确认把这个词条从当前 collection 中移除吗？");
+    const confirmed = window.confirm("确认把这个词条从当前单词本中移除吗？");
     if (!confirmed) {
       return;
     }
@@ -75,7 +75,7 @@ export function CollectionWordGrid({
       setCurrentWords((currentItems) =>
         currentItems.filter((word) => word.wordId !== wordId)
       );
-      setNotice("已从当前 collection 中移除该词条。");
+      setNotice("已从当前单词本中移除该词条。");
       router.refresh();
     } catch (removeError) {
       setError(getErrorMessage(removeError, "移除失败，请稍后重试。"));
@@ -87,9 +87,9 @@ export function CollectionWordGrid({
   if (currentWords.length === 0) {
     return (
       <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
-        <p className="text-base font-medium text-white/60">这个 collection 里还没有单词</p>
+        <p className="text-base font-medium text-white/60">这个单词本里还没有单词</p>
         <p className="mt-2 text-sm leading-6 text-white/38">
-          下一步我们可以把查询结果加入 collection，这里就会开始展示具体词条。
+          把查询结果加入这个单词本后，这里就会展示具体词条。
         </p>
       </div>
     );

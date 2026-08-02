@@ -16,6 +16,7 @@ type CollectionDetailPageProps = {
 };
 
 const collectionService = new CollectionService(new CollectionRepository());
+
 function formatWordCount(count: number) {
   return `${count} 个单词`;
 }
@@ -56,7 +57,7 @@ export default async function CollectionDetailPage({
             href="/?view=collections"
             className="inline-flex items-center rounded-full border border-white/10 px-4 py-2 text-sm text-white/48 transition hover:border-white/18 hover:text-white/66"
           >
-            返回 collections
+            返回单词本
           </Link>
 
           {addedCount > 0 ? (
@@ -69,7 +70,7 @@ export default async function CollectionDetailPage({
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.18em] text-white/28">
-                  Collection
+                  单词本
                 </p>
                 <h1 className="mt-3 break-words text-[clamp(28px,4vw,36px)] font-medium tracking-[-0.04em] text-white/80">
                   {collection.name}
@@ -87,7 +88,7 @@ export default async function CollectionDetailPage({
                   <p className="text-sm font-medium text-white/66">
                     {formatWordCount(collection.wordCount)}
                   </p>
-                  <p className="text-xs text-white/30">当前 collection 内容</p>
+                  <p className="text-xs text-white/30">当前单词本内容</p>
                 </div>
               </div>
             </div>

@@ -129,7 +129,7 @@ export function useCollections(activeView: AppView) {
     wordId: number
   ): Promise<"added" | "already_exists"> {
     if (!isPositiveInteger(collectionId) || !isPositiveInteger(wordId)) {
-      throw new Error("当前词条或 collection 信息无效，请刷新页面后重试。");
+      throw new Error("当前词条或单词本信息无效，请刷新页面后重试。");
     }
 
     const response = await fetch(`/api/collections/${collectionId}/words/bulk`, {
@@ -168,7 +168,7 @@ export function useCollections(activeView: AppView) {
     pronunciation: string
   ): Promise<"added" | "already_exists"> {
     if (!isPositiveInteger(collectionId) || !word.trim() || !pronunciation.trim()) {
-      throw new Error("当前词条或 collection 信息无效，请刷新页面后重试。");
+      throw new Error("当前词条或单词本信息无效，请刷新页面后重试。");
     }
 
     const response = await fetch(`/api/collections/${collectionId}/words`, {
@@ -208,7 +208,7 @@ export function useCollections(activeView: AppView) {
     event.preventDefault();
 
     if (!collectionName.trim()) {
-      setCollectionError("请输入 collection 名称。");
+      setCollectionError("请输入单词本名称。");
       return;
     }
 
@@ -263,7 +263,7 @@ export function useCollections(activeView: AppView) {
     event.preventDefault();
 
     if (!editingCollectionName.trim()) {
-      setCollectionError("请输入 collection 名称。");
+      setCollectionError("请输入单词本名称。");
       return;
     }
 
@@ -310,7 +310,7 @@ export function useCollections(activeView: AppView) {
   }
 
   async function onDeleteCollection(collectionId: number) {
-    const confirmed = window.confirm("确认删除这个 collection 吗？");
+    const confirmed = window.confirm("确认删除这个单词本吗？");
     if (!confirmed) {
       return;
     }

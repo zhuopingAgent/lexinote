@@ -26,6 +26,7 @@ import type { SearchHistoryItem } from "@/app/lib/search-history";
 import {
   buildLookupStatusBadges,
   getLookupEntryCollectionState,
+  isIncompleteLookupResult,
 } from "@/app/lib/lookup-view";
 
 const VIEW_TABS = [
@@ -48,7 +49,7 @@ const VIEW_TABS = [
     view: "history" as AppView,
   },
   {
-    label: "Collection",
+    label: "单词本",
     displayLabel: "单词本",
     icon: CollectionIcon,
     view: "collections" as AppView,
@@ -141,6 +142,7 @@ export default function Home() {
     onDismissAiApiError: onDismissCollectionAiApiError,
   } = useCollections(activeView);
   const lookupStatusBadges = buildLookupStatusBadges(result);
+  const isIncompleteResult = isIncompleteLookupResult(result);
   const trimmedSearchContextDraft = searchContextDraft.trim();
   const primaryEntry = resultEntries[0] ?? null;
   const primaryWordCard = wordCardsData[0] ?? null;
@@ -187,12 +189,12 @@ export default function Home() {
             : "已打开全覧，当前还没有内容。"
       : activeView === "collections"
       ? isCollectionsLoading && !hasLoadedCollections
-        ? "正在加载 collections。"
+        ? "正在加载单词本。"
         : collectionError
-          ? `Collection 操作失败：${collectionError}`
+          ? `单词本操作失败：${collectionError}`
           : collections.length > 0
-            ? `已打开 collections，共 ${collections.length} 个。`
-            : "已打开 collections，当前还没有内容。"
+            ? `已打开单词本，共 ${collections.length} 个。`
+            : "已打开单词本，当前还没有内容。"
       : activeView === "history"
       ? historyItems.length > 0
         ? `已打开查询历史，共 ${historyItems.length} 条记录。`
@@ -206,7 +208,9 @@ export default function Home() {
         : error
           ? `查询失败：${error}`
           : result
-            ? showsContextHint
+            ? isIncompleteResult
+              ? `暂未找到 ${result.word} 的完整词条，当前显示的是待补全结果。`
+              : showsContextHint
               ? hasMultipleResults
                 ? `已完成 ${result.word} 的查询，并参考语境 ${activeContext} 展示了更相关的候选结果。`
                 : `已完成 ${result.word} 的查询，并参考语境 ${activeContext} 优先展示了更匹配的结果。`
@@ -429,7 +433,9 @@ export default function Home() {
                       >
                         {item.searchedWord}
                         <span className="ml-2 text-xs text-muted">
-                          {item.result.entry.pronunciation}
+                          {isIncompleteLookupResult(item.result)
+                            ? "未找到"
+                            : item.result.entry.pronunciation}
                         </span>
                       </button>
                     ))}
@@ -470,6 +476,16 @@ export default function Home() {
                       ) : null}
                     </div>
                   ) : null}
+                  {isIncompleteResult ? (
+                    <div className="border-l-2 border-accent pl-3">
+                      <p className="text-sm font-medium text-foreground">
+                        未找到完整词条
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-muted">
+                        当前内容仅用于保留这次查询，不会写入词库。可以补充语境后重新查询。
+                      </p>
+                    </div>
+                  ) : null}
                   {lookupStatusBadges.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {lookupStatusBadges.map((badge) => (
@@ -493,27 +509,62 @@ export default function Home() {
                         }
                         onSelectEntry={onSelectResultEntry}
                       />
-                      <WordCard
-                        word={primaryWordCard}
-                        actions={
-                          <DictionaryEntryActions
-                            entry={primaryEntry}
-                            canAddToCollection={
-                              primaryCollectionState.canAddToCollection
-                            }
-                            addDisabledReason={
-                              primaryCollectionState.addDisabledReason
-                            }
-                            collections={collections}
-                            isCollectionsLoading={isCollectionsLoading}
-                            onStartRetryWithEntry={onStartRetryWithEntry}
-                            onEnsureCollectionsLoaded={ensureCollectionsLoaded}
-                            onAddEntryToCollection={
-                              onAddDictionaryEntryToCollection
-                            }
-                          />
-                        }
-                      />
+                      {isIncompleteResult ? (
+                        <article className="w-full overflow-hidden rounded-lg border border-border bg-surface">
+                          <header className="p-[clamp(18px,2.5vw,24px)]">
+                            <p className="text-xs font-medium text-muted">查询词</p>
+                            <h2 className="mt-2 break-words text-3xl leading-tight font-semibold text-foreground">
+                              {primaryEntry.word}
+                            </h2>
+                          </header>
+                          <section className="border-t border-border p-[clamp(18px,2.5vw,24px)]">
+                            <p className="text-sm leading-6 text-muted">
+                              暂无可验证的读音、词性和释义。
+                            </p>
+                          </section>
+                          <footer className="border-t border-border p-4">
+                            <DictionaryEntryActions
+                              entry={primaryEntry}
+                              isIncomplete
+                              canAddToCollection={
+                                primaryCollectionState.canAddToCollection
+                              }
+                              addDisabledReason={
+                                primaryCollectionState.addDisabledReason
+                              }
+                              collections={collections}
+                              isCollectionsLoading={isCollectionsLoading}
+                              onStartRetryWithEntry={onStartRetryWithEntry}
+                              onEnsureCollectionsLoaded={ensureCollectionsLoaded}
+                              onAddEntryToCollection={
+                                onAddDictionaryEntryToCollection
+                              }
+                            />
+                          </footer>
+                        </article>
+                      ) : (
+                        <WordCard
+                          word={primaryWordCard}
+                          actions={
+                            <DictionaryEntryActions
+                              entry={primaryEntry}
+                              canAddToCollection={
+                                primaryCollectionState.canAddToCollection
+                              }
+                              addDisabledReason={
+                                primaryCollectionState.addDisabledReason
+                              }
+                              collections={collections}
+                              isCollectionsLoading={isCollectionsLoading}
+                              onStartRetryWithEntry={onStartRetryWithEntry}
+                              onEnsureCollectionsLoaded={ensureCollectionsLoaded}
+                              onAddEntryToCollection={
+                                onAddDictionaryEntryToCollection
+                              }
+                            />
+                          }
+                        />
+                      )}
                     </>
                   ) : null}
 

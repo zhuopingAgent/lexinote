@@ -1,19 +1,30 @@
 import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
 
+export function isIncompleteLookupResult(result: WordLookupResponse | null) {
+  return result?.metadata?.persistenceStatus === "not_persistable";
+}
+
 export function buildLookupStatusBadges(result: WordLookupResponse | null) {
   if (!result) {
     return [];
   }
 
   const metadata = result.metadata;
-  const badges = [result.source === "dictionary" ? "本地词库" : "AI 生成"];
+  const isIncomplete = isIncompleteLookupResult(result);
+  const badges = [
+    result.source === "dictionary"
+      ? "本地词库"
+      : isIncomplete
+        ? "未找到词条"
+        : "AI 生成",
+  ];
 
   if (metadata?.resolutionType === "local_base_form") {
     badges.push("本地原形还原");
   } else if (metadata?.resolutionType === "ai_base_form") {
     badges.push("AI 原形还原");
   } else if (metadata?.resolutionType === "ai_generated") {
-    badges.push("AI 补全词条");
+    badges.push(isIncomplete ? "内容待补全" : "AI 补全词条");
   }
 
   if (metadata?.isContextual) {
@@ -28,7 +39,13 @@ export function buildLookupStatusBadges(result: WordLookupResponse | null) {
     badges.push("暂不可保存");
   }
 
-  badges.push(metadata?.exampleStatus === "missing" ? "例句待生成" : "例句已就绪");
+  badges.push(
+    metadata?.exampleStatus === "missing"
+      ? isIncomplete
+        ? "暂无例句"
+        : "例句待生成"
+      : "例句已就绪"
+  );
 
   return badges;
 }

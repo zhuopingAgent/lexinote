@@ -99,7 +99,7 @@ function getAutoFilterStatusHint(collection: CollectionSummary) {
     case "pending":
       return "正在排队同步。";
     case "running":
-      return "AI 正在整理这个 Collection。";
+      return "AI 正在整理这个单词本。";
     case "failed":
       return collection.autoFilterLastError || "上一次自动筛选失败，请稍后再试。";
     case "completed":
@@ -169,14 +169,14 @@ export function CollectionPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-lg font-medium tracking-[-0.03em] text-white/72">
-              Collection
+              单词本
             </p>
             <p className="mt-1 max-w-[34rem] text-sm leading-6 text-white/40">
               按主题整理单词；需要时可以开启 AI 自动筛选。
             </p>
           </div>
           <div className="inline-flex w-fit items-center rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-sm text-white/52">
-            {collections.length} 个 Collection
+            {collections.length} 个单词本
           </div>
         </div>
 
@@ -188,8 +188,8 @@ export function CollectionPanel({
             type="text"
             value={collectionName}
             onChange={(event) => onCollectionNameChange(event.target.value)}
-            placeholder="新 Collection 名称，例如：易混词 / 商务表达 / JLPT N2"
-            aria-label="新建 collection"
+            placeholder="新单词本名称，例如：易混词 / 商务表达 / JLPT N2"
+            aria-label="新建单词本"
             disabled={isCreating}
             className="h-12 flex-1 rounded-[14px] border border-white/12 bg-[#151515cc] px-4 text-sm text-white/76 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
           />
@@ -208,7 +208,7 @@ export function CollectionPanel({
           role="alert"
           className="mt-5 rounded-2xl border border-danger/30 bg-danger-soft/80 px-5 py-4 text-danger"
         >
-          <p className="text-sm font-semibold">Collection 操作失败</p>
+          <p className="text-sm font-semibold">单词本操作失败</p>
           <p className="mt-1 text-sm leading-6">{error}</p>
         </div>
       ) : null}
@@ -234,9 +234,9 @@ export function CollectionPanel({
 
       {showsEmptyState ? (
         <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
-          <p className="text-base font-medium text-white/60">还没有 Collection</p>
+          <p className="text-base font-medium text-white/60">还没有单词本</p>
           <p className="mt-2 text-sm leading-6 text-white/38">
-            先创建一个集合，后面我们再把查询到的词条加进去。
+            先创建一个单词本，再把查询到的词条整理进去。
           </p>
         </div>
       ) : null}
@@ -292,7 +292,7 @@ export function CollectionPanel({
                           }
                           autoFocus
                           disabled={isBusy}
-                          aria-label="编辑 collection 名称"
+                          aria-label="编辑单词本名称"
                           className="h-11 w-full rounded-[14px] border border-white/14 bg-[#151515cc] px-4 text-sm text-white/78 outline-none placeholder:text-white/28 focus:border-white/26 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                         <div className="rounded-[16px] border border-white/10 bg-[#171717cc] p-4">

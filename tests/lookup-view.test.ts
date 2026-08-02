@@ -78,6 +78,26 @@ describe("lookup view helpers", () => {
     });
   });
 
+  it("labels non-persistable generated placeholders as incomplete", () => {
+    const result = createLookupResponse({
+      source: "ai",
+      metadata: {
+        resolutionType: "ai_generated",
+        isContextual: false,
+        persistenceStatus: "not_persistable",
+        selectedPronunciation: "需结合上下文确认",
+        exampleStatus: "missing",
+      },
+    });
+
+    expect(buildLookupStatusBadges(result)).toEqual([
+      "未找到词条",
+      "内容待补全",
+      "暂不可保存",
+      "暂无例句",
+    ]);
+  });
+
   it("allows dictionary entries even when metadata is absent", () => {
     const entry = createEntry();
 
