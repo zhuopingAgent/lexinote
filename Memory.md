@@ -11,6 +11,8 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - When the user's English is not correct, I should first give a short corrected version, then answer simply and clearly.
 - For local development and database inspection, prefer CLI tools by default and use MCP only when it is specifically needed.
 - When the user asks a question in Chinese, first provide an English version of the question before answering in Chinese.
+- Before starting any repository task, fetch `origin/main` and ensure the work branch is rebased onto the latest `origin/main`; create a new work branch from that refreshed base when needed.
+- If uncommitted changes or conflicts make rebasing unsafe, preserve the user's work and resolve the situation safely before proceeding. Never discard user changes to complete a rebase.
 - When pushing code to `origin`, automatically create a PR and merge it into `main` when repository permissions, branch protection, and checks allow it.
 - After completing a requested repo modification, default to committing the finished change, pushing a branch to `origin`, opening a PR to `main`, and merging it once repository permissions, branch protection, and checks allow it, unless the user asks not to commit, push, or merge.
 - Preserve unrelated user changes, and do not publish incomplete work or changes with failing required checks.
