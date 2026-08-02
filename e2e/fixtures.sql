@@ -169,6 +169,7 @@ INSERT INTO review_records (
   grammar_point_id,
   status,
   mistake_count,
+  next_review_at,
   last_reviewed_at
 )
 SELECT
@@ -176,12 +177,14 @@ SELECT
   grammar_points.id,
   'mastered',
   0,
+  NOW() + INTERVAL '30 days',
   NOW()
 FROM grammar_points
 WHERE grammar_points.seed_key = 'gp_a_wa_b_desu'
 ON CONFLICT (user_id, grammar_point_id) DO UPDATE SET
   status = EXCLUDED.status,
   mistake_count = EXCLUDED.mistake_count,
+  next_review_at = EXCLUDED.next_review_at,
   last_reviewed_at = EXCLUDED.last_reviewed_at,
   updated_at = NOW();
 
