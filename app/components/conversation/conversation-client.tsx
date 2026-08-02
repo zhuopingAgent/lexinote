@@ -69,6 +69,8 @@ const DEFAULT_PREFERENCES: ConversationPreferences = {
   defaultCollectionId: null,
 };
 
+const STOP_GENERATION_ARM_DELAY_MS = 500;
+
 type ConversationClientProps = {
   initialSessionId?: string | null;
 };
@@ -95,6 +97,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   const [isBootstrapLoading, setIsBootstrapLoading] = useState(true);
   const [isSessionLoading, setIsSessionLoading] = useState(Boolean(initialSessionId));
   const [isGenerating, setIsGenerating] = useState(false);
+  const [canStopGeneration, setCanStopGeneration] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
@@ -118,9 +121,19 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
 
   useEffect(() => {
     abortControllerRef.current?.abort();
+    setCanStopGeneration(false);
     setIsGenerating(false);
     setActiveSessionId(initialSessionId);
   }, [initialSessionId]);
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    const timer = window.setTimeout(
+      () => setCanStopGeneration(true),
+      STOP_GENERATION_ARM_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [isGenerating]);
 
   useEffect(
     () => () => {
@@ -254,6 +267,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     setQuery("");
     setMode(preferences.defaultMode);
     setError(null);
+    setCanStopGeneration(false);
     setIsGenerating(false);
     setIsSessionLoading(false);
     setIsSidebarOpen(false);
@@ -382,6 +396,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const content = (overrideContent ?? input).trim();
     if (!content || isGenerating || !aiAvailable) return;
     setError(null);
+    setCanStopGeneration(false);
     setIsGenerating(true);
     if (!overrideContent) setInput("");
     const controller = new AbortController();
@@ -470,6 +485,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
       }
     } finally {
       abortControllerRef.current = null;
+      setCanStopGeneration(false);
       setIsGenerating(false);
     }
   }
@@ -695,7 +711,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
                 className="max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2.5 text-[15px] leading-6 outline-none disabled:cursor-not-allowed"
               />
               {isGenerating ? (
-                <button type="button" aria-label="停止生成" onClick={() => abortControllerRef.current?.abort()} className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition hover:opacity-85"><StopIcon className="size-4" /></button>
+                <button type="button" aria-label="停止生成" disabled={!canStopGeneration} onClick={() => abortControllerRef.current?.abort()} className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition hover:opacity-85 disabled:cursor-wait disabled:opacity-55"><StopIcon className="size-4" /></button>
               ) : (
                 <button type="button" aria-label="发送消息" disabled={!input.trim() || !aiAvailable} onClick={() => void sendMessage()} className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-accent text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-35"><SendIcon className="size-5" /></button>
               )}
