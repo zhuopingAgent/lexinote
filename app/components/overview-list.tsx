@@ -5,7 +5,8 @@ import { getErrorMessage } from "@/app/lib/api-client";
 import { formatShortDateTime } from "@/app/lib/date";
 import { isPositiveInteger } from "@/app/lib/number";
 import { summarizeMeaning } from "@/app/lib/text";
-import type { CollectionSummary, DictionaryOverviewItem } from "@/shared/types/api";
+import type { CollectionSummary } from "@/shared/types/collections";
+import type { DictionaryOverviewItem } from "@/shared/types/dictionary";
 
 type OverviewListProps = {
   words: DictionaryOverviewItem[];

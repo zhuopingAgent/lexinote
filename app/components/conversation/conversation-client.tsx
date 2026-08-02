@@ -13,18 +13,37 @@ import {
 import { ConversationMessageView } from "@/app/components/conversation/conversation-message";
 import { ConversationSettingsDrawer } from "@/app/components/conversation/conversation-settings-drawer";
 import { ConversationSidebar } from "@/app/components/conversation/conversation-sidebar";
+import {
+  analyzeConversationMessage,
+  createConversationCollection,
+  createConversationMemory,
+  createConversationSession,
+  deleteConversationMemory,
+  deleteConversationSession,
+  dismissConversationLearningItem,
+  fetchConversationBootstrap,
+  fetchConversationSession,
+  promoteConversationLearningItem,
+  streamConversationMessage,
+  updateConversationMemory,
+  updateConversationPreferences,
+  updateConversationSession,
+} from "@/app/lib/conversation-api";
+import {
+  mergeById,
+  replaceSessionByActivity,
+  sortSessionsByActivity,
+  updateSessionActivity,
+  upsertSessionByActivity,
+} from "@/app/lib/conversation-state";
 import { consumeConversationEventStream } from "@/app/lib/conversation-stream";
 import {
   getErrorMessage,
   isAbortError,
   isAiQuotaExhaustedError,
-  readJson,
 } from "@/app/lib/api-client";
+import type { CollectionSummary } from "@/shared/types/collections";
 import type {
-  CollectionResponse,
-  CollectionSummary,
-  ConversationAnalysisResponse,
-  ConversationBootstrapResponse,
   ConversationLearningItem,
   ConversationMemory,
   ConversationMemoryKind,
@@ -32,10 +51,8 @@ import type {
   ConversationMode,
   ConversationPreferences,
   ConversationSession,
-  ConversationSessionResponse,
   PromoteConversationLearningItemRequest,
-  PromoteConversationLearningItemResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/conversation";
 
 const MODE_LABELS: Record<ConversationMode, string> = {
   auto: "自动识别",
@@ -51,20 +68,6 @@ const DEFAULT_PREFERENCES: ConversationPreferences = {
   defaultRegister: "auto",
   defaultCollectionId: null,
 };
-
-function mergeById<T extends { id: string }>(current: T[], incoming: T[]) {
-  const map = new Map(current.map((item) => [item.id, item]));
-  incoming.forEach((item) => map.set(item.id, item));
-  return Array.from(map.values());
-}
-
-function sortSessionsByActivity(sessions: ConversationSession[]) {
-  return [...sessions].sort(
-    (left, right) =>
-      right.updatedAt.localeCompare(left.updatedAt) ||
-      right.id.localeCompare(left.id)
-  );
-}
 
 type ConversationClientProps = {
   initialSessionId?: string | null;
@@ -132,12 +135,10 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const timer = window.setTimeout(async () => {
       setIsBootstrapLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (query.trim()) params.set("query", query.trim());
-        const response = await fetch(`/api/conversation/bootstrap?${params}`, {
+        const result = await fetchConversationBootstrap({
+          query: query.trim() || undefined,
           signal: controller.signal,
         });
-        const result = await readJson<ConversationBootstrapResponse>(response);
         if (generation !== bootstrapGenerationRef.current) return;
         setSessions(result.sessions);
         setNextCursor(result.nextCursor);
@@ -185,8 +186,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     setLearningItems([]);
     setSessionMemories([]);
     setOlderMessagesCursor(null);
-    void fetch(`/api/conversations/${activeSessionId}`, { signal: controller.signal })
-      .then((response) => readJson<ConversationSessionResponse>(response))
+    void fetchConversationSession(activeSessionId, { signal: controller.signal })
       .then((result) => {
         setCurrentSession(result.session);
         setMode(result.session.mode);
@@ -265,11 +265,10 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const generation = bootstrapGenerationRef.current;
     setIsBootstrapLoading(true);
     try {
-      const params = new URLSearchParams({ cursor: nextCursor });
-      if (query.trim()) params.set("query", query.trim());
-      const result = await fetch(`/api/conversation/bootstrap?${params}`).then(
-        (response) => readJson<ConversationBootstrapResponse>(response)
-      );
+      const result = await fetchConversationBootstrap({
+        cursor: nextCursor,
+        query: query.trim() || undefined,
+      });
       if (generation !== bootstrapGenerationRef.current) return;
       setSessions((current) =>
         sortSessionsByActivity(mergeById(current, result.sessions))
@@ -291,9 +290,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const sessionId = activeSessionId;
     setIsLoadingOlder(true);
     try {
-      const result = await fetch(
-        `/api/conversations/${sessionId}?cursor=${encodeURIComponent(olderMessagesCursor)}`
-      ).then((response) => readJson<ConversationSessionResponse>(response));
+      const result = await fetchConversationSession(sessionId, {
+        cursor: olderMessagesCursor,
+      });
       if (activeSessionIdRef.current !== sessionId) return;
       const viewport = messagesViewportRef.current;
       if (viewport) {
@@ -313,21 +312,13 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
 
   async function ensureSession() {
     if (activeSessionId) return activeSessionId;
-    const result = await fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    }).then((response) =>
-      readJson<{ session: ConversationSession }>(response)
-    );
-    skipSessionLoadRef.current = result.session.id;
-    setActiveSessionId(result.session.id);
-    setCurrentSession(result.session);
-    setSessions((current) =>
-      sortSessionsByActivity(mergeById(current, [result.session]))
-    );
-    window.history.replaceState(null, "", `/conversation/${result.session.id}`);
-    return result.session.id;
+    const session = await createConversationSession(mode);
+    skipSessionLoadRef.current = session.id;
+    setActiveSessionId(session.id);
+    setCurrentSession(session);
+    setSessions((current) => upsertSessionByActivity(current, session));
+    window.history.replaceState(null, "", `/conversation/${session.id}`);
+    return session.id;
   }
 
   async function analyzeMessage(sessionId: string, messageId: string) {
@@ -341,10 +332,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
       )
     );
     try {
-      const result = await fetch(
-        `/api/conversations/${sessionId}/messages/${messageId}/analysis`,
-        { method: "POST" }
-      ).then((response) => readJson<ConversationAnalysisResponse>(response));
+      const result = await analyzeConversationMessage(sessionId, messageId);
       if (activeSessionIdRef.current !== sessionId) return;
       setMessages((current) =>
         current.map((message) =>
@@ -365,16 +353,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         )
       );
       setCurrentSession(result.session);
-      setSessions((current) => {
-        const next = current.map((session) =>
-          session.id === result.session.id ? result.session : session
-        );
-        return sortSessionsByActivity(
-          next.some((session) => session.id === result.session.id)
-            ? next
-            : [result.session, ...next]
-        );
-      });
+      setSessions((current) => upsertSessionByActivity(current, result.session));
     } catch (analysisError) {
       if (activeSessionIdRef.current !== sessionId) return;
       setMessages((current) =>
@@ -410,21 +389,17 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     let completedMessage: ConversationMessage | null = null;
     try {
       const sessionId = await ensureSession();
-      const response = await fetch(`/api/conversations/${sessionId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
+      const response = await streamConversationMessage(
+        sessionId,
+        {
           clientMessageId: crypto.randomUUID(),
           content,
           mode: overrideMode ?? mode,
           retryParentMessageId,
           retryAssistantMessageId,
-        }),
-      });
-      if (!response.ok) {
-        await readJson(response);
-      }
+        },
+        controller.signal
+      );
       let assistantMessageId = "";
       await consumeConversationEventStream(response, (event) => {
         if (event.type === "assistant_created") {
@@ -457,13 +432,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
               : current
           );
           setSessions((current) =>
-            sortSessionsByActivity(
-              current.map((session) =>
-                session.id === sessionId
-                  ? { ...session, updatedAt: event.message.updatedAt }
-                  : session
-              )
-            )
+            updateSessionActivity(current, sessionId, event.message.updatedAt)
           );
           return;
         }
@@ -506,30 +475,16 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   }
 
   async function renameSession(sessionId: string, title: string) {
-    const result = await fetch(`/api/conversations/${sessionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    }).then((response) => readJson<{ session: ConversationSession }>(response));
-    setSessions((current) =>
-      sortSessionsByActivity(
-        current.map((session) =>
-          session.id === sessionId ? result.session : session
-        )
-      )
-    );
-    if (currentSession?.id === sessionId) setCurrentSession(result.session);
+    const session = await updateConversationSession(sessionId, { title });
+    setSessions((current) => replaceSessionByActivity(current, session));
+    if (currentSession?.id === sessionId) setCurrentSession(session);
   }
 
   async function deleteSession(sessionId: string) {
     if (activeSessionId === sessionId) {
       abortControllerRef.current?.abort();
     }
-    await fetch(`/api/conversations/${sessionId}`, { method: "DELETE" }).then(
-      async (response) => {
-        if (!response.ok) await readJson(response);
-      }
-    );
+    await deleteConversationSession(sessionId);
     setSessions((current) => current.filter((session) => session.id !== sessionId));
     if (activeSessionId === sessionId) {
       startNewConversation();
@@ -541,19 +496,11 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     setMode(nextMode);
     if (!activeSessionId) return;
     try {
-      const result = await fetch(`/api/conversations/${activeSessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: nextMode }),
-      }).then((response) => readJson<{ session: ConversationSession }>(response));
-      setCurrentSession(result.session);
-      setSessions((current) =>
-        sortSessionsByActivity(
-          current.map((session) =>
-            session.id === result.session.id ? result.session : session
-          )
-        )
-      );
+      const session = await updateConversationSession(activeSessionId, {
+        mode: nextMode,
+      });
+      setCurrentSession(session);
+      setSessions((current) => replaceSessionByActivity(current, session));
     } catch (modeError) {
       setMode(previousMode);
       setError(getErrorMessage(modeError, "对话模式保存失败，请重试。"));
@@ -564,16 +511,10 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const request = preferencesMutationRef.current
       .catch(() => undefined)
       .then(async () => {
-        const result = await fetch("/api/conversation/preferences", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-        }).then((response) =>
-          readJson<{ preferences: ConversationPreferences }>(response)
-        );
-        setPreferences(result.preferences);
+        const preferences = await updateConversationPreferences(input);
+        setPreferences(preferences);
         if (!activeSessionIdRef.current && input.defaultMode) {
-          setMode(result.preferences.defaultMode);
+          setMode(preferences.defaultMode);
         }
       });
     preferencesMutationRef.current = request;
@@ -581,13 +522,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   }
 
   async function createCollection(name: string) {
-    const result = await fetch("/api/collections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    }).then((response) => readJson<CollectionResponse>(response));
-    setCollections((current) => [result.collection, ...current]);
-    return result.collection;
+    const collection = await createConversationCollection(name);
+    setCollections((current) => [collection, ...current]);
+    return collection;
   }
 
   async function createMemory(input: {
@@ -595,15 +532,14 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     kind: ConversationMemoryKind;
     content: string;
   }) {
-    const result = await fetch("/api/conversation/memories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...input, sessionId: activeSessionId }),
-    }).then((response) => readJson<{ memory: ConversationMemory }>(response));
-    if (result.memory.scope === "global") {
-      setGlobalMemories((current) => mergeById(current, [result.memory]));
+    const memory = await createConversationMemory({
+      ...input,
+      sessionId: activeSessionId,
+    });
+    if (memory.scope === "global") {
+      setGlobalMemories((current) => mergeById(current, [memory]));
     } else {
-      setSessionMemories((current) => mergeById(current, [result.memory]));
+      setSessionMemories((current) => mergeById(current, [memory]));
     }
   }
 
@@ -611,25 +547,21 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     memoryId: string,
     input: { content?: string; status?: "active" | "dismissed" }
   ) {
-    const result = await fetch(`/api/conversation/memories/${memoryId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }).then((response) => readJson<{ memory: ConversationMemory }>(response));
+    const memory = await updateConversationMemory(memoryId, input);
     setGlobalMemories((current) =>
-      current.map((memory) => (memory.id === memoryId ? result.memory : memory))
+      current.map((currentMemory) =>
+        currentMemory.id === memoryId ? memory : currentMemory
+      )
     );
     setSessionMemories((current) =>
-      current.map((memory) => (memory.id === memoryId ? result.memory : memory))
+      current.map((currentMemory) =>
+        currentMemory.id === memoryId ? memory : currentMemory
+      )
     );
   }
 
   async function deleteMemory(memoryId: string) {
-    await fetch(`/api/conversation/memories/${memoryId}`, { method: "DELETE" }).then(
-      async (response) => {
-        if (!response.ok) await readJson(response);
-      }
-    );
+    await deleteConversationMemory(memoryId);
     setGlobalMemories((current) => current.filter((memory) => memory.id !== memoryId));
     setSessionMemories((current) => current.filter((memory) => memory.id !== memoryId));
   }
@@ -638,16 +570,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     itemId: string,
     input: PromoteConversationLearningItemRequest
   ) {
-    const result = await fetch(
-      `/api/conversation/learning-items/${itemId}/promote`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      }
-    ).then((response) =>
-      readJson<PromoteConversationLearningItemResponse>(response)
-    );
+    const result = await promoteConversationLearningItem(itemId, input);
     setLearningItems((current) =>
       current.map((item) => (item.id === itemId ? result.item : item))
     );
@@ -655,11 +578,11 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   }
 
   async function dismissLearningItem(itemId: string) {
-    const result = await fetch(`/api/conversation/learning-items/${itemId}`, {
-      method: "DELETE",
-    }).then((response) => readJson<{ item: ConversationLearningItem }>(response));
+    const item = await dismissConversationLearningItem(itemId);
     setLearningItems((current) =>
-      current.map((item) => (item.id === itemId ? result.item : item))
+      current.map((currentItem) =>
+        currentItem.id === itemId ? item : currentItem
+      )
     );
   }
 

@@ -1,5 +1,5 @@
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry } from "@/shared/types/dictionary";
 
 export class AIWordLookupService {
   constructor(private readonly llmClient: LlmClient) {}

@@ -1,4 +1,8 @@
-import type { DictionaryEntry, DictionaryExample, WordLookupResponse } from "@/shared/types/api";
+import type {
+  DictionaryEntry,
+  DictionaryExample,
+  WordLookupResponse,
+} from "@/shared/types/dictionary";
 
 export type SearchHistoryItem = {
   id: string;

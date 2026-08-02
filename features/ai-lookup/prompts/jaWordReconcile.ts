@@ -1,4 +1,4 @@
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry } from "@/shared/types/dictionary";
 
 function formatEntry(label: string, entry: DictionaryEntry) {
   const examples = entry.examples

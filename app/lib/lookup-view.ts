@@ -1,4 +1,7 @@
-import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
+import type {
+  DictionaryEntry,
+  WordLookupResponse,
+} from "@/shared/types/dictionary";
 
 export function isIncompleteLookupResult(result: WordLookupResponse | null) {
   return result?.metadata?.persistenceStatus === "not_persistable";

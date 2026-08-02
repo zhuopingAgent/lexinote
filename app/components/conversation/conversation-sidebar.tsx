@@ -10,6 +10,7 @@ import {
   SearchIcon,
   TrashIcon,
 } from "@/app/components/icons";
+import { getErrorMessage } from "@/app/lib/api-client";
 import type { ConversationSession } from "@/shared/types/conversation";
 
 type ConversationSidebarProps = {
@@ -88,7 +89,7 @@ export function ConversationSidebar({
       await onRename(sessionId, editingTitle.trim());
       setEditingId(null);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "重命名失败，请重试。");
+      setActionError(getErrorMessage(error, "重命名失败，请重试。"));
     } finally {
       setBusyId(null);
     }
@@ -102,7 +103,7 @@ export function ConversationSidebar({
       await onDelete(deleteTarget.id);
       setDeleteTarget(null);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "删除失败，请重试。");
+      setActionError(getErrorMessage(error, "删除失败，请重试。"));
     } finally {
       setBusyId(null);
     }

@@ -3,7 +3,7 @@ import {
   buildResultDifferenceNotes,
   buildResultDifferenceOverview,
 } from "@/app/lib/word-data";
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry } from "@/shared/types/dictionary";
 
 describe("word-data difference helpers", () => {
   it("hides the difference section when entries do not differ in a reliable way", () => {

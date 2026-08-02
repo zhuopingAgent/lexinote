@@ -21,7 +21,7 @@ import type {
   DictionaryOverviewItem,
   DictionaryExample,
   SavedDictionaryEntry,
-} from "@/shared/types/api";
+} from "@/shared/types/dictionary";
 
 type DictionaryEntryRow = {
   word: string;

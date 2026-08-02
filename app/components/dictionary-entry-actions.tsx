@@ -3,7 +3,8 @@
 import { useId, useState } from "react";
 import { CollectionIcon, SearchIcon } from "@/app/components/icons";
 import { getErrorMessage } from "@/app/lib/api-client";
-import type { CollectionSummary, DictionaryEntry } from "@/shared/types/api";
+import type { CollectionSummary } from "@/shared/types/collections";
+import type { DictionaryEntry } from "@/shared/types/dictionary";
 
 type DictionaryEntryActionsProps = {
   entry: DictionaryEntry;

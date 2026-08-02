@@ -2,7 +2,7 @@ import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import { hasAiGatewayCredentials } from "@/shared/ai/gateway";
-import type { AutoFilterDictionaryEntry } from "@/shared/types/api";
+import type { AutoFilterDictionaryEntry } from "@/shared/types/collections";
 
 const AUTO_FILTER_BATCH_SIZE = 24;
 const DEFAULT_AUTO_FILTER_MAX_SYNC_CANDIDATES = 240;

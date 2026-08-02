@@ -6,7 +6,7 @@ import {
   saveSearchHistory,
   upsertSearchHistoryItems,
 } from "@/app/lib/search-history";
-import type { WordLookupResponse } from "@/shared/types/api";
+import type { WordLookupResponse } from "@/shared/types/dictionary";
 
 function createLookupResult(
   word: string,

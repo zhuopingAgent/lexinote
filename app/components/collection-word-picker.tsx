@@ -9,12 +9,12 @@ import {
 } from "@/app/lib/api-client";
 import { summarizeMeaning } from "@/app/lib/text";
 import { mergeUniqueWordEntriesById } from "@/app/lib/word-list";
+import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
+import type { AddCollectionWordsResponse } from "@/shared/types/collections";
 import type {
-  AddCollectionWordsResponse,
   DictionaryOverviewItem,
   DictionaryOverviewResponse,
-} from "@/shared/types/api";
-import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
+} from "@/shared/types/dictionary";
 
 type CollectionWordPickerProps = {
   collectionId: number;

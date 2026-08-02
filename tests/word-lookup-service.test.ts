@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { WordLookupService } from "@/features/word-lookup/application/WordLookupService";
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry } from "@/shared/types/dictionary";
 import { ValidationError } from "@/shared/utils/errors";
 
 describe("WordLookupService", () => {

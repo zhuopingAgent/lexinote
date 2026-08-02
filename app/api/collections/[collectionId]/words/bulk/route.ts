@@ -8,7 +8,7 @@ import { parsePositiveIntegerParam, readJsonBody } from "@/app/api/request";
 import type {
   AddCollectionWordsRequest,
   AddCollectionWordsResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/collections";
 import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";

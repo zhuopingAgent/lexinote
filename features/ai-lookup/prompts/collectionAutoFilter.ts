@@ -1,7 +1,7 @@
 import type {
   AutoFilterDictionaryEntry,
   CollectionAutoFilterRule,
-} from "@/shared/types/api";
+} from "@/shared/types/collections";
 
 function sanitizeExamples(entry: AutoFilterDictionaryEntry) {
   return (entry.examples ?? []).slice(0, 3).map((example) => ({

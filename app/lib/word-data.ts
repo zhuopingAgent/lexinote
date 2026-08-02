@@ -1,4 +1,7 @@
-import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
+import type {
+  DictionaryEntry,
+  WordLookupResponse,
+} from "@/shared/types/dictionary";
 import type { WordData } from "@/app/components/word-card";
 
 const DIGRAPH_ROMAJI_MAP: Record<string, string> = {

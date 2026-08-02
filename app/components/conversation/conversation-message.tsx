@@ -10,14 +10,15 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@/app/components/icons";
+import { getErrorMessage } from "@/app/lib/api-client";
+import type { CollectionSummary } from "@/shared/types/collections";
 import type {
-  CollectionSummary,
   ConversationLearningItem,
   ConversationMemory,
   ConversationMessage,
   PromoteConversationLearningItemRequest,
   PromoteConversationLearningItemResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/conversation";
 
 type ConversationMessageViewProps = {
   collections: CollectionSummary[];
@@ -109,7 +110,7 @@ function LearningItemCard({
         setNotice(item.kind === "grammar" ? "已加入文法复习。" : "已加入单词本。");
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "保存失败，请重试。");
+      setNotice(getErrorMessage(error, "保存失败，请重试。"));
     } finally {
       setIsBusy(false);
     }
@@ -126,7 +127,7 @@ function LearningItemCard({
       setIsCreatingCollection(false);
       setNotice("单词本已创建，可继续保存这个学习项。");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "新建单词本失败。");
+      setNotice(getErrorMessage(error, "新建单词本失败。"));
     } finally {
       setIsBusy(false);
     }
@@ -138,7 +139,7 @@ function LearningItemCard({
     try {
       await onDismiss(item.id);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "忽略失败，请重试。");
+      setNotice(getErrorMessage(error, "忽略失败，请重试。"));
     } finally {
       setIsBusy(false);
     }
@@ -287,7 +288,7 @@ export function ConversationMessageView({
     try {
       await onUpdateMemory(memoryId, status);
     } catch (error) {
-      setMemoryError(error instanceof Error ? error.message : "记忆更新失败，请重试。");
+      setMemoryError(getErrorMessage(error, "记忆更新失败，请重试。"));
     } finally {
       setBusyMemoryId(null);
     }

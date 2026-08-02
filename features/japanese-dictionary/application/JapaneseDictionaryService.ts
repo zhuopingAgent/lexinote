@@ -4,7 +4,7 @@ import type {
   DictionaryEntryDetail,
   DictionaryOverviewItem,
   SavedDictionaryEntry,
-} from "@/shared/types/api";
+} from "@/shared/types/dictionary";
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 
 export class JapaneseDictionaryService {

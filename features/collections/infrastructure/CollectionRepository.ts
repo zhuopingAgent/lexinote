@@ -22,7 +22,7 @@ import type {
   CollectionDetail,
   CollectionSummary,
   CollectionWordItem,
-} from "@/shared/types/api";
+} from "@/shared/types/collections";
 
 type CollectionSummaryRow = {
   collection_id: number | string;
