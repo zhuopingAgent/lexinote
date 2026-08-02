@@ -1,6 +1,9 @@
 import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import type { CollectionDetail, CollectionSummary } from "@/shared/types/api";
+import type {
+  CollectionDetail,
+  CollectionSummary,
+} from "@/shared/types/collections";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 
 function isUniqueViolation(error: unknown) {

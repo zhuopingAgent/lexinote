@@ -20,7 +20,7 @@ import type {
   CollectionListResponse,
   CollectionResponse,
   CollectionSummary,
-} from "@/shared/types/api";
+} from "@/shared/types/collections";
 
 export function useCollections(activeView: AppView) {
   const [collections, setCollections] = useState<CollectionSummary[]>([]);

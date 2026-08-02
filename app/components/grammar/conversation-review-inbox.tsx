@@ -7,9 +7,9 @@ import type {
   ConversationGrammarCandidate,
   ConversationLearningItem,
   ConversationReviewInboxResponse,
-  GrammarSearchResponse,
   PromoteConversationLearningItemResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/conversation";
+import type { GrammarSearchResponse } from "@/shared/types/grammar";
 
 function InboxItem({
   item,

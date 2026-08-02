@@ -5,7 +5,7 @@ import type {
   DictionaryEntryDetail,
   DictionaryOverviewItem,
   SavedDictionaryEntry,
-} from "@/shared/types/api";
+} from "@/shared/types/dictionary";
 
 export type ListVocabularyEntriesPageOptions = {
   query?: string;

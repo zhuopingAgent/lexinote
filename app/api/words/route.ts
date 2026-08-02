@@ -8,7 +8,7 @@ import {
   MAX_WORD_PAGE_SIZE,
   WORD_PAGE_SIZE,
 } from "@/shared/constants/pagination";
-import type { DictionaryOverviewResponse } from "@/shared/types/api";
+import type { DictionaryOverviewResponse } from "@/shared/types/dictionary";
 import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";

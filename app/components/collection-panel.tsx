@@ -8,7 +8,7 @@ import {
   shouldSuppressAutoFilterResyncHint,
 } from "@/app/lib/collection-status";
 import { formatMediumDateTimeOrOriginal } from "@/app/lib/date";
-import type { CollectionSummary } from "@/shared/types/api";
+import type { CollectionSummary } from "@/shared/types/collections";
 
 type CollectionPanelProps = {
   collections: CollectionSummary[];

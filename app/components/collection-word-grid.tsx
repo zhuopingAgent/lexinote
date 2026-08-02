@@ -7,7 +7,7 @@ import {
   getErrorMessage,
   readResponseErrorMessage,
 } from "@/app/lib/api-client";
-import type { CollectionWordItem } from "@/shared/types/api";
+import type { CollectionWordItem } from "@/shared/types/collections";
 
 type CollectionWordGridProps = {
   collectionId: number;

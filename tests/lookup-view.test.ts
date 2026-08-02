@@ -4,7 +4,10 @@ import {
   buildLookupStatusBadges,
   getLookupEntryCollectionState,
 } from "@/app/lib/lookup-view";
-import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
+import type {
+  DictionaryEntry,
+  WordLookupResponse,
+} from "@/shared/types/dictionary";
 
 function createEntry(overrides?: Partial<DictionaryEntry>): DictionaryEntry {
   return {

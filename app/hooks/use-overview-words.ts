@@ -12,7 +12,7 @@ import { mergeUniqueWordEntriesById } from "@/app/lib/word-list";
 import type {
   DictionaryOverviewItem,
   DictionaryOverviewResponse,
-} from "@/shared/types/api";
+} from "@/shared/types/dictionary";
 import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
 
 export function useOverviewWords(activeView: AppView) {

@@ -22,7 +22,10 @@ import {
   isAiQuotaExhaustedError,
   readJson,
 } from "@/app/lib/api-client";
-import type { DictionaryEntry, WordLookupResponse } from "@/shared/types/api";
+import type {
+  DictionaryEntry,
+  WordLookupResponse,
+} from "@/shared/types/dictionary";
 
 type LookupMode = "search" | "retry";
 

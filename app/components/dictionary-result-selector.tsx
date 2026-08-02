@@ -1,6 +1,6 @@
 "use client";
 
-import type { DictionaryEntry } from "@/shared/types/api";
+import type { DictionaryEntry } from "@/shared/types/dictionary";
 
 type DictionaryResultSelectorProps = {
   entries: DictionaryEntry[];

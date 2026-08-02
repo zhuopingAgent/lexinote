@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckIcon, CloseIcon, EditIcon, PlusIcon, TrashIcon } from "@/app/components/icons";
+import { getErrorMessage } from "@/app/lib/api-client";
+import type { CollectionSummary } from "@/shared/types/collections";
 import type {
-  CollectionSummary,
   ConversationMemory,
   ConversationMemoryKind,
   ConversationPreferences,
-} from "@/shared/types/api";
+} from "@/shared/types/conversation";
 
 type ConversationSettingsDrawerProps = {
   collections: CollectionSummary[];
@@ -56,7 +57,7 @@ function MemoryRow({
       await onUpdate(memory.id, { content: content.trim(), status: "active" });
       setIsEditing(false);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "记忆保存失败，请重试。");
+      setActionError(getErrorMessage(error, "记忆保存失败，请重试。"));
     } finally {
       setIsBusy(false);
     }
@@ -68,7 +69,7 @@ function MemoryRow({
     try {
       await onUpdate(memory.id, { status });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "记忆更新失败，请重试。");
+      setActionError(getErrorMessage(error, "记忆更新失败，请重试。"));
     } finally {
       setIsBusy(false);
     }
@@ -80,7 +81,7 @@ function MemoryRow({
     try {
       await onDelete(memory.id);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "记忆删除失败，请重试。");
+      setActionError(getErrorMessage(error, "记忆删除失败，请重试。"));
     } finally {
       setIsBusy(false);
     }
@@ -165,7 +166,7 @@ export function ConversationSettingsDrawer({
     try {
       await onUpdatePreferences(input);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "偏好保存失败，请重试。");
+      setActionError(getErrorMessage(error, "偏好保存失败，请重试。"));
     }
   }
 
@@ -182,7 +183,7 @@ export function ConversationSettingsDrawer({
       });
       setMemoryContent("");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "记忆保存失败，请重试。");
+      setActionError(getErrorMessage(error, "记忆保存失败，请重试。"));
     } finally {
       setIsBusy(false);
     }
@@ -198,7 +199,7 @@ export function ConversationSettingsDrawer({
       await onUpdatePreferences({ defaultCollectionId: collection.collectionId });
       setCollectionName("");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "单词本创建失败，请重试。");
+      setActionError(getErrorMessage(error, "单词本创建失败，请重试。"));
     } finally {
       setIsBusy(false);
     }

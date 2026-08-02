@@ -165,6 +165,8 @@
 
 - `app/conversation/*`
 - `app/components/conversation/*`
+- `app/lib/conversation-api.ts`: typed browser transport for conversation endpoints
+- `app/lib/conversation-state.ts`: deterministic client collection and session ordering helpers
 - `app/api/conversation/*`
 - `app/api/conversations/*`
 - `features/conversation/*`

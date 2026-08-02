@@ -1,7 +1,7 @@
 import { AIWordLookupService } from "@/features/ai-lookup/application/AIWordLookupService";
 import { CollectionAutoFilterJobService } from "@/features/collections/application/CollectionAutoFilterJobService";
 import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
-import type { WordLookupResponse } from "@/shared/types/api";
+import type { WordLookupResponse } from "@/shared/types/dictionary";
 import { ValidationError } from "@/shared/utils/errors";
 
 type LookupMetadata = NonNullable<WordLookupResponse["metadata"]>;

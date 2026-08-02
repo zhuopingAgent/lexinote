@@ -3,8 +3,8 @@ import { VocabularyCoreService } from "@/features/vocabulary-core/application/Vo
 import type {
   AddCollectionWordResponse,
   AddCollectionWordsResponse,
-  DictionaryEntryCandidate,
-} from "@/shared/types/api";
+} from "@/shared/types/collections";
+import type { DictionaryEntryCandidate } from "@/shared/types/dictionary";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 
 export class CollectionWordService {

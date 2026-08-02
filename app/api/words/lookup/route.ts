@@ -5,7 +5,7 @@ import {
 } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
 import { readJsonBody } from "@/app/api/request";
-import type { WordLookupRequest } from "@/shared/types/api";
+import type { WordLookupRequest } from "@/shared/types/dictionary";
 import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";

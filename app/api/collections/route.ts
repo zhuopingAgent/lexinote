@@ -9,7 +9,7 @@ import type {
   CollectionListResponse,
   CollectionResponse,
   CreateCollectionRequest,
-} from "@/shared/types/api";
+} from "@/shared/types/collections";
 import { ValidationError } from "@/shared/utils/errors";
 
 export const runtime = "nodejs";

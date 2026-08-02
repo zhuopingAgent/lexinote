@@ -1,4 +1,4 @@
-import type { AutoFilterSyncStatus } from "@/shared/types/api";
+import type { AutoFilterSyncStatus } from "@/shared/types/collections";
 
 const ACTIVE_AUTO_FILTER_STATUSES = new Set<AutoFilterSyncStatus>([
   "pending",
