@@ -51,9 +51,35 @@ export default async function globalSetup() {
       readFile(grammarContentPath, "utf8"),
       readFile(fixturesPath, "utf8"),
     ]);
+    const resetUserDataSql = `
+      TRUNCATE TABLE
+        conversation_learning_items,
+        conversation_memories,
+        conversation_messages,
+        conversation_preferences,
+        conversation_sessions,
+        practice_attempt_issues,
+        mastery_evidence,
+        practice_attempts,
+        exercise_instances,
+        practice_sessions,
+        learner_objective_states,
+        learner_skill_states,
+        auto_filter_jobs,
+        collection_words,
+        collections,
+        japanese_dictionary_entries,
+        ai_feedback,
+        user_sentences,
+        favorites,
+        review_records,
+        learning_history
+      RESTART IDENTITY CASCADE
+    `;
 
     await pool.query(schemaSql);
     await pool.query(grammarContentSql);
+    await pool.query(resetUserDataSql);
     const firstGrammarSeedSnapshot = await pool.query(`
       SELECT jsonb_build_object(
         'dimensions', (SELECT COUNT(*) FROM taxonomy_dimensions),
@@ -566,31 +592,7 @@ export default async function globalSetup() {
       throw new Error(`Grammar domain integrity check failed: ${JSON.stringify(integrity)}`);
     }
 
-    await pool.query(`
-      TRUNCATE TABLE
-        conversation_learning_items,
-        conversation_memories,
-        conversation_messages,
-        conversation_preferences,
-        conversation_sessions,
-        practice_attempt_issues,
-        mastery_evidence,
-        practice_attempts,
-        exercise_instances,
-        practice_sessions,
-        learner_objective_states,
-        learner_skill_states,
-        auto_filter_jobs,
-        collection_words,
-        collections,
-        japanese_dictionary_entries,
-        ai_feedback,
-        user_sentences,
-        favorites,
-        review_records,
-        learning_history
-      RESTART IDENTITY CASCADE
-    `);
+    await pool.query(resetUserDataSql);
     await pool.query(fixturesSql);
   } finally {
     await pool.end();

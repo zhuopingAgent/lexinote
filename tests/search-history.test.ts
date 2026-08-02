@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clearSearchHistory,
   createSearchHistoryItem,
+  loadSearchHistory,
+  saveSearchHistory,
   upsertSearchHistoryItems,
 } from "@/app/lib/search-history";
 import type { WordLookupResponse } from "@/shared/types/api";
@@ -25,6 +28,10 @@ function createLookupResult(
 }
 
 describe("search history helpers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("puts the latest successful lookup at the top", () => {
     const firstItem = createSearchHistoryItem({
       searchedWord: "食べる",
@@ -123,5 +130,24 @@ describe("search history helpers", () => {
     expect(items).toHaveLength(2);
     expect(items[0].searchedWord).toBe("最新");
     expect(items[1].searchedWord).toBe("単語0");
+  });
+
+  it("keeps lookup and clear actions usable when browser storage is unavailable", () => {
+    const unavailableStorage = {
+      getItem() {
+        throw new Error("storage unavailable");
+      },
+      setItem() {
+        throw new Error("storage unavailable");
+      },
+      removeItem() {
+        throw new Error("storage unavailable");
+      },
+    };
+    vi.stubGlobal("window", { localStorage: unavailableStorage });
+
+    expect(loadSearchHistory()).toEqual([]);
+    expect(() => saveSearchHistory([])).not.toThrow();
+    expect(() => clearSearchHistory()).not.toThrow();
   });
 });

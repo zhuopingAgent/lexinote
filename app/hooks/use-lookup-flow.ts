@@ -18,6 +18,7 @@ import {
 } from "@/app/lib/word-data";
 import {
   getErrorMessage,
+  isAbortError,
   isAiQuotaExhaustedError,
   readJson,
 } from "@/app/lib/api-client";
@@ -60,6 +61,8 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
   const [loadingMode, setLoadingMode] = useState<LookupMode | null>(null);
   const [isRetryPanelOpen, setIsRetryPanelOpen] = useState(false);
   const resultCacheRef = useRef(new Map<string, WordLookupResponse>());
+  const activeLookupAbortControllerRef = useRef<AbortController | null>(null);
+  const lookupGenerationRef = useRef(0);
 
   const canSubmit = word.trim().length > 0 && !isLoading;
   const canRetrySubmit = retryContext.trim().length > 0 && result !== null && !isLoading;
@@ -79,7 +82,18 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
 
   useEffect(() => {
     setHistoryItems(loadSearchHistory());
+
+    return () => {
+      lookupGenerationRef.current += 1;
+      activeLookupAbortControllerRef.current?.abort();
+    };
   }, []);
+
+  function invalidateActiveLookup() {
+    lookupGenerationRef.current += 1;
+    activeLookupAbortControllerRef.current?.abort();
+    activeLookupAbortControllerRef.current = null;
+  }
 
   function rememberSearchResult(
     searchedWord: string,
@@ -102,12 +116,14 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
   }
 
   function onOpenHistoryItem(item: SearchHistoryItem) {
+    invalidateActiveLookup();
     onViewChange("dictionary");
     setWord(item.searchedWord);
     setSearchContextDraft(item.context);
     setRetryContext("");
     setActiveContext(item.context);
     setError(null);
+    setAiApiErrorMessage(null);
     setResult(item.result);
     setIsLoading(false);
     setLoadingContext("");
@@ -144,14 +160,19 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     );
 
     if (!normalizedWord) {
+      invalidateActiveLookup();
       setError("请输入一个日语单词。");
       setResult(null);
       setActiveContext("");
+      setLoadingContext("");
+      setLoadingMode(null);
+      setIsLoading(false);
       return;
     }
 
     const cachedResult = resultCacheRef.current.get(cacheKey);
     if (cachedResult) {
+      invalidateActiveLookup();
       rememberSearchResult(
         normalizedWord,
         normalizedContext,
@@ -174,6 +195,14 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
       return;
     }
 
+    invalidateActiveLookup();
+    const abortController = new AbortController();
+    const lookupGeneration = lookupGenerationRef.current;
+    activeLookupAbortControllerRef.current = abortController;
+    const isCurrentLookup = () =>
+      !abortController.signal.aborted &&
+      lookupGenerationRef.current === lookupGeneration;
+
     setError(null);
     if (!options?.preserveResult) {
       setResult(null);
@@ -193,9 +222,14 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
           context: normalizedContext || undefined,
           pronunciation: normalizedPronunciation || undefined,
         }),
+        signal: abortController.signal,
       });
 
       const payload = await readJson<WordLookupResponse>(response);
+      if (!isCurrentLookup()) {
+        return;
+      }
+
       resultCacheRef.current.set(cacheKey, payload);
       rememberSearchResult(
         normalizedWord,
@@ -211,6 +245,10 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
       setSelectedRetryPronunciation(payload.entry.pronunciation);
       setAiApiErrorMessage(null);
     } catch (lookupError) {
+      if (isAbortError(lookupError) || !isCurrentLookup()) {
+        return;
+      }
+
       const message = getErrorMessage(lookupError, "发生了意外错误");
       if (isAiQuotaExhaustedError(lookupError)) {
         setAiApiErrorMessage(message);
@@ -226,6 +264,11 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
         setSelectedRetryPronunciation("");
       }
     } finally {
+      if (!isCurrentLookup()) {
+        return;
+      }
+
+      activeLookupAbortControllerRef.current = null;
       setLoadingContext("");
       setLoadingMode(null);
       setIsLoading(false);
