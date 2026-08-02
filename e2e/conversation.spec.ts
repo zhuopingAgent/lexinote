@@ -316,6 +316,82 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
   expectNoBrowserErrors(browserErrors);
 });
 
+test("a rapid second click on the send position does not cancel generation", async ({
+  page,
+}) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  await mockBootstrap(page);
+  let messageRequests = 0;
+
+  await page.route("**/api/conversations", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ session: session(NEW_SESSION, "新对话") }),
+    });
+  });
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    messageRequests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    const user = message(USER_MESSAGE, "user", "双击发送测试");
+    const assistant = message(ASSISTANT_MESSAGE, "assistant", "", "streaming");
+    const completed = message(
+      ASSISTANT_MESSAGE,
+      "assistant",
+      "予約時間を変更していただけますか。"
+    );
+    const events = [
+      { type: "assistant_created", userMessage: user, assistantMessage: assistant },
+      { type: "text_delta", delta: completed.content },
+      { type: "completed", message: completed },
+    ];
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: events
+        .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+        .join(""),
+    });
+  });
+  await page.route("**/api/conversations/*/messages/*/analysis", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        message: {
+          ...message(
+            ASSISTANT_MESSAGE,
+            "assistant",
+            "予約時間を変更していただけますか。"
+          ),
+          analysisStatus: "completed",
+        },
+        session: session(NEW_SESSION, "双击发送测试"),
+        memories: [],
+        learningItems: [],
+      }),
+    });
+  });
+
+  await page.goto("/conversation");
+  await page.getByLabel("对话消息").fill("双击发送测试");
+  const send = page.getByRole("button", { name: "发送消息" });
+  const box = await send.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+  const stop = page.getByRole("button", { name: "停止生成" });
+  await expect(stop).toBeVisible();
+  await expect(stop).toBeDisabled();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+  await expect(
+    page.getByText("予約時間を変更していただけますか。")
+  ).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(1);
+  expect(messageRequests).toBe(1);
+  expectNoBrowserErrors(browserErrors);
+});
+
 test("cancelled conversation answer can be regenerated in place", async ({
   page,
 }) => {
