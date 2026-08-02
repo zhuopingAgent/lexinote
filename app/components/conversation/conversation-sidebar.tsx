@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import {
   CheckIcon,
   CloseIcon,
@@ -11,6 +11,7 @@ import {
   TrashIcon,
 } from "@/app/components/icons";
 import { getErrorMessage } from "@/app/lib/api-client";
+import { useModalFocus } from "@/app/hooks/use-modal-focus";
 import type { ConversationSession } from "@/shared/types/conversation";
 
 type ConversationSidebarProps = {
@@ -58,28 +59,28 @@ export function ConversationSidebar({
   const [deleteTarget, setDeleteTarget] = useState<ConversationSession | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const newSessionButtonRef = useRef<HTMLButtonElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const cancelDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopViewport,
     isDesktopViewport,
     () => true
   );
   const isInteractive = isDesktop || isOpen;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    newSessionButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      previousFocus?.focus();
-    };
-  }, [isOpen]);
+  const { containerRef: sidebarRef, onKeyDown: onSidebarKeyDown } =
+    useModalFocus<HTMLElement>({
+      initialFocusRef: newSessionButtonRef,
+      isOpen: isOpen && !isDesktop,
+      onClose,
+    });
+  const closeDeleteDialog = () => {
+    if (deleteTarget && busyId !== deleteTarget.id) setDeleteTarget(null);
+  };
+  const { containerRef: deleteDialogRef, onKeyDown: onDeleteDialogKeyDown } =
+    useModalFocus<HTMLElement>({
+      initialFocusRef: cancelDeleteButtonRef,
+      isOpen: Boolean(deleteTarget),
+      onClose: closeDeleteDialog,
+    });
 
   async function saveRename(sessionId: string) {
     if (!editingTitle.trim()) return;
@@ -121,9 +122,14 @@ export function ConversationSidebar({
         />
       ) : null}
       <aside
+        ref={sidebarRef}
+        role={!isDesktop ? "dialog" : undefined}
+        aria-modal={!isDesktop && isOpen ? "true" : undefined}
         aria-label="对话列表"
         aria-hidden={!isInteractive || Boolean(deleteTarget)}
         inert={!isInteractive || Boolean(deleteTarget)}
+        tabIndex={-1}
+        onKeyDown={onSidebarKeyDown}
         className={`fixed inset-y-0 left-0 z-40 flex w-[min(86vw,300px)] flex-col border-r border-border bg-surface shadow-2xl transition-transform lg:static lg:z-auto lg:w-[288px] lg:translate-x-0 lg:shadow-none ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -272,15 +278,12 @@ export function ConversationSidebar({
           />
           <section
             role="dialog"
+            ref={deleteDialogRef}
             aria-modal="true"
             aria-labelledby="delete-conversation-title"
             aria-describedby="delete-conversation-description"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                if (busyId !== deleteTarget.id) setDeleteTarget(null);
-              }
-            }}
+            tabIndex={-1}
+            onKeyDown={onDeleteDialogKeyDown}
             className="fixed left-1/2 top-1/2 z-[60] w-[min(calc(100vw-32px),420px)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface p-5 shadow-2xl"
           >
             <h2 id="delete-conversation-title" className="break-words text-base font-semibold text-foreground">
@@ -296,7 +299,7 @@ export function ConversationSidebar({
             ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
-                autoFocus
+                ref={cancelDeleteButtonRef}
                 type="button"
                 disabled={busyId === deleteTarget.id}
                 onClick={() => setDeleteTarget(null)}

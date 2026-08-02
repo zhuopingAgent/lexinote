@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { CheckIcon, CloseIcon, EditIcon, PlusIcon, TrashIcon } from "@/app/components/icons";
+import { useModalFocus } from "@/app/hooks/use-modal-focus";
 import { getErrorMessage } from "@/app/lib/api-client";
 import type { CollectionSummary } from "@/shared/types/collections";
 import type {
@@ -144,22 +145,11 @@ export function ConversationSettingsDrawer({
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    closeButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      previousFocus?.focus();
-    };
-  }, [isOpen]);
+  const { containerRef, onKeyDown } = useModalFocus<HTMLElement>({
+    initialFocusRef: closeButtonRef,
+    isOpen,
+    onClose,
+  });
 
   async function savePreferences(input: Partial<ConversationPreferences>) {
     setActionError(null);
@@ -208,7 +198,7 @@ export function ConversationSettingsDrawer({
   return (
     <>
       {isOpen ? <button type="button" aria-hidden="true" tabIndex={-1} className="fixed inset-0 z-40 bg-black/55" onClick={onClose} /> : null}
-      <aside aria-label="对话偏好与记忆" aria-hidden={!isOpen} inert={!isOpen} className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] flex-col border-l border-border bg-surface shadow-2xl transition-transform ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
+      <aside ref={containerRef} role="dialog" aria-modal={isOpen ? "true" : undefined} aria-label="对话偏好与记忆" aria-hidden={!isOpen} inert={!isOpen} tabIndex={-1} onKeyDown={onKeyDown} className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] flex-col border-l border-border bg-surface shadow-2xl transition-transform ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
         <div className="flex h-14 items-center justify-between border-b border-border px-4">
           <h2 className="text-sm font-semibold text-foreground">偏好与记忆</h2>
           <button ref={closeButtonRef} type="button" aria-label="关闭设置" onClick={onClose} className="inline-flex size-10 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><CloseIcon className="size-5" /></button>
