@@ -191,7 +191,7 @@ describe("grammar API routes", () => {
     const { GET } = await import("@/app/api/grammar/route");
     const response = await GET(
       new Request(
-        "http://localhost/api/grammar?query=%E3%81%86%E3%81%A1%E3%81%AB&group=expressive_functions&category=time_and_sequence&limit=12&offset=36"
+        "http://localhost/api/grammar?query=%E3%81%86%E3%81%A1%E3%81%AB&group=expressive_functions&category=time_and_sequence&practicality=A&learningStatus=learning&limit=12&offset=36"
       )
     );
 
@@ -211,6 +211,8 @@ describe("grammar API routes", () => {
       dimensionSlug: undefined,
       stageSlug: undefined,
       moduleSlug: undefined,
+      practicality: "A",
+      learningStatus: "learning",
       limit: "12",
       offset: "36",
       userId: undefined,
@@ -334,6 +336,8 @@ describe("grammar API routes", () => {
       dimensionSlug: "expression_function",
       stageSlug: undefined,
       moduleSlug: undefined,
+      practicality: undefined,
+      learningStatus: undefined,
       limit: "37",
       offset: undefined,
       userId: undefined,

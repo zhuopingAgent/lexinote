@@ -6,6 +6,7 @@ export type AnswerEquivalenceResult = {
   confidence: number;
   matchedVariant: string | null;
   grammarFeatureSatisfied: boolean;
+  failedGrammarFeatures: string[];
   registerSatisfied: boolean;
   matchedContentAnchors: string[];
   reasonZh: string;
@@ -81,6 +82,68 @@ function registerIsAllowed(
   return detected === "business" && allowed.includes("polite");
 }
 
+function targetFormSatisfied(
+  sentence: string,
+  grammarPoint: GrammarPointDetail
+) {
+  const canonical = (grammarPoint.canonicalForm ?? grammarPoint.grammarPoint)
+    .replace(/[〜~]/g, "")
+    .trim();
+
+  if (canonical === "Aがあります") {
+    return /(?:が|は)[^。？！!?]*あります/.test(sentence);
+  }
+  if (canonical === "Aがいます") {
+    return /(?:が|は)[^。？！!?]*います/.test(sentence);
+  }
+  if (canonical === "AはBです") {
+    return /は[^。？！!?]+です(?:[。？！!?]|$)/.test(sentence);
+  }
+  if (canonical === "てもらえますか") {
+    return /(?:て|で)もらえますか(?:[。？！!?]|$)/.test(sentence);
+  }
+  if (canonical === "ていただけますか") {
+    return /(?:て|で)いただけますか(?:[。？！!?]|$)/.test(sentence);
+  }
+  if (/^[はがをにへでとも]$/.test(canonical)) {
+    return sentence.includes(canonical);
+  }
+
+  const fragments = formFragments(grammarPoint);
+  return fragments.length === 0 || fragments.some((fragment) => sentence.includes(fragment));
+}
+
+function requiredFeatureSatisfied(input: {
+  feature: string;
+  sentence: string;
+  grammarPoint: GrammarPointDetail;
+}) {
+  const { feature, sentence, grammarPoint } = input;
+  if (feature.startsWith("grammar_point:")) return true;
+  if (feature.startsWith("sense:") || feature === "target-sense") {
+    return targetFormSatisfied(sentence, grammarPoint);
+  }
+  if (feature.startsWith("connection:")) {
+    return targetFormSatisfied(sentence, grammarPoint);
+  }
+
+  switch (feature) {
+    case "location-ni":
+      return /に[^。？！!?]*(?:が|は)[^。？！!?]*(?:あります|います)/.test(sentence);
+    case "subject-ga":
+      return /が[^。？！!?]*(?:あります|います)/.test(sentence);
+    case "existence-predicate":
+      return /(?:あります|います)(?:[。？！!?]|$)/.test(sentence);
+    case "te-form-request":
+    case "listener-benefit-direction":
+      return /(?:て|で)(?:もらえますか|いただけますか)(?:[。？！!?]|$)/.test(sentence);
+    case "structured-connection":
+      return targetFormSatisfied(sentence, grammarPoint);
+    default:
+      return true;
+  }
+}
+
 export function evaluateAnswerEquivalence(input: {
   sentence: string;
   answerContract: AnswerContract;
@@ -95,12 +158,24 @@ export function evaluateAnswerEquivalence(input: {
     detectedRegister,
     input.answerContract.allowedRegisterRange
   );
-  if (exactVariant) {
+  const targetSatisfied = targetFormSatisfied(input.sentence, input.grammarPoint);
+  const failedGrammarFeatures = input.answerContract.requiredGrammarFeatures.filter(
+    (feature) =>
+      !requiredFeatureSatisfied({
+        feature,
+        sentence: input.sentence,
+        grammarPoint: input.grammarPoint,
+      })
+  );
+  const grammarFeatureSatisfied = targetSatisfied && failedGrammarFeatures.length === 0;
+
+  if (exactVariant && grammarFeatureSatisfied) {
     return {
       equivalent: registerSatisfied,
       confidence: registerSatisfied ? 1 : 0.7,
       matchedVariant: exactVariant,
       grammarFeatureSatisfied: true,
+      failedGrammarFeatures: [],
       registerSatisfied,
       matchedContentAnchors: [],
       reasonZh: registerSatisfied
@@ -109,9 +184,6 @@ export function evaluateAnswerEquivalence(input: {
     };
   }
 
-  const fragments = formFragments(input.grammarPoint);
-  const grammarFeatureSatisfied =
-    fragments.length === 0 || fragments.some((fragment) => sentence.includes(fragment));
   const anchors = contentAnchors(
     input.answerContract.allowedVariants,
     input.grammarPoint
@@ -128,10 +200,15 @@ export function evaluateAnswerEquivalence(input: {
     confidence: equivalent ? (requiredAnchorCount > 0 ? 0.9 : 0.82) : 0.45,
     matchedVariant: null,
     grammarFeatureSatisfied,
+    failedGrammarFeatures,
     registerSatisfied,
     matchedContentAnchors,
     reasonZh: !grammarFeatureSatisfied
-      ? "没有确认到目标语法形式。"
+      ? failedGrammarFeatures.includes("location-ni")
+        ? "存在地点需要使用「に」，不能用动作地点的「で」。"
+        : failedGrammarFeatures.includes("subject-ga")
+          ? "存在对象需要用「が」标记。"
+          : "没有确认到目标语法形式或所需接续。"
       : !meaningSatisfied
         ? "目标形式存在，但关键信息还不足。"
         : !registerSatisfied

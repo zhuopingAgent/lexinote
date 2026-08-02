@@ -175,6 +175,7 @@ export const SELECT_GRAMMAR_PROGRESS_TOTALS_SQL = `
     )::int AS pending_completion_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.status = 'mastered'
+        AND rr.next_review_at <= NOW()
     )::int AS due_review_count,
     COUNT(DISTINCT gp.id) FILTER (
       WHERE rr.id IS NOT NULL
@@ -462,6 +463,42 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
       $9::text = ''
       OR lm.slug = $9::text
     )
+    AND (
+      $10::text = ''
+      OR gp.practicality = $10::text
+    )
+    AND (
+      $11::text = ''
+      OR (
+        $11::text = 'not_started'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM review_records status_record
+          WHERE status_record.user_id = $4::uuid
+            AND status_record.grammar_point_id = gp.id
+        )
+      )
+      OR (
+        $11::text = 'learning'
+        AND EXISTS (
+          SELECT 1
+          FROM review_records status_record
+          WHERE status_record.user_id = $4::uuid
+            AND status_record.grammar_point_id = gp.id
+            AND status_record.status IN ('new', 'learning', 'reviewing')
+        )
+      )
+      OR (
+        $11::text = 'mastered'
+        AND EXISTS (
+          SELECT 1
+          FROM review_records status_record
+          WHERE status_record.user_id = $4::uuid
+            AND status_record.grammar_point_id = gp.id
+            AND status_record.status = 'mastered'
+        )
+      )
+    )
   ORDER BY
     CASE
       WHEN $1::text = '' THEN 10
@@ -533,7 +570,13 @@ export const SELECT_GRAMMAR_POINT_DETAIL_SQL = `
         'grammarPoint', prerequisite_point.grammar_point,
         'canonicalForm', prerequisite_point.canonical_form,
         'senseKey', prerequisite_point.sense_key,
-        'relationType', relation.relation_type
+        'relationType', relation.relation_type,
+        'learningStatus', (
+          SELECT prerequisite_review.status
+          FROM review_records prerequisite_review
+          WHERE prerequisite_review.user_id = $2::uuid
+            AND prerequisite_review.grammar_point_id = prerequisite_point.id
+        )
       )
       ORDER BY
         CASE relation.relation_type WHEN 'required' THEN 1 ELSE 2 END,
@@ -1164,6 +1207,7 @@ export const SELECT_GRAMMAR_PROGRESS_SQL = `
     )::int AS pending_completion_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.status = 'mastered'
+        AND rr.next_review_at <= NOW()
     )::int AS due_review_count,
     COUNT(DISTINCT gp.id) FILTER (
       WHERE rr.id IS NOT NULL

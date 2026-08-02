@@ -14,7 +14,6 @@ import {
 import {
   PRACTICE_OBJECTIVE_LABELS,
   PRACTICE_SKILL_LABELS,
-  PRACTICE_TRANSFER_LABELS,
 } from "@/features/grammar-learning/domain/practice";
 import type { PracticeReferenceAnswer } from "@/shared/types/grammar";
 import type {
@@ -24,13 +23,6 @@ import type {
   PracticeSessionEntryMode,
   PracticeSessionResponse,
 } from "@/shared/types/practice";
-
-const DIFFICULTY_LABELS = {
-  1: "基础识别",
-  2: "受限应用",
-  3: "综合运用",
-  4: "新场景迁移",
-} as const;
 
 type PracticeClientProps = {
   grammarPointId?: string;
@@ -65,14 +57,22 @@ function PracticeTaskPrompt({ prompt }: { prompt: string }) {
   );
 }
 
-function ReferenceAnswers({ answers }: { answers: PracticeReferenceAnswer[] }) {
+function ReferenceAnswers({
+  answers,
+  responseMode,
+}: {
+  answers: PracticeReferenceAnswer[];
+  responseMode: "choice" | "text";
+}) {
   if (answers.length === 0) {
     return null;
   }
 
   return (
     <section className="border-t border-border pt-6" aria-label="参考答案">
-      <h2 className="text-base font-semibold text-foreground">参考表达</h2>
+      <h2 className="text-base font-semibold text-foreground">
+        {responseMode === "choice" ? "答案与例句" : "参考表达"}
+      </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {answers.map((answer) => (
           <article
@@ -455,7 +455,7 @@ export function PracticeClient({
       </header>
 
       <div className="grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="rounded-lg border border-border bg-surface p-5 lg:sticky lg:top-24">
+        <aside className="hidden rounded-lg border border-border bg-surface p-5 lg:sticky lg:top-24 lg:block">
           <div className="flex flex-wrap gap-2">
             <PracticalityBadge practicality={exercise.grammarPoint.practicality} />
             <TagBadge tag={exercise.context.sceneLabel} tone="scene" />
@@ -473,35 +473,13 @@ export function PracticeClient({
               <dt className="text-muted">语体</dt>
               <dd className="text-foreground/75">{exercise.context.registerLabel}</dd>
             </div>
-            {exercise.transferLevel ? (
-              <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
-                <dt className="text-muted">迁移</dt>
-                <dd className="text-foreground/75">
-                  {PRACTICE_TRANSFER_LABELS[exercise.transferLevel]}
-                </dd>
-              </div>
-            ) : null}
             <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
               <dt className="text-muted">形式</dt>
               <dd className="text-foreground/75">
                 {exercise.responseMode === "choice" ? "选择题" : "中译日"}
               </dd>
             </div>
-            <div className="grid grid-cols-[4.5rem_1fr] gap-2 py-3">
-              <dt className="text-muted">难度</dt>
-              <dd className="text-foreground/75">
-                {DIFFICULTY_LABELS[exercise.difficulty]}
-              </dd>
-            </div>
           </dl>
-          {exercise.selectionReasonZh ? (
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-foreground/55">安排原因</p>
-              <p className="mt-1 text-xs leading-5 text-muted">
-                {exercise.selectionReasonZh}
-              </p>
-            </div>
-          ) : null}
           <Link
             href={`/grammar/${exercise.grammarPoint.id}`}
             className="mt-5 inline-flex text-sm font-semibold text-accent-strong hover:text-accent"
@@ -515,6 +493,11 @@ export function PracticeClient({
           className="rounded-lg border border-border bg-surface p-5 sm:p-7"
         >
           <div className="border-b border-border pb-5">
+            <div className="mb-3 flex flex-wrap items-center gap-2 lg:hidden">
+              <span className="text-sm font-semibold text-foreground">{exercise.grammarPoint.grammarPoint}</span>
+              <TagBadge tag={exercise.context.sceneLabel} tone="scene" />
+              <TagBadge tag={exercise.context.registerLabel} tone="register" />
+            </div>
             <p className="text-xs font-semibold text-muted">
               {exercise.context.speakerRole} → {exercise.context.listenerRole}
             </p>
@@ -652,6 +635,7 @@ export function PracticeClient({
             learnerAnswer={submittedAnswer}
             isRecorded={Boolean(attempt)}
             rubricScores={attempt?.evidence.rubricScores}
+            responseMode={exercise.responseMode}
           />
 
           {attempt?.canReveal && !isRevealed ? (
@@ -668,7 +652,10 @@ export function PracticeClient({
           ) : null}
 
           <div className={referenceAnswers.length > 0 ? "mt-6" : ""}>
-            <ReferenceAnswers answers={referenceAnswers} />
+            <ReferenceAnswers
+              answers={referenceAnswers}
+              responseMode={exercise.responseMode}
+            />
           </div>
 
           {isRevealed ? (

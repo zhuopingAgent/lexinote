@@ -141,6 +141,7 @@ export type GrammarPrerequisite = {
   canonicalForm: string;
   senseKey: string;
   relationType: GrammarPrerequisiteRelation;
+  learningStatus: ReviewStatus | null;
 };
 
 export type LearningStage = {

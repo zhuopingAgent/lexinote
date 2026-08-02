@@ -6,6 +6,7 @@ type GrammarProgressOverviewProps = {
   progress: GrammarProgressResponse | null;
   isLoading: boolean;
   error?: string | null;
+  onShowCurriculum?: () => void;
 };
 
 function clampPercent(value: number) {
@@ -24,6 +25,7 @@ export function GrammarProgressOverview({
   progress,
   isLoading,
   error,
+  onShowCurriculum = () => undefined,
 }: GrammarProgressOverviewProps) {
   const totalCount = progress?.totalGrammarPoints ?? 0;
   const startedCount = progress?.startedCount ?? 0;
@@ -45,7 +47,7 @@ export function GrammarProgressOverview({
           </p>
         </div>
 
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           <Link
             href="/favorites"
             aria-label={`收藏 ${favoriteCount}`}
@@ -121,8 +123,46 @@ export function GrammarProgressOverview({
         <p className="mt-2 text-xs text-muted">
           {isLoading ? "正在读取学习进度" : `${startedCount} 个已开始`}
         </p>
+        {!isLoading ? (
+          <p className="mt-1 hidden text-xs leading-5 text-muted sm:block">
+            整体总数按具体用法去重；知识维度允许交叉归类，因此各维度数量不能直接相加。
+          </p>
+        ) : null}
         {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
       </div>
+
+      {!isLoading && !error ? (
+        <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border pt-3 sm:mt-5 sm:flex sm:justify-between sm:pt-4">
+          <div>
+            <p className="hidden text-xs font-semibold text-muted sm:block">建议下一步</p>
+            <p className="text-xs leading-5 text-foreground/72 sm:mt-1 sm:text-sm sm:leading-6 sm:text-foreground/78">
+              {dueReviewCount > 0
+                ? `先复习今天到期的 ${dueReviewCount} 个语法。`
+                : pendingCompletionCount > 0
+                  ? `继续完成已经开始的 ${pendingCompletionCount} 个语法。`
+                  : "从基础课程开始，按顺序建立文法骨架。"}
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            {dueReviewCount > 0 ? (
+              <Link href="/review#due-review" className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong sm:h-10 sm:px-4">
+                开始复习
+              </Link>
+            ) : pendingCompletionCount > 0 ? (
+              <Link href="/review#pending" className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong sm:h-10 sm:px-4">
+                继续学习
+              </Link>
+            ) : (
+              <button type="button" onClick={onShowCurriculum} className="inline-flex h-9 items-center justify-center rounded-lg bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong sm:h-10 sm:px-4">
+                查看基础课程
+              </button>
+            )}
+            <Link href="/grammar/comparisons" className="hidden h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted transition hover:border-foreground/30 hover:text-foreground sm:inline-flex">
+              易混对比
+            </Link>
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }

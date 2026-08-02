@@ -31,7 +31,7 @@ describe("grammar progress SQL", () => {
     );
   });
 
-  it("classifies progress only by completion status", () => {
+  it("classifies completion by status and due review by schedule", () => {
     for (const sql of [
       SELECT_GRAMMAR_PROGRESS_TOTALS_SQL,
       SELECT_GRAMMAR_PROGRESS_SQL,
@@ -41,7 +41,7 @@ describe("grammar progress SQL", () => {
       expect(sql).not.toContain("estimate < 0.72");
       expect(sql).not.toContain("exposure_count > 0");
       expect(sql).not.toContain("rr.mistake_count > 0");
-      expect(sql).not.toContain("rr.next_review_at <= NOW()");
+      expect(sql).toContain("rr.next_review_at <= NOW()");
     }
 
     const reviewFilter = SELECT_REVIEW_ITEMS_SQL

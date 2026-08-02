@@ -338,6 +338,8 @@ export class GrammarRepository {
     dimensionSlug?: string;
     stageSlug?: string;
     moduleSlug?: string;
+    practicality?: string;
+    learningStatus?: string;
     limit?: number;
     offset?: number;
     userId?: string;
@@ -349,6 +351,8 @@ export class GrammarRepository {
     const dimensionSlug = options?.dimensionSlug?.trim() ?? "";
     const stageSlug = options?.stageSlug?.trim() ?? "";
     const moduleSlug = options?.moduleSlug?.trim() ?? "";
+    const practicality = options?.practicality?.trim() ?? "";
+    const learningStatus = options?.learningStatus?.trim() ?? "";
     const rows = await query<GrammarSummaryRow>(SEARCH_GRAMMAR_POINTS_SQL, [
       normalizedQuery,
       `%${normalizedQuery}%`,
@@ -359,6 +363,8 @@ export class GrammarRepository {
       stageSlug,
       normalizedOffset,
       moduleSlug,
+      practicality,
+      learningStatus,
     ]);
 
     return rows.map((row) => mapSummaryRow(row));

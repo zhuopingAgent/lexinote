@@ -276,6 +276,8 @@ export class GrammarLearningService {
     dimensionSlug?: string;
     stageSlug?: string;
     moduleSlug?: string;
+    practicality?: string;
+    learningStatus?: string;
     limit?: unknown;
     offset?: unknown;
     userId?: string;
@@ -300,6 +302,8 @@ export class GrammarLearningService {
     dimensionSlug?: string;
     stageSlug?: string;
     moduleSlug?: string;
+    practicality?: string;
+    learningStatus?: string;
     limit?: unknown;
     offset?: unknown;
     userId?: string;
@@ -318,6 +322,8 @@ export class GrammarLearningService {
       dimensionSlug,
       stageSlug: options?.stageSlug,
       moduleSlug: options?.moduleSlug,
+      practicality: options?.practicality,
+      learningStatus: options?.learningStatus,
       limit: normalizeLimit(options?.limit),
       offset: normalizeOffset(options?.offset),
       userId,
@@ -584,7 +590,10 @@ export class GrammarLearningService {
         consolidatedItems.filter((item) => item.status !== "mastered").length +
         pendingRecommendations.length,
       dueReviewCount: consolidatedItems.filter(
-        (item) => item.status === "mastered"
+        (item) =>
+          item.status === "mastered" &&
+          item.nextReviewAt !== null &&
+          new Date(item.nextReviewAt).getTime() <= Date.now()
       ).length,
     };
   }
