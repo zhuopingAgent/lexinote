@@ -10,6 +10,7 @@ export function FavoritesClient() {
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,6 +41,29 @@ export function FavoritesClient() {
       controller.abort();
     };
   }, []);
+
+  async function removeFavorite(grammarPointId: string) {
+    setRemovingIds((current) => new Set(current).add(grammarPointId));
+    setError(null);
+    try {
+      const params = new URLSearchParams({ grammarPointId });
+      const response = await fetch(`/api/favorites?${params.toString()}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        await readJson(response);
+      }
+      setItems((current) => current.filter((item) => item.id !== grammarPointId));
+    } catch (removeError) {
+      setError(getErrorMessage(removeError, "取消收藏失败，请稍后再试。"));
+    } finally {
+      setRemovingIds((current) => {
+        const next = new Set(current);
+        next.delete(grammarPointId);
+        return next;
+      });
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
@@ -95,7 +119,12 @@ export function FavoritesClient() {
       {!isLoading && items.length > 0 ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <GrammarCard key={item.id} grammarPoint={item} />
+            <GrammarCard
+              key={item.id}
+              grammarPoint={item}
+              onRemoveFavorite={removeFavorite}
+              isRemovingFavorite={removingIds.has(item.id)}
+            />
           ))}
         </div>
       ) : null}

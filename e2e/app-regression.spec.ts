@@ -182,6 +182,12 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByText("存在地点和动作地点不同。", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("comparison_set");
 
+  await page.goto("/grammar/gp_wa_vs_ga");
+  await expect(page.getByRole("link", { name: "开始练习", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "查看对比学习", exact: true }).click();
+  await expect(page).toHaveURL(/\/grammar\/comparisons#comparison-wa_vs_ga$/);
+  await expect(page.getByText("说明已知话题、做一般陈述或形成对比", { exact: false })).toBeVisible();
+
   await page.goto("/grammar");
   await page.getByRole("button", { name: "课程顺序", exact: true }).click();
   await expect(page.getByLabel("课程阶段", { exact: true })).toBeVisible();
@@ -251,6 +257,8 @@ test("review consolidates objective progress into one record per grammar point",
       { name: "AはBです", exact: true }
     )
   ).toBeVisible();
+  await expect(page.getByRole("link", { name: "继续学习", exact: true }).first()).toBeVisible();
+  await expect(page.getByText("复习中", { exact: true })).toHaveCount(0);
 });
 
 test("practice sessions hide prompts, support retry, and return direct recorded feedback", async ({
@@ -381,6 +389,7 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   );
   expect(second.exercise.prompt).not.toContain("説明してもらえる？");
   expect(second.exercise).not.toHaveProperty("referenceAnswers");
+  const sessionPrompts = [first.exercise.prompt, second.exercise.prompt];
 
   const registerResponse = await page.request.post(
     `/api/practice/exercises/${second.exercise.id}/attempts`,
@@ -482,12 +491,20 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     expect(["choice", "text"]).toContain(next.exercise.responseMode);
     expect(next.exercise).not.toHaveProperty("referenceAnswers");
     expect(next.exercise.prompt).not.toMatch(/\*\*|daily_life|register_rewrite/);
+    sessionPrompts.push(next.exercise.prompt);
     const itemReveal = await page.request.post(
       `/api/practice/exercises/${next.exercise.id}/reveal`,
       { data: {} }
     );
     expect(itemReveal.ok()).toBe(true);
+    const revealedItem = (await itemReveal.json()) as {
+      correctOptionId: string | null;
+    };
+    expect(revealedItem.correctOptionId).toEqual(
+      next.exercise.responseMode === "choice" ? expect.any(String) : null
+    );
   }
+  expect(new Set(sessionPrompts).size).toBe(sessionPrompts.length);
   const completedResponse = await page.request.post(
     `/api/practice/sessions/${first.session.id}/next`,
     { data: {} }
@@ -535,6 +552,13 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "提交答案" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole("radio", { name: wrongOption?.label, exact: true }).check();
+  await page.getByRole("button", { name: "提交答案", exact: true }).click();
+  await expect(page.getByRole("button", { name: "修改后再试", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "放弃本题并查看参考答案", exact: true }).click();
+  await expect(page.getByText("正确答案", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "修改后再试", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "下一题", exact: true })).toBeVisible();
 });
 
 test("structured fallback feedback feeds multidimensional review", async ({ page }) => {

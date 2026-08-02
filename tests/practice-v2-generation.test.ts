@@ -192,6 +192,39 @@ describe("practice V2 validators and fallback", () => {
     expect(validatePracticeItemV2(item, grammarPoint).valid).toBe(true);
   });
 
+  it("varies high-frequency existence translations and keeps each explanation relevant", () => {
+    const baseIntent = translationIntent();
+    const reproduction = buildLocalFallbackV2({
+      intent: {
+        ...baseIntent,
+        transferLevel: "reproduction",
+        context: { ...baseIntent.context, requiredDetail: "车站附近" },
+      },
+      grammarPoint,
+      fallbackReason: "TEST",
+    });
+    const transfer = buildLocalFallbackV2({
+      intent: {
+        ...baseIntent,
+        transferLevel: "near_transfer",
+        context: { ...baseIntent.context, requiredDetail: "车站附近" },
+      },
+      grammarPoint,
+      fallbackReason: "TEST",
+    });
+    expect(reproduction.prompt).toContain("车站附近有一家便利店");
+    expect(transfer.prompt).toContain("车站附近有一个停车场");
+    expect(transfer.prompt).not.toBe(reproduction.prompt);
+
+    const countItem = buildLocalFallbackV2({
+      intent: baseIntent,
+      grammarPoint,
+      fallbackReason: "TEST",
+    });
+    expect(countItem.referenceAnswers[0]?.noteZh).toContain("あと二回");
+    expect(countItem.referenceAnswers[0]?.noteZh).not.toContain("地点用");
+  });
+
   it("detects answer leaks, Markdown, incomplete Chinese, ambiguous and duplicate choices", () => {
     const intent = translationIntent();
     const item = buildLocalFallbackV2({ intent, grammarPoint, fallbackReason: "TEST" });
@@ -470,6 +503,29 @@ describe("practice V2 validators and fallback", () => {
     expect(feedback.isCorrect).toBe(false);
     expect(feedback.issues.map((issue) => issue.errorTypeCode)).toContain("particle_error");
     expect(feedback.correctedSentence).toBe("駅の近くにコンビニがあります。");
+  });
+
+  it("uses the current item contract instead of an unrelated grammar example for correction", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    const client = new GrammarAiClient();
+    const baseIntent = translationIntent();
+    const intent = {
+      ...baseIntent,
+      context: { ...baseIntent.context, requiredDetail: "车站附近" },
+    };
+    const item = buildLocalFallbackV2({ intent, grammarPoint, fallbackReason: "TEST" });
+    const feedback = await client.evaluateSentence({
+      grammarPoint,
+      sentence: "わかりません。",
+      sceneTag: "daily_life",
+      registerTag: "polite",
+      answerContract: item.answerContract,
+    });
+    expect(feedback.isCorrect).toBe(false);
+    expect(feedback.correctedSentence).toBe(item.answerContract.allowedVariants[0]);
+    expect(feedback.issues.every((issue) =>
+      issue.correction === item.answerContract.allowedVariants[0]
+    )).toBe(true);
   });
 
   it("accepts a validated natural equivalent even when AI feedback is overly strict", async () => {

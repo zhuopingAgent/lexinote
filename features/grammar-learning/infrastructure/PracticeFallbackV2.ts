@@ -237,10 +237,13 @@ function meaningFallback(input: {
     ...fallbackDistractors,
   ]);
   const root = base(input);
+  const prompt = input.intent.transferLevel === "reproduction"
+    ? `在「${input.intent.context.scenario}」中${input.intent.context.communicativeGoal}时，「${input.grammarPoint.grammarPoint}」在当前具体用法中最符合哪项说明？`
+    : `换到新的「${input.intent.context.scenario}」沟通条件并需要${input.intent.context.communicativeGoal}时，「${input.grammarPoint.grammarPoint}」仍主要表达哪项意思？`;
   return {
     ...root,
     exerciseType: "meaning_choice",
-    prompt: `在当前学习的具体用法中，「${input.grammarPoint.grammarPoint}」最符合哪项说明？`,
+    prompt,
     choices: choiceData.options,
     correctChoiceId: choiceData.correctChoiceId,
     distractorReasons: Object.fromEntries(
@@ -283,7 +286,7 @@ function formChoiceFallback(input: {
   return {
     ...root,
     exerciseType: "contrast_choice",
-    prompt: `哪一种接续方式符合「${input.grammarPoint.grammarPoint}」当前学习的具体用法？`,
+    prompt: `在「${input.intent.context.scenario}」中${input.intent.context.communicativeGoal}时，哪一种接续方式符合「${input.grammarPoint.grammarPoint}」当前学习的具体用法？`,
     choices: choiceData.options,
     correctChoiceId: choiceData.correctChoiceId,
     distractorReasons: Object.fromEntries(
@@ -325,7 +328,7 @@ function comparisonChoiceFallback(input: {
     ...root,
     referenceAnswers: pairReferences,
     exerciseType: "contrast_choice",
-    prompt: `${rule.conditionZh}请选择最合适的表达。`,
+    prompt: `${input.intent.context.scenario}场景中，${rule.conditionZh}请选择最合适的表达。`,
     choices: choiceData.options,
     correctChoiceId: choiceData.correctChoiceId,
     distractorReasons: Object.fromEntries(
@@ -342,12 +345,32 @@ function hospitalTranslationFallback(input: {
   fallbackReason: string;
 }): PracticeItemV2 {
   const root = base(input);
+  const detail = input.intent.context.requiredDetail;
+  const content = input.intent.transferLevel === "reproduction"
+    ? {
+        zh: "不好意思，我没听清楚，能请您再说明一遍吗？",
+        jp: "すみません、もう一度説明してもらえますか。",
+      }
+    : detail.includes("检查")
+      ? {
+          zh: "不好意思，能请您再告诉我下次检查的日期吗？",
+          jp: "すみません、次の検査の日をもう一度教えてもらえますか。",
+        }
+      : detail.includes("药")
+        ? {
+            zh: "不好意思，能请您再说明一下药的服用时间吗？",
+            jp: "すみません、薬を飲む時間をもう一度説明してもらえますか。",
+          }
+        : {
+            zh: "不好意思，能请您再说慢一点吗？",
+            jp: "すみません、もう少しゆっくり話してもらえますか。",
+          };
   const answer = {
-    jp: "すみません、もう一度説明してもらえますか。",
-    zh: "不好意思，能请您再说明一遍吗？",
+    jp: content.jp,
+    zh: content.zh,
     noteZh: "使用目标语法完成一般礼貌请求。",
   };
-  const chineseSentence = "不好意思，我没听清楚，能请您再说明一遍吗？";
+  const chineseSentence = content.zh;
   return {
     ...root,
     referenceAnswers: [answer],
@@ -407,13 +430,21 @@ function existenceTranslationFallback(input: {
   fallbackReason: string;
 }): PracticeItemV2 {
   const detail = input.intent.context.requiredDetail;
+  const isNearTransfer = input.intent.transferLevel !== "reproduction";
   const content = detail.includes("两次")
     ? { zh: "这周还有两次会议。", jp: "今週は会議があと二回あります。" }
     : detail.includes("车站")
-      ? { zh: "车站附近有一家便利店。", jp: "駅の近くにコンビニが一軒あります。" }
+      ? isNearTransfer
+        ? { zh: "车站附近有一个停车场。", jp: "駅の近くに駐車場があります。" }
+        : { zh: "车站附近有一家便利店。", jp: "駅の近くにコンビニが一軒あります。" }
       : { zh: "今天下班前还有一场会议。", jp: "今日、仕事が終わる前にもう一つ会議があります。" };
   const root = base(input);
-  const answer = { jp: content.jp, zh: content.zh, noteZh: "地点用「に」，存在对象用「が」。" };
+  const noteZh = detail.includes("两次")
+    ? "用「あと二回」表达“还有两次”，并用「会議があります」表示仍有会议安排。"
+    : detail.includes("车站")
+      ? "地点用「に」，存在对象用「が」。"
+      : "用「もう一つ」表达“还有一场”，并用「会議があります」表示会议安排。";
+  const answer = { jp: content.jp, zh: content.zh, noteZh };
   return {
     ...root,
     referenceAnswers: [answer],

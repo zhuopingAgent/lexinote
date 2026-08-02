@@ -144,24 +144,41 @@ export function GrammarDetail({
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleFavoriteToggle}
-              disabled={isSavingFavorite}
-              className={
-                isFavorite
-                  ? "inline-flex h-11 items-center justify-center rounded-full border border-accent/30 bg-accent-soft px-5 text-sm font-semibold text-accent-strong transition hover:border-accent/45 disabled:opacity-60"
-                  : "inline-flex h-11 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-semibold text-white/62 transition hover:border-white/22 hover:text-white/78 disabled:opacity-60"
-              }
-            >
-              {isSavingFavorite ? "保存中" : isFavorite ? "已收藏" : "收藏"}
-            </button>
-            <Link
-              href={`/practice?grammarId=${grammarPoint.id}`}
-              className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong"
-            >
-              开始练习
-            </Link>
+            {grammarPoint.migrationTarget ? (
+              <Link
+                href={
+                  grammarPoint.migrationTarget.kind === "comparison_set"
+                    ? `/grammar/comparisons#comparison-${grammarPoint.migrationTarget.slug}`
+                    : "/review"
+                }
+                className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong"
+              >
+                {grammarPoint.migrationTarget.kind === "comparison_set"
+                  ? "查看对比学习"
+                  : "查看错误复习"}
+              </Link>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleFavoriteToggle}
+                  disabled={isSavingFavorite}
+                  className={
+                    isFavorite
+                      ? "inline-flex h-11 items-center justify-center rounded-full border border-accent/30 bg-accent-soft px-5 text-sm font-semibold text-accent-strong transition hover:border-accent/45 disabled:opacity-60"
+                      : "inline-flex h-11 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-semibold text-white/62 transition hover:border-white/22 hover:text-white/78 disabled:opacity-60"
+                  }
+                >
+                  {isSavingFavorite ? "保存中" : isFavorite ? "已收藏" : "收藏"}
+                </button>
+                <Link
+                  href={`/practice?grammarId=${grammarPoint.id}`}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                >
+                  开始练习
+                </Link>
+              </>
+            )}
           </div>
         </div>
 

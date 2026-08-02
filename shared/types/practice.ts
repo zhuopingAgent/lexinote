@@ -198,6 +198,7 @@ export type PracticeHintResponse = {
 
 export type PracticeRevealResponse = {
   referenceAnswers: PracticeReferenceAnswer[];
+  correctOptionId: string | null;
   evidence: PracticeMasteryEvidence;
 };
 

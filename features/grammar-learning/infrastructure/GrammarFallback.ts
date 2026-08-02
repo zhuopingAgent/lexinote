@@ -498,18 +498,43 @@ export function applyAnswerContractEquivalence(
     grammarPoint: input.grammarPoint,
   });
   if (!equivalence.equivalent || equivalence.confidence < 0.8) {
-    if (!feedback.isCorrect || equivalence.registerSatisfied === false) {
-      return feedback;
+    const contractCorrection = input.answerContract.allowedVariants[0]?.trim() ?? "";
+    if (!feedback.isCorrect) {
+      if (!contractCorrection) return feedback;
+      return {
+        ...feedback,
+        issues: feedback.issues.map((issue) => ({
+          ...issue,
+          correction: contractCorrection,
+        })),
+        correctedSentence: contractCorrection,
+        betterVersions: [
+          {
+            sentence: contractCorrection,
+            registerTag: input.answerContract.allowedRegisterRange[0] ?? null,
+            explanationZh: "这个版本满足本题的目标语法、意思和语体要求。",
+          },
+          ...(feedback.issues.some(
+            (issue) => issue.errorTypeCode === "register_mismatch"
+          )
+            ? feedback.betterVersions.filter(
+                (version) => version.sentence !== contractCorrection
+              )
+            : []),
+        ],
+      };
     }
 
     const failedFeature = equivalence.failedGrammarFeatures[0] ?? "target-sense";
     const errorTypeCode: AIFeedbackIssue["errorTypeCode"] =
-      failedFeature === "location-ni" || failedFeature === "subject-ga"
+      equivalence.registerSatisfied === false
+        ? "register_mismatch"
+        : failedFeature === "location-ni" || failedFeature === "subject-ga"
         ? "particle_error"
         : failedFeature === "te-form-request" || failedFeature.startsWith("connection:")
           ? "connection_error"
           : "semantic_error";
-    const correction = input.answerContract.allowedVariants[0] ?? "";
+    const correction = contractCorrection;
     const issue = withIssueMetadata(
       [{
         errorTypeCode,
@@ -520,9 +545,11 @@ export function applyAnswerContractEquivalence(
       }],
       input.sentence
     );
-    const verdict = errorTypeCode === "particle_error"
-      ? "意思能懂，但存在句的助词需要调整。"
-      : "这句话可以理解，但没有完成本题指定的语法用法。";
+    const verdict = errorTypeCode === "register_mismatch"
+      ? "语法和意思基本成立，但语体不符合当前场景。"
+      : errorTypeCode === "particle_error"
+        ? "意思能懂，但存在句的助词需要调整。"
+        : "这句话可以理解，但没有完成本题指定的语法用法。";
 
     return {
       ...feedback,

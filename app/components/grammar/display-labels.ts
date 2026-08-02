@@ -35,7 +35,7 @@ const MISTAKE_TYPE_LABELS: Record<string, string> = {
 const REVIEW_STATUS_LABELS: Record<string, string> = {
   new: "新项目",
   learning: "学习中",
-  reviewing: "复习中",
+  reviewing: "学习中",
   mastered: "已掌握",
 };
 

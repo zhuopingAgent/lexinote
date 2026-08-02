@@ -121,6 +121,9 @@ export function PracticeClient({
   const [referenceAnswers, setReferenceAnswers] = useState<
     PracticeReferenceAnswer[]
   >([]);
+  const [revealedCorrectOptionId, setRevealedCorrectOptionId] = useState<
+    string | null
+  >(null);
   const [isRevealed, setIsRevealed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isActing, setIsActing] = useState(false);
@@ -183,6 +186,7 @@ export function PracticeClient({
     setAttempt(null);
     setHints([]);
     setReferenceAnswers([]);
+    setRevealedCorrectOptionId(null);
     setIsRevealed(false);
     setError(null);
     setAiApiErrorMessage(null);
@@ -285,6 +289,7 @@ export function PracticeClient({
         }
       ).then((result) => readJson<PracticeRevealResponse>(result));
       setReferenceAnswers(response.referenceAnswers);
+      setRevealedCorrectOptionId(response.correctOptionId);
       setIsRevealed(true);
     } catch (requestError) {
       setError(getErrorMessage(requestError, "答案加载失败，请稍后再试。"));
@@ -427,6 +432,10 @@ export function PracticeClient({
       ? answer.trim()
       : exercise.options.find((option) => option.id === selectedOptionId)?.label ?? ""
     : null;
+  const advanceLabel =
+    sessionData.progress.current >= sessionData.progress.total
+      ? "查看本组结果"
+      : "下一题";
 
   return (
     <div className="mx-auto w-full max-w-[1040px]">
@@ -524,11 +533,19 @@ export function PracticeClient({
                 <legend className="sr-only">选择答案</legend>
                 {exercise.options.map((option) => {
                   const selected = selectedOptionId === option.id;
+                  const isKnownCorrect =
+                    (isRevealed && revealedCorrectOptionId === option.id) ||
+                    (Boolean(attempt?.feedback.isCorrect) && selected);
+                  const isRevealedWrong = isRevealed && selected && !isKnownCorrect;
                   return (
                     <label
                       key={option.id}
                       className={`grid min-h-12 cursor-pointer grid-cols-[20px_minmax(0,1fr)] items-center gap-3 rounded-lg border px-4 py-3 text-sm leading-6 transition ${
-                        selected
+                        isKnownCorrect
+                          ? "border-[#4ade8066] bg-[#4ade8014] text-foreground"
+                          : isRevealedWrong
+                            ? "border-danger/40 bg-danger-soft text-foreground"
+                            : selected
                           ? "border-accent/60 bg-accent-soft text-foreground"
                           : "border-border bg-surface-soft text-foreground/75 hover:border-foreground/30"
                       }`}
@@ -541,7 +558,14 @@ export function PracticeClient({
                         onChange={() => setSelectedOptionId(option.id)}
                         className="size-4 accent-[var(--accent)]"
                       />
-                      <span>{option.label}</span>
+                      <span className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{option.label}</span>
+                        {isKnownCorrect ? (
+                          <span className="text-xs font-semibold text-[#4ade80]">
+                            正确答案
+                          </span>
+                        ) : null}
+                      </span>
                     </label>
                   );
                 })}
@@ -602,7 +626,7 @@ export function PracticeClient({
                 >
                   {isActing ? "检查中" : "提交答案"}
                 </button>
-              ) : attempt.canRetry ? (
+              ) : attempt.canRetry && !isRevealed ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -622,7 +646,7 @@ export function PracticeClient({
                   disabled={isActing}
                   className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:opacity-50"
                 >
-                  {isActing ? "准备中" : "下一题"}
+                  {isActing ? "准备中" : advanceLabel}
                 </button>
               ) : null}
             </div>
@@ -658,18 +682,6 @@ export function PracticeClient({
             />
           </div>
 
-          {isRevealed ? (
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={nextExercise}
-                disabled={isActing}
-                className="inline-flex h-11 items-center justify-center rounded-lg bg-accent px-5 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:opacity-50"
-              >
-                {isActing ? "准备中" : "下一题"}
-              </button>
-            </div>
-          ) : null}
         </section>
       </div>
     </div>

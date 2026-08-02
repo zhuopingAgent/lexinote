@@ -101,7 +101,10 @@ describe("practice session API routes", () => {
   it("routes attempts, hints, and reveal through the session service", async () => {
     submitAttemptMock.mockResolvedValue({ attemptId: "attempt", canRetry: true });
     revealHintMock.mockResolvedValue({ hint: "先判断人物关系。" });
-    revealAnswerMock.mockResolvedValue({ referenceAnswers: [] });
+    revealAnswerMock.mockResolvedValue({
+      referenceAnswers: [],
+      correctOptionId: "option-2",
+    });
     const attemptsRoute = await import(
       "@/app/api/practice/exercises/[exerciseId]/attempts/route"
     );
@@ -129,6 +132,9 @@ describe("practice session API routes", () => {
     expect(attemptResponse.status).toBe(200);
     expect(hintResponse.status).toBe(200);
     expect(revealResponse.status).toBe(200);
+    await expect(revealResponse.json()).resolves.toEqual(
+      expect.objectContaining({ correctOptionId: "option-2" })
+    );
     expect(submitAttemptMock).toHaveBeenCalledWith(exerciseId, {
       selectedOptionId: "option-1",
     });

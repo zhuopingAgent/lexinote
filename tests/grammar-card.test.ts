@@ -59,4 +59,22 @@ describe("grammar card mastery status", () => {
     expect(grammarPoint.learningStatus).toBeNull();
     expect(markup).not.toContain("已掌握");
   });
+
+  it("routes migrated comparison records to the comparison card instead of practice", () => {
+    const row = summaryRow(null);
+    row.status = "migrated";
+    row.migration_target = {
+      kind: "comparison_set",
+      slug: "wa_vs_ga",
+      nameZh: "は与が",
+    };
+    const grammarPoint = mapSummaryRow(row);
+    const markup = renderToStaticMarkup(
+      createElement(GrammarCard, { grammarPoint })
+    );
+
+    expect(markup).toContain("查看对比");
+    expect(markup).toContain("/grammar/comparisons#comparison-wa_vs_ga");
+    expect(markup).not.toContain(`/practice?grammarId=${grammarPoint.id}`);
+  });
 });
