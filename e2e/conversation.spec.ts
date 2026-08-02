@@ -512,8 +512,15 @@ test("conversation deletion uses an accessible in-app confirmation", async ({
   await page.getByLabel("删除 医院预约").click();
   const dialog = page.getByRole("dialog", { name: "删除“医院预约”？" });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "取消" }).click();
+  const cancelButton = dialog.getByRole("button", { name: "取消" });
+  await expect(cancelButton).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "删除对话" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(cancelButton).toBeFocused();
+  await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+  await expect(page.getByLabel("删除 医院预约")).toBeFocused();
 
   await page.getByLabel("删除 医院预约").click();
   await dialog.getByRole("button", { name: "删除对话" }).click();
@@ -549,7 +556,7 @@ test("conversation remains useful when AI Gateway is unavailable", async ({
 
   await page.getByLabel("打开偏好与记忆").click();
   await expect(
-    page.getByRole("complementary", { name: "对话偏好与记忆" })
+    page.getByRole("dialog", { name: "对话偏好与记忆" })
   ).toBeVisible();
   expectNoBrowserErrors(browserErrors);
 });
@@ -660,11 +667,31 @@ test("conversation session drawer works on mobile without overflow", async ({ pa
   await page.getByLabel("打开对话列表").click();
   const sidebar = page.locator('aside[aria-label="对话列表"]');
   await expect(sidebar).toBeVisible();
+  await expect(page.getByRole("button", { name: "新对话" })).toBeFocused();
   await expect(page.getByRole("link", { name: "医院预约" })).toBeVisible();
   await expect(page.getByLabel("重命名 医院预约")).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(sidebar).toContainText("工作邮件");
+  expect(
+    await sidebar.evaluate((element) => element.contains(document.activeElement))
+  ).toBe(true);
   await expectNoHorizontalOverflow(page);
-  await page.getByLabel("关闭对话列表").first().click();
+  await page.keyboard.press("Escape");
   await expect(sidebar).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByLabel("打开对话列表")).toBeFocused();
+
+  await page.getByLabel("打开偏好与记忆").click();
+  const settings = page.getByRole("dialog", { name: "对话偏好与记忆" });
+  await expect(page.getByLabel("关闭设置")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  expect(
+    await settings.evaluate((element) => element.contains(document.activeElement))
+  ).toBe(true);
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("关闭设置")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeHidden();
+  await expect(page.getByLabel("打开偏好与记忆")).toBeFocused();
 
   const composer = page.getByLabel("对话消息");
   await composer.fill("第一行\n第二行\n第三行");
