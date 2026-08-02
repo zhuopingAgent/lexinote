@@ -502,8 +502,8 @@ export const SEARCH_GRAMMAR_POINTS_SQL = `
   ORDER BY
     CASE
       WHEN $1::text = '' THEN 10
-      WHEN gp.grammar_point = $1::text THEN 0
-      WHEN gp.grammar_point ILIKE $2 THEN 1
+      WHEN gp.grammar_point = $1::text OR gp.canonical_form = $1::text THEN 0
+      WHEN gp.grammar_point ILIKE $2 OR gp.canonical_form ILIKE $2 THEN 1
       WHEN gp.reading ILIKE $2 THEN 2
       WHEN gp.core_meaning ILIKE $2 THEN 3
       ELSE 4
@@ -831,6 +831,25 @@ export const UPSERT_REVIEW_RECORD_FOR_CORRECT_SQL = `
     END,
     next_review_at = NOW() + INTERVAL '7 days',
     last_reviewed_at = NOW(),
+    updated_at = NOW();
+`;
+
+export const UPSERT_REVIEW_RECORD_FROM_CONVERSATION_SQL = `
+  INSERT INTO review_records (
+    user_id,
+    grammar_point_id,
+    status,
+    next_review_at,
+    mistake_count,
+    last_reviewed_at
+  )
+  VALUES ($1::uuid, $2::uuid, 'learning', NOW(), 0, NULL)
+  ON CONFLICT (user_id, grammar_point_id) DO UPDATE SET
+    status = CASE
+      WHEN review_records.status IN ('reviewing', 'mastered') THEN review_records.status
+      ELSE 'learning'
+    END,
+    next_review_at = NOW(),
     updated_at = NOW();
 `;
 

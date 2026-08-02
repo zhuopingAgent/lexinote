@@ -20,6 +20,7 @@ const grammarPoint = {
   senseKey: "te_moraemasu_request",
   pointType: "grammar_pattern",
   comparisonSets: [],
+  connections: [{}],
 } as unknown as GrammarPointDetail;
 
 const context: PracticeContext = {
@@ -107,6 +108,10 @@ describe("PracticeSessionPlanner", () => {
     expect(plan[1]).toEqual(expect.objectContaining({
       exerciseType: "guided_translation",
       learningObjective: "register_control",
+    }));
+    expect(plan[0]).toEqual(expect.objectContaining({
+      exerciseType: "meaning_choice",
+      learningObjective: "meaning",
     }));
     expect(new Set(plan.map((item) => item.learningObjective))).toEqual(
       new Set(["meaning", "register_control"])

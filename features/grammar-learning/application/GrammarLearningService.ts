@@ -522,6 +522,28 @@ export class GrammarLearningService {
     await this.repository.removeFavorite(userId, grammarPointId);
   }
 
+  async addToReview(input: {
+    userId?: string;
+    grammarPointId?: string;
+    source?: { learningItemId?: string; sessionId?: string | null };
+  }): Promise<void> {
+    const userId = normalizeUserId(input.userId);
+    const grammarPointId = normalizeGrammarPointId(input.grammarPointId);
+    const detail = await this.repository.findGrammarPointById(grammarPointId, userId);
+
+    if (!detail) {
+      throw new NotFoundError("未找到这个语法点。");
+    }
+
+    await this.repository.addReviewRecordFromConversation(userId, grammarPointId);
+    await this.repository.logLearningHistory({
+      userId,
+      grammarPointId,
+      activityType: "conversation_grammar_saved",
+      metadata: input.source ?? {},
+    });
+  }
+
   async listFavorites(userId?: string): Promise<GrammarFavoritesResponse> {
     return {
       items: await this.repository.listFavorites(normalizeUserId(userId)),

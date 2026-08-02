@@ -18,6 +18,8 @@
   - `app/practice/page.tsx`: adaptive grammar practice session with retry, hints, reveal, and skill summary
   - `app/favorites/page.tsx`: saved grammar points
   - `app/review/page.tsx`: mistake-book and review records
+  - `app/conversation/page.tsx` and `app/conversation/[sessionId]/page.tsx`: conversation draft and persisted session workbench
+  - `app/api/conversation/*` and `app/api/conversations/*`: conversation bootstrap, preferences, memory, learning promotion, session, message streaming, and analysis routes
   - `app/collections/detail/page.tsx`: collection detail page
   - `app/collections/add/page.tsx`: collection add-word page
   - `app/collections/words/detail/page.tsx`: word detail page scoped to a collection
@@ -37,6 +39,7 @@
   - `features/japanese-dictionary/`: Japanese-specific dictionary lookup
   - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
   - `features/collections/`: collection CRUD, collection-word workflows, and auto-filter job processing
+  - `features/conversation/`: conversation services, AI client, prompts, output validation, and repository access
 - `shared/`: cross-cutting code
   - `shared/ai/`: AI Gateway model roles, request construction, quota handling,
     and response text extraction shared by feature clients
@@ -154,6 +157,38 @@
 - Paginated client lists must guard reset/load-more requests with aborts or generation tokens, and reset stale cursors when the search query changes.
 - If you change collection membership semantics, update both docs and E2E fixtures/specs in the same change.
 
+## Conversation Learning
+
+### What Lives Here
+
+- `app/conversation/*`
+- `app/components/conversation/*`
+- `app/api/conversation/*`
+- `app/api/conversations/*`
+- `features/conversation/*`
+- `shared/db/sql/conversation.sql.ts`
+- conversation tables in `shared/db/sql/schema.sql`
+
+### Runtime Flow
+
+1. `/conversation` starts as an unpersisted draft. The first send creates a session and replaces the browser URL with `/conversation/[sessionId]`; the left sidebar loads, searches, renames, deletes, and paginates sessions.
+2. A send request persists the completed user message and a streaming assistant placeholder under a client idempotency key. The route emits `assistant_created`, zero or more `text_delta` events, then `completed` or `error`.
+3. `ConversationService` builds context from deterministic preferences, active global memory, active current-session memory, the session summary, and the newest bounded message window. Session summaries never enter another session.
+4. `ConversationAiClient` streams the main `defaultTeacher` answer. On completion, the client independently requests `cheap` JSON Schema analysis for details, up to five learning items, memory suggestions, summary, and the first automatic title.
+5. Structured analysis is length/type/reference validated. Suggested memories and learning items remain inert until explicit confirmation; failed analysis can be reclaimed, including stale five-minute `running` leases.
+6. Vocabulary and fixed-expression promotion resolves local dictionary candidates through `VocabularyCoreService`, falls back through `WordLookupService`, requires a reading choice when ambiguous, and then uses `CollectionWordService` for duplicate-safe membership.
+7. Grammar promotion searches only the existing active grammar library, binds a concrete sense, and creates an immediately due review record without mistake or mastery evidence. Ambiguous/unmatched candidates remain in the `/review` conversation inbox.
+
+### Important Rules
+
+- Conversation is a Chinese-native Japanese communication/learning assistant, not a general-purpose tool-using agent. V1 is text-only and has no web, voice, image, file, sharing, export, or vector retrieval path.
+- Never inject suggested/dismissed memories, model-produced database IDs, or automatic summaries from another session into generation context.
+- Keep main generation and structured analysis independent. Preserve a completed answer if analysis fails, and do not analyze cancelled or failed output.
+- Re-resolve collection, dictionary reading, and grammar sense on the server during promotion. Model output is only a candidate.
+- Keep output plain text and structured UI fields; do not render model HTML or Markdown as HTML.
+- Without Gateway credentials, keep read/manage flows available and disable sending. Conversation must not fabricate a local translation fallback.
+- Session deletion removes unconfirmed output and session memory but preserves promoted learning records and active global memories.
+
 ## Grammar Learning
 
 ### What Lives Here
@@ -220,14 +255,15 @@
 - `e2e/helpers.ts`
 - `e2e/app-regression.spec.ts`
 - `e2e/mobile-navigation.spec.ts`
+- `e2e/conversation.spec.ts`
 
 ### Runtime Flow
 
 1. `npm run test:e2e` runs Playwright against a production-style local server on `127.0.0.1:3100`.
 2. `playwright.config.ts` starts the app with `npm run build && npm run start`, points it at the E2E database, and clears deployment Basic Auth and 2FA secrets.
 3. `e2e/global-setup.mjs` validates `E2E_DATABASE_URL`, applies `schema.sql` and `grammar-content.sql` twice to verify idempotency and grammar-domain integrity, then truncates user-facing fixture tables and loads `e2e/fixtures.sql`.
-4. The desktop regression suite covers lookup, history, overview, grammar curriculum, adaptive practice sessions, answer disclosure, hospital-register fallback, collections, duplicate prevention, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
-5. The mobile suite verifies navigation and no horizontal overflow on a narrow viewport.
+4. The desktop regression suite covers lookup, history, overview, grammar curriculum, adaptive practice sessions, answer disclosure, hospital-register fallback, collections, duplicate prevention, mocked conversation streaming/learning promotion, and optionally live AI auto-filtering when `E2E_RUN_LIVE_AI=1` and Gateway credentials are available.
+5. The mobile suite verifies navigation, the conversation drawer, and no horizontal overflow on a narrow viewport.
 
 ### Important Rules
 
@@ -250,12 +286,14 @@
 - Adding/removing persisted entries to/from collections
 - AI auto-filtering that classifies words into collections asynchronously
 - Grammar search, detail pages, practical examples, scenario/register tags, similar grammar comparisons, AI/fallback practice generation, sentence feedback, favorites, and mistake review
+- Text conversation sessions with bilingual translation, Japanese polishing/explanation, confirmed memory, learning extraction, and grammar-review inbox integration
 
 Out of scope:
 
 - multi-user support
 - self-service user registration/login and role-based access control
 - voice features beyond the browser `speechSynthesis` helper used in the word card UI
+- conversation voice, image, file, web search, external tools, message branches, sharing, export, and vector retrieval
 - fully automated database migrations
 
 ## Extension Guidance

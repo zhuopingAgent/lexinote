@@ -28,6 +28,7 @@ import {
   SELECT_TAXONOMY_NODES_SQL,
   UPSERT_FAVORITE_SQL,
   UPSERT_REVIEW_RECORD_FOR_CORRECT_SQL,
+  UPSERT_REVIEW_RECORD_FROM_CONVERSATION_SQL,
   UPSERT_REVIEW_RECORD_FOR_MISTAKE_SQL,
 } from "@/shared/db/sql/grammar.sql";
 import { query } from "@/shared/db/query";
@@ -510,6 +511,16 @@ export class GrammarRepository {
         : UPSERT_REVIEW_RECORD_FOR_CORRECT_SQL,
       [options.userId, options.grammarPointId]
     );
+  }
+
+  async addReviewRecordFromConversation(
+    userId: string,
+    grammarPointId: string
+  ): Promise<void> {
+    await query(UPSERT_REVIEW_RECORD_FROM_CONVERSATION_SQL, [
+      userId,
+      grammarPointId,
+    ]);
   }
 
   async logLearningHistory(input: {

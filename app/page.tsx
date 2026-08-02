@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { CollectionPanel } from "@/app/components/collection-panel";
 import { DictionaryEntryActions } from "@/app/components/dictionary-entry-actions";
 import { DictionaryResultSelector } from "@/app/components/dictionary-result-selector";
@@ -21,6 +21,7 @@ import { useCollections } from "@/app/hooks/use-collections";
 import { useLookupFlow } from "@/app/hooks/use-lookup-flow";
 import { useOverviewWords } from "@/app/hooks/use-overview-words";
 import { parseAppView, type AppView } from "@/app/lib/app-view";
+import { getTopNavigationItems } from "@/app/lib/top-navigation";
 import type { SearchHistoryItem } from "@/app/lib/search-history";
 import {
   buildLookupStatusBadges,
@@ -52,11 +53,6 @@ const VIEW_TABS = [
     icon: CollectionIcon,
     view: "collections" as AppView,
   },
-];
-
-const TOP_NAV_ITEMS = [
-  { label: "辞書", href: "/", active: true },
-  { label: "文法", href: "/grammar", active: false },
 ];
 
 function getRequestedView() {
@@ -175,6 +171,11 @@ export default function Home() {
     setIsContextFieldOpen(false);
   }
 
+  function handleLookupSubmit(event: FormEvent<HTMLFormElement>) {
+    setIsContextFieldOpen(false);
+    void onSubmit(event);
+  }
+
   const statusMessage =
     activeView === "overview"
       ? isOverviewLoading && !hasLoadedOverview
@@ -225,7 +226,7 @@ export default function Home() {
           onDismissCollectionAiApiError();
         }}
       />
-      <AppHeader navItems={TOP_NAV_ITEMS} />
+      <AppHeader navItems={getTopNavigationItems("dictionary")} />
 
       <nav className="border-b border-border bg-surface-soft" aria-label="词典功能">
         <div className="mx-auto flex w-full max-w-[1180px] gap-1 overflow-x-auto px-[clamp(16px,4vw,40px)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -324,7 +325,7 @@ export default function Home() {
               </header>
 
               <form
-                onSubmit={onSubmit}
+                onSubmit={handleLookupSubmit}
                 aria-describedby={statusId}
                 className="mx-auto mt-5 w-full max-w-[720px]"
               >

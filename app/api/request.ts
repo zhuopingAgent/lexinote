@@ -1,11 +1,18 @@
 import { ValidationError } from "@/shared/utils/errors";
 
 export async function readJsonBody<T>(request: Request): Promise<Partial<T>> {
+  let body: unknown;
   try {
-    return (await request.json()) as Partial<T>;
+    body = await request.json();
   } catch {
     throw new ValidationError("request body must be valid JSON");
   }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new ValidationError("request body must be a JSON object");
+  }
+
+  return body as Partial<T>;
 }
 
 export function parsePositiveIntegerParam(value: string, fieldName: string) {

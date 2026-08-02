@@ -9,6 +9,7 @@ import { JapaneseDictionaryService } from "@/features/japanese-dictionary/applic
 import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
 import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import { NotFoundError } from "@/shared/utils/errors";
+import { getTopNavigationItems } from "@/app/lib/top-navigation";
 
 type CollectionWordDetailPageProps = {
   searchParams: Promise<{
@@ -21,11 +22,6 @@ const collectionService = new CollectionService(new CollectionRepository());
 const vocabularyCoreService = new VocabularyCoreService(
   new JapaneseDictionaryService(new JapaneseDictionaryRepository())
 );
-const COLLECTION_NAV_ITEMS = [
-  { label: "辞書", active: false },
-  { label: "Collection", active: true },
-];
-
 export default async function CollectionWordDetailPage({
   searchParams,
 }: CollectionWordDetailPageProps) {
@@ -68,7 +64,7 @@ export default async function CollectionWordDetailPage({
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <AppHeader navItems={COLLECTION_NAV_ITEMS} />
+      <AppHeader navItems={getTopNavigationItems("dictionary")} />
 
       <section className="px-[clamp(16px,4vw,40px)] py-[clamp(28px,4vw,48px)]">
         <div className="mx-auto w-full max-w-[960px]">

@@ -1,5 +1,5 @@
 LexiNote is a small Next.js monolith for Japanese word lookup, local dictionary
-storage, collections, and AI-assisted explanations/classification.
+storage, grammar learning, collections, and Chinese/Japanese conversation study.
 
 ## Local Setup
 
@@ -43,6 +43,9 @@ Open [http://localhost:3000](http://localhost:3000).
 `E2E_DATABASE_URL` is required for `npm run test:e2e`. It must point to a local test database such as `lexinote_e2e`.
 
 `AI_GATEWAY_API_KEY` is optional for local development. In Vercel deployments, the app can use Vercel's project-scoped `VERCEL_OIDC_TOKEN` instead. If neither credential is available, local dictionary hits still work, but AI-generated examples and AI auto-filtering are unavailable or fall back.
+Conversation history, preferences, and memory remain available without Gateway
+credentials, but sending is disabled because conversation translation has no
+fabricated local fallback.
 
 AI requests go through Vercel AI Gateway at `AI_GATEWAY_BASE_URL`, which defaults to `https://ai-gateway.vercel.sh/v1`. The canonical model roles are:
 
@@ -52,9 +55,10 @@ AI requests go through Vercel AI Gateway at `AI_GATEWAY_BASE_URL`, which default
 - `longContext`: `alibaba/qwen3.7-plus`
 - `speech`: `openai/whisper-1`
 
-Current text workflows use `cheap` for normalization and incremental collection
-classification, `defaultTeacher` for entry/practice generation and collection
-backfills, and `premiumTeacher` for reconciliation and sentence feedback.
+Current text workflows use `cheap` for normalization, incremental collection
+classification, and conversation analysis; `defaultTeacher` for entry/practice
+generation, collection backfills, and conversation replies; and `premiumTeacher`
+for reconciliation and sentence feedback.
 `longContext` and `speech` are reserved roles for future large-context and
 transcription workflows.
 
@@ -97,11 +101,13 @@ It exposes schema resources plus a `query_readonly` tool for debugging local dat
 - Search history in browser storage
 - Collection CRUD and collection word management
 - Async AI auto-filtering with job retries, stale-job recovery, and a per-sync candidate cap
+- Grammar learning, adaptive practice, favorites, and review
+- Chinese/Japanese conversation sessions with confirmed memory and learning extraction
 
 Out of scope for now: multi-user account separation, advanced voice, and fully automated database migrations.
 
 ## Structure
 
 - `app/`: UI, hooks, API routes, and collection detail pages
-- `features/`: word lookup, dictionary, AI explanation, collection, and auto-filter services
+- `features/`: word lookup, dictionary, grammar, conversation, collection, and auto-filter services
 - `shared/db/`: centralized SQL and PostgreSQL access
