@@ -26,6 +26,7 @@ import type {
 
 type PracticeClientProps = {
   grammarPointId?: string;
+  comparisonSetId?: string;
   entryMode: PracticeSessionEntryMode;
 };
 
@@ -107,6 +108,7 @@ function LoadingState() {
 
 export function PracticeClient({
   grammarPointId,
+  comparisonSetId,
   entryMode,
 }: PracticeClientProps) {
   const clientInstanceIdRef = useRef<string | null>(null);
@@ -137,7 +139,7 @@ export function PracticeClient({
   useEffect(() => {
     const controller = new AbortController();
     clientInstanceIdRef.current ??= globalThis.crypto.randomUUID();
-    const sessionKey = `practice:${entryMode}:${grammarPointId ?? "recommended"}:${clientInstanceIdRef.current}:${runNumber}`;
+    const sessionKey = `practice:${entryMode}:${grammarPointId ?? "recommended"}:${comparisonSetId ?? "general"}:${clientInstanceIdRef.current}:${runNumber}`;
 
     async function startSession() {
       setIsLoading(true);
@@ -152,6 +154,7 @@ export function PracticeClient({
           body: JSON.stringify({
             clientSessionKey: sessionKey,
             grammarPointId,
+            comparisonSetId,
             entryMode,
             plannedExerciseCount: 5,
           }),
@@ -178,7 +181,7 @@ export function PracticeClient({
 
     void startSession();
     return () => controller.abort();
-  }, [entryMode, grammarPointId, runNumber]);
+  }, [comparisonSetId, entryMode, grammarPointId, runNumber]);
 
   function resetExerciseState() {
     setAnswer("");
@@ -352,7 +355,7 @@ export function PracticeClient({
             {summary.grammarPoint.grammarPoint}
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted">
-            已完成 {summary.completedExerciseCount} 道练习。结果按具体语法用法和能力维度记录，不会因多重分类重复计算。
+            已完成 {summary.completedExerciseCount} 道练习。重试会增加作答记录；下方分别显示本组表现和当前综合掌握。
           </p>
           <div className="mt-7 divide-y divide-border border-y border-border">
             {(summary.objectiveSummaries?.length
@@ -361,12 +364,14 @@ export function PracticeClient({
                   label: PRACTICE_OBJECTIVE_LABELS[objective.learningObjective],
                   evidenceCount: objective.evidenceCount,
                   averageScore: objective.averageScore,
+                  estimate: objective.estimate,
                 }))
               : summary.skillSummaries.map((skill) => ({
                   key: skill.skillDimension,
                   label: PRACTICE_SKILL_LABELS[skill.skillDimension],
                   evidenceCount: skill.evidenceCount,
                   averageScore: skill.averageScore,
+                  estimate: skill.estimate,
                 }))).map((item) => (
               <div
                 key={item.key}
@@ -377,12 +382,17 @@ export function PracticeClient({
                     {item.label}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {item.evidenceCount} 次有效作答
+                    {item.evidenceCount} 次作答记录
                   </p>
                 </div>
-                <p className="text-lg font-semibold text-foreground">
-                  {Math.round(item.averageScore * 100)}%
-                </p>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-foreground">
+                    本组表现 {Math.round(item.averageScore * 100)}%
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    综合掌握 {Math.round(item.estimate * 100)}%
+                  </p>
+                </div>
               </div>
             ))}
           </div>

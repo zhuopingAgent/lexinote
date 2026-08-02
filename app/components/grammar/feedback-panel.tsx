@@ -33,6 +33,17 @@ const RUBRIC_SCORE_KEYS = {
   sceneFitScore: "contextFit",
 } as const;
 
+function removeRepeatedOpening(feedbackText: string, explanation: string) {
+  if (!explanation || explanation === feedbackText) {
+    return "";
+  }
+  const opening = explanation.match(/^.*?[。！？!?]/)?.[0].trim();
+  if (opening && feedbackText.startsWith(opening)) {
+    return explanation.slice(opening.length).trim();
+  }
+  return explanation;
+}
+
 export function FeedbackPanel({
   feedback,
   isLoading,
@@ -65,6 +76,7 @@ export function FeedbackPanel({
 
   const explanation = feedback.explanation.trim();
   const feedbackText = feedback.feedbackText.trim();
+  const explanationDetail = removeRepeatedOpening(feedbackText, explanation);
   const correctedSentence = feedback.correctedSentence?.trim() || null;
   const betterVersions = feedback.betterVersions.filter(
     (version) => version.sentence.trim() !== correctedSentence
@@ -114,9 +126,9 @@ export function FeedbackPanel({
           <p className="mt-3 text-base font-semibold leading-7 text-foreground">
             {feedbackText || explanation}
           </p>
-          {explanation && explanation !== feedbackText ? (
+          {explanationDetail ? (
             <p className="mt-2 text-base leading-7 text-foreground/72">
-              {explanation}
+              {explanationDetail}
             </p>
           ) : null}
 

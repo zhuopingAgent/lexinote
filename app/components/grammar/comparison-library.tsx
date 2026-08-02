@@ -9,6 +9,10 @@ function memberLabel(set: ComparisonSet, position: number) {
   return set.members.find((member) => member.sortOrder === position)?.grammarPoint ?? "对应表达";
 }
 
+function displayComparisonName(name: string) {
+  return name.replace(/\s+vs\s+/gi, " 与 ");
+}
+
 export function ComparisonLibrary() {
   const [items, setItems] = useState<ComparisonSet[]>([]);
   const [query, setQuery] = useState("");
@@ -51,7 +55,13 @@ export function ComparisonLibrary() {
     const normalized = query.trim().toLocaleLowerCase();
     if (!normalized) return items;
     return items.filter((item) =>
-      [item.nameZh, item.summary, item.commonMeaning, ...item.members.map((member) => member.grammarPoint)]
+      [
+        item.nameZh,
+        displayComparisonName(item.nameZh),
+        item.summary,
+        item.commonMeaning,
+        ...item.members.map((member) => member.grammarPoint),
+      ]
         .some((value) => value.toLocaleLowerCase().includes(normalized))
     );
   }, [items, query]);
@@ -97,7 +107,9 @@ export function ComparisonLibrary() {
             <summary className="cursor-pointer list-none rounded-md pr-8 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground">{item.nameZh}</h2>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    {displayComparisonName(item.nameZh)}
+                  </h2>
                   <p className="mt-2 text-sm leading-6 text-muted">{item.summary}</p>
                 </div>
                 <span className="text-xs text-muted">{item.members.length} 个用法</span>
@@ -148,7 +160,7 @@ export function ComparisonLibrary() {
 
               {item.members[0] ? (
                 <div className="mt-5 flex justify-end">
-                  <Link href={`/practice?grammarId=${item.members[0].grammarPointId}&mode=focus`} className="inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong">
+                  <Link href={`/practice?grammarId=${item.members[0].grammarPointId}&mode=focus&comparisonSetId=${item.id}`} className="inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong">
                     开始对比练习
                   </Link>
                 </div>

@@ -160,6 +160,7 @@ export type PracticeMasteryEvidence = {
 export type PracticeSessionCreateRequest = {
   userId?: string;
   grammarPointId?: string;
+  comparisonSetId?: string;
   entryMode?: PracticeSessionEntryMode;
   preferredScene?: string;
   preferredRegister?: string;

@@ -76,6 +76,14 @@ const POLITE_REQUEST_SEQUENCE: PlanStep[] = [
   { exerciseType: "contextual_response", objective: "register_control", operation: "respond", transfer: "near_transfer", scaffold: "semantic_hint" },
 ];
 
+const COMPARISON_SEQUENCE: PlanStep[] = [
+  { exerciseType: "meaning_choice", objective: "meaning", operation: "recognize", transfer: "reproduction", scaffold: "options" },
+  { exerciseType: "contrast_choice", objective: "grammar_selection", operation: "select", transfer: "reproduction", scaffold: "options" },
+  { exerciseType: "contrast_choice", objective: "grammar_selection", operation: "select", transfer: "near_transfer", scaffold: "options" },
+  { exerciseType: "guided_translation", objective: "meaning", operation: "constrained_produce", transfer: "near_transfer", scaffold: "semantic_hint" },
+  { exerciseType: "contrast_choice", objective: "grammar_selection", operation: "select", transfer: "near_transfer", scaffold: "options" },
+];
+
 function meanEstimate(
   objectiveStates: PracticeObjectiveState[],
   legacyStates: PracticeSkillState[]
@@ -262,7 +270,11 @@ function selectionReason(input: {
   isRecentMisconception: boolean;
   specializationNameZh?: string | null;
   daysSinceLastPractice?: number | null;
+  explicitComparison?: boolean;
 }) {
+  if (input.explicitComparison && input.objective === "grammar_selection") {
+    return "本组从所选对比卡进入，本题专门检查能否根据语境选对表达。";
+  }
   if (
     input.daysSinceLastPractice !== null &&
     input.daysSinceLastPractice !== undefined &&
@@ -348,6 +360,7 @@ export function buildPracticeSessionPlan(input: {
   context: PracticeContext;
   skillStates: PracticeSkillState[];
   objectiveStates?: PracticeObjectiveState[];
+  comparisonGrammarPointIds?: string[];
   history: PracticePlannerHistory;
   count?: number;
   source: PracticePlannerSource;
@@ -356,21 +369,28 @@ export function buildPracticeSessionPlan(input: {
   const objectiveStates = input.objectiveStates ?? [];
   const specialization = resolvePracticeSpecialization(input.grammarPoint);
   const estimate = meanEstimate(objectiveStates, input.skillStates);
+  const explicitComparison = Boolean(
+    input.comparisonGrammarPointIds?.some((id) => id !== input.grammarPoint.id)
+  );
   const base =
-    input.history.consecutiveFailures >= 2
+    explicitComparison
+      ? COMPARISON_SEQUENCE
+      : input.history.consecutiveFailures >= 2
       ? FAILURE_SEQUENCE
       : /て(?:もらえ|いただけ)ますか/.test(input.grammarPoint.grammarPoint)
         ? POLITE_REQUEST_SEQUENCE
       : estimate >= 0.62
         ? DEVELOPING_SEQUENCE
         : WEAK_SEQUENCE;
-  const objectives = resolvePrimaryObjectives(
-    input.grammarPoint,
-    input.skillStates,
-    objectiveStates,
-    input.history,
-    specialization
-  );
+  const objectives = explicitComparison
+    ? new Set<LearningObjective>(["meaning", "grammar_selection"])
+    : resolvePrimaryObjectives(
+        input.grammarPoint,
+        input.skillStates,
+        objectiveStates,
+        input.history,
+        specialization
+      );
   const recentError = input.history.recentErrorCodes[0] ??
     objectiveStates.flatMap((state) => state.recentErrorCodes)[0] ??
     input.skillStates.flatMap((state) => state.recentErrorCodes)[0] ?? null;
@@ -411,6 +431,7 @@ export function buildPracticeSessionPlan(input: {
     step = adaptStepToObjective(step, objective, input.grammarPoint);
     if (
       specialization &&
+      !(explicitComparison && step.objective === "grammar_selection") &&
       !specialization.supportedExerciseTypes.includes(step.exerciseType)
     ) {
       const replacement = specialization.supportedExerciseTypes.find((type) =>
@@ -444,8 +465,12 @@ export function buildPracticeSessionPlan(input: {
     const targetMisconceptionCode = index === 2
       ? recentError ?? specialization?.misconceptionCodes[0] ?? null
       : null;
-    const comparisonGrammarPointIds = input.grammarPoint.comparisonSets
-      .flatMap((set) => set.members.map((member) => member.grammarPointId))
+    const comparisonGrammarPointIds = Array.from(new Set(
+      input.comparisonGrammarPointIds ??
+        input.grammarPoint.comparisonSets.flatMap((set) =>
+          set.members.map((member) => member.grammarPointId)
+        )
+    ))
       .filter((id) => id !== input.grammarPoint.id)
       .slice(0, 3);
     const objectiveState = objectiveStates.find(
@@ -536,6 +561,7 @@ export function buildPracticeSessionPlan(input: {
           targetMisconceptionCode && recentError === targetMisconceptionCode
         ),
         specializationNameZh: specialization?.nameZh,
+        explicitComparison,
         daysSinceLastPractice:
           index === 0 && shouldStartWithDelayedRecall
             ? daysSinceLastPractice

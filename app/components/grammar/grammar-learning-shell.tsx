@@ -387,6 +387,7 @@ export function GrammarLearningShell() {
           query={query}
           isLoading={isSearchLoading}
           resultCount={items.length}
+          hasMore={hasMore}
           onQueryChange={setQuery}
           onClearQuery={clearQuery}
           onSubmit={() => setSubmittedQuery(query)}
