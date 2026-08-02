@@ -642,11 +642,7 @@ export class WordLookupService {
           );
         }
 
-        if (
-          selectedEntry.examples.length > 0 &&
-          !pronunciation &&
-          !this.isInstructionalContext(context)
-        ) {
+        if (selectedEntry.examples.length > 0 && !this.isInstructionalContext(context)) {
           return this.buildLookupResult(
             word,
             lookupWord,

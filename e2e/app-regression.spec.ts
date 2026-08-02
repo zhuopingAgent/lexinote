@@ -59,6 +59,14 @@ test("dictionary lookup, retry selection, and history recovery work end-to-end",
   await page.getByLabel("重新查询补充说明").fill("不安を抱く");
   await page.getByRole("button", { name: "按补充说明重新查询" }).click();
   await expect(page.getByText("已参考语境「不安を抱く」")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("查询会参考「不安を抱く」")).toBeVisible();
+  await page.getByRole("button", { name: "清除语境" }).click();
+  await expect(page.getByText("查询会参考「不安を抱く」")).toHaveCount(0);
+
+  await searchWord(page, "食べました。");
+  await expect(page.getByText("已按原形「食べる」查询")).toBeVisible();
+  await expect(page.getByText(/已参考语境/)).toHaveCount(0);
+  await expect(page.getByText("毎朝パンを食べる。", { exact: true })).toBeVisible();
 
   await gotoHistory(page);
   await expect(page.getByRole("button").filter({ hasText: "食べる" }).first()).toBeVisible();
@@ -84,13 +92,13 @@ test("dictionary result actions can add a word into a collection and prevent dup
   await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("本地词库")).toBeVisible();
 
-  await page.getByRole("button", { name: "加入 collection 食べる たべる" }).click();
+  await page.getByRole("button", { name: "加入单词本 食べる たべる" }).click();
   await page.getByRole("button", { name: collectionName }).click();
-  await expect(page.getByText("已加入所选 collection。")).toBeVisible();
+  await expect(page.getByText("已加入所选单词本。")).toBeVisible();
 
-  await page.getByRole("button", { name: "加入 collection 食べる たべる" }).click();
+  await page.getByRole("button", { name: "加入单词本 食べる たべる" }).click();
   await page.getByRole("button", { name: collectionName }).click();
-  await expect(page.getByText("这个词条已经在所选 collection 中。")).toBeVisible();
+  await expect(page.getByText("这个词条已经在所选单词本中。")).toBeVisible();
 
   await gotoCollections(page);
   await openCollectionDetail(page, collectionName);

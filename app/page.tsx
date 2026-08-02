@@ -145,6 +145,7 @@ export default function Home() {
     onDismissAiApiError: onDismissCollectionAiApiError,
   } = useCollections(activeView);
   const lookupStatusBadges = buildLookupStatusBadges(result);
+  const trimmedSearchContextDraft = searchContextDraft.trim();
   const primaryEntry = resultEntries[0] ?? null;
   const primaryWordCard = wordCardsData[0] ?? null;
   const primaryCollectionState = primaryEntry
@@ -167,6 +168,11 @@ export default function Home() {
   function handleOpenHistoryItem(item: SearchHistoryItem) {
     onOpenHistoryItem(item);
     setIsContextFieldOpen(Boolean(item.context.trim()));
+  }
+
+  function onClearSearchContextDraft() {
+    setSearchContextDraft("");
+    setIsContextFieldOpen(false);
   }
 
   const statusMessage =
@@ -348,22 +354,40 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    aria-expanded={isContextFieldOpen}
-                    onClick={() => setIsContextFieldOpen((isOpen) => !isOpen)}
-                    className="inline-flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted transition hover:bg-surface-soft hover:text-foreground"
-                  >
-                    {isContextFieldOpen
-                      ? "收起语境"
-                      : searchContextDraft.trim()
-                        ? "查看已添加语境"
-                        : "+ 添加语境"}
-                  </button>
+                <div className="mt-3 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      aria-expanded={isContextFieldOpen}
+                      onClick={() => setIsContextFieldOpen((isOpen) => !isOpen)}
+                      className="inline-flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted transition hover:bg-surface-soft hover:text-foreground"
+                    >
+                      {isContextFieldOpen
+                        ? "收起语境"
+                        : trimmedSearchContextDraft
+                          ? "编辑语境"
+                          : "+ 添加语境"}
+                    </button>
+
+                    {trimmedSearchContextDraft ? (
+                      <button
+                        type="button"
+                        onClick={onClearSearchContextDraft}
+                        className="inline-flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted transition hover:bg-surface-soft hover:text-foreground"
+                      >
+                        清除语境
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {trimmedSearchContextDraft && !isContextFieldOpen ? (
+                    <p className="rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm leading-6 text-muted">
+                      查询会参考「{trimmedSearchContextDraft}」
+                    </p>
+                  ) : null}
 
                   {isContextFieldOpen ? (
-                    <label className="mt-2 block">
+                    <label className="block">
                       <span className="sr-only">查询语境</span>
                       <input
                         type="text"
