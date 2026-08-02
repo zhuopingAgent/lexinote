@@ -30,6 +30,10 @@
 
 - Prefer Tailwind utility classes for component styling.
 - Keep global CSS in `app/globals.css` limited to reset/theme primitives.
+- Use `单词本` consistently in the Chinese dictionary UI. Keep `Collection` and
+  `collection` for internal code, API, and database naming only.
+- Present non-persistable lookup placeholders as incomplete or not found. Do not
+  label them as AI-generated content when no complete entry was produced.
 
 ## Naming
 

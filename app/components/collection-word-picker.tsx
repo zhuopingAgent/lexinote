@@ -189,7 +189,7 @@ export function CollectionWordPicker({
       const payload = (await response.json()) as AddCollectionWordsResponse;
 
       if (payload.addedCount === 0) {
-        setNotice("所选词条都已经在当前 collection 中。");
+        setNotice("所选词条都已经在当前单词本中。");
         return;
       }
 

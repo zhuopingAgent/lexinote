@@ -81,7 +81,7 @@ export function OverviewList({
     if (!isPositiveInteger(collectionId) || !isPositiveInteger(wordId)) {
       setWordNoticeMap((currentMap) => ({
         ...currentMap,
-        [wordId]: "当前词条或 collection 信息无效，请刷新页面后重试。",
+        [wordId]: "当前词条或单词本信息无效，请刷新页面后重试。",
       }));
       return;
     }
@@ -95,8 +95,8 @@ export function OverviewList({
         ...currentMap,
         [wordId]:
           status === "added"
-            ? "已加入所选 collection。"
-            : "这个词条已经在所选 collection 中。",
+            ? "已加入所选单词本。"
+            : "这个词条已经在所选单词本中。",
       }));
       setOpenPickerWordId(null);
     } catch (actionError) {
@@ -177,7 +177,7 @@ export function OverviewList({
           <p className="mt-2 text-sm leading-6 text-white/38">
             {query.trim()
               ? "换个关键词试试，或者先到词典页查询后再回来查看。"
-              : "先查询一些词条，或者通过 collection 页面添加后，这里就会显示出来。"}
+              : "先查询一些词条，或者通过单词本页面整理后，这里就会显示出来。"}
           </p>
         </div>
       ) : null}
@@ -232,13 +232,13 @@ export function OverviewList({
                       className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm text-white/60 transition hover:border-white/18 hover:bg-white/5 hover:text-white/74 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {openPickerWordId === word.wordId
-                        ? "收起 collection"
-                        : "加入 collection"}
+                        ? "收起单词本"
+                        : "加入单词本"}
                     </button>
 
                     {!hasValidWordId ? (
                       <p className="mt-3 text-sm leading-6 text-white/42">
-                        这个词条缺少有效 ID，暂时无法加入 collection。
+                        这个词条缺少有效 ID，暂时无法加入单词本。
                       </p>
                     ) : null}
 
@@ -246,12 +246,12 @@ export function OverviewList({
                       <div className="mt-3 space-y-3 rounded-[16px] border border-white/8 bg-[#15151599] p-4">
                         {isPreparingCollections || isCollectionsLoading ? (
                           <p className="text-sm leading-6 text-white/42">
-                            正在加载 collections...
+                            正在加载单词本...
                           </p>
                         ) : collections.length > 0 ? (
                           <>
                             <p className="text-sm leading-6 text-white/42">
-                              选择一个 collection 来添加这个词条。
+                              选择一个单词本来添加这个词条。
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {collections.map((collection) => {
@@ -280,7 +280,7 @@ export function OverviewList({
                           </>
                         ) : (
                           <p className="text-sm leading-6 text-white/42">
-                            还没有 collection，先去创建一个再回来添加。
+                            还没有单词本，先去创建一个再回来添加。
                           </p>
                         )}
                       </div>

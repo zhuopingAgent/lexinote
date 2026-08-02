@@ -22,7 +22,7 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
   await expect(page.getByRole("button", { name: "辞書" })).toBeVisible();
   await expect(page.getByRole("button", { name: "全覧" })).toBeVisible();
   await expect(page.getByRole("button", { name: "履歴" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Collection" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "单词本" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.getByLabel("日语词").fill("食べる");
@@ -40,8 +40,8 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
   await expect(page.getByRole("button").filter({ hasText: "食べる" }).first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole("button", { name: "Collection" }).click();
-  await expect(page.getByLabel("新建 collection")).toBeVisible();
+  await page.getByRole("button", { name: "单词本" }).click();
+  await expect(page.getByLabel("新建单词本")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.getByRole("link", { name: "文法" }).click();

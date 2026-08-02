@@ -25,7 +25,7 @@ export class CollectionService {
   async getCollectionDetail(collectionId: number): Promise<CollectionDetail> {
     const collection = await this.repository.findDetailById(collectionId);
     if (!collection) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
 
     return collection;
@@ -39,19 +39,19 @@ export class CollectionService {
     const description = rawDescription?.trim() ?? "";
 
     if (!name) {
-      throw new ValidationError("请输入 collection 名称。");
+      throw new ValidationError("请输入单词本名称。");
     }
 
     const existingCollection = await this.repository.findRecordByName(name);
     if (existingCollection) {
-      throw new ValidationError("这个 collection 名称已经存在，请换一个。");
+      throw new ValidationError("这个单词本名称已经存在，请换一个。");
     }
 
     try {
       return await this.repository.createCollection(name, description);
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ValidationError("这个 collection 名称已经存在，请换一个。");
+        throw new ValidationError("这个单词本名称已经存在，请换一个。");
       }
 
       throw error;
@@ -70,7 +70,7 @@ export class CollectionService {
   ): Promise<CollectionSummary> {
     const currentCollection = await this.repository.findById(collectionId);
     if (!currentCollection) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
 
     const nextName = input.name?.trim() ?? currentCollection.name;
@@ -84,7 +84,7 @@ export class CollectionService {
       currentCollection.autoFilterLastSyncedRuleVersion ?? null;
 
     if (!nextName) {
-      throw new ValidationError("请输入 collection 名称。");
+      throw new ValidationError("请输入单词本名称。");
     }
 
     if (nextAutoFilterEnabled && !nextAutoFilterCriteria) {
@@ -100,7 +100,7 @@ export class CollectionService {
       duplicatedCollection &&
       Number(duplicatedCollection.collection_id) !== collectionId
     ) {
-      throw new ValidationError("这个 collection 名称已经存在，请换一个。");
+      throw new ValidationError("这个单词本名称已经存在，请换一个。");
     }
 
     const hasAutoFilterDefinitionChanged =
@@ -158,14 +158,14 @@ export class CollectionService {
       );
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ValidationError("这个 collection 名称已经存在，请换一个。");
+        throw new ValidationError("这个单词本名称已经存在，请换一个。");
       }
 
       throw error;
     }
 
     if (!updatedCollection) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
 
     if (!nextAutoFilterEnabled && currentCollection.autoFilterEnabled) {
@@ -173,7 +173,7 @@ export class CollectionService {
       const refreshedCollection = await this.repository.findById(collectionId);
 
       if (!refreshedCollection) {
-        throw new NotFoundError("未找到这个 collection。");
+        throw new NotFoundError("未找到这个单词本。");
       }
 
       return refreshedCollection;
@@ -193,7 +193,7 @@ export class CollectionService {
     const deleted = await this.repository.deleteCollection(collectionId);
 
     if (!deleted) {
-      throw new NotFoundError("未找到这个 collection。");
+      throw new NotFoundError("未找到这个单词本。");
     }
   }
 }

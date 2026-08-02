@@ -68,7 +68,19 @@ test("dictionary lookup, retry selection, and history recovery work end-to-end",
   await expect(page.getByText(/已参考语境/)).toHaveCount(0);
   await expect(page.getByText("毎朝パンを食べる。", { exact: true })).toBeVisible();
 
+  await searchWord(page, "架空語");
+  await expect(page.getByText("未找到完整词条", { exact: true })).toBeVisible();
+  await expect(page.getByText("未找到词条", { exact: true })).toBeVisible();
+  await expect(page.getByText("内容待补全", { exact: true })).toBeVisible();
+  await expect(page.getByText("暂无例句", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "加入单词本 架空語" })
+  ).toBeDisabled();
+
   await gotoHistory(page);
+  await expect(
+    page.getByText("未找到可用的完整词条，可补充语境后重新查询。")
+  ).toBeVisible();
   await expect(page.getByRole("button").filter({ hasText: "食べる" }).first()).toBeVisible();
   await expect(page.getByRole("button").filter({ hasText: "抱く" }).first()).toBeVisible();
   await page.getByRole("button").filter({ hasText: "食べる" }).first().click();
@@ -650,12 +662,12 @@ test("collection CRUD, add/remove word, and word detail navigation work end-to-e
 
   const initialCard = findCollectionCard(page, initialName);
   await initialCard.getByRole("button", { name: "编辑" }).click();
-  await page.getByLabel("编辑 collection 名称").fill(renamedName);
+  await page.getByLabel("编辑单词本名称").fill(renamedName);
   await page.getByRole("button", { name: "保存" }).click();
   await expect(findCollectionCard(page, renamedName)).toBeVisible();
 
   await openCollectionDetail(page, renamedName);
-  await expect(page.getByText("这个 collection 里还没有单词")).toBeVisible();
+  await expect(page.getByText("这个单词本里还没有单词")).toBeVisible();
 
   await page.getByRole("link", { name: "添加单词" }).click();
   await expect(page.getByRole("heading", { name: renamedName })).toBeVisible();
@@ -683,9 +695,9 @@ test("collection CRUD, add/remove word, and word detail navigation work end-to-e
   await removeDialog.run(async () => {
     await page.getByRole("button", { name: "移除" }).click();
   });
-  await expect(page.getByText("这个 collection 里还没有单词")).toBeVisible();
+  await expect(page.getByText("这个单词本里还没有单词")).toBeVisible();
 
-  await page.getByRole("link", { name: "返回 collections" }).click();
+  await page.getByRole("link", { name: "返回单词本" }).click();
   const deleteDialog = await acceptNextDialog(page);
   await deleteDialog.run(async () => {
     await findCollectionCard(page, renamedName).getByRole("button", { name: "删除" }).click();
@@ -710,13 +722,13 @@ test("overview search can add a word into a collection and prevent duplicates", 
   await expect(page.getByText("静か")).toHaveCount(0);
 
   const card = page.locator("article").filter({ hasText: "大切" }).first();
-  await card.getByRole("button", { name: "加入 collection" }).click();
+  await card.getByRole("button", { name: "加入单词本" }).click();
   await card.getByRole("button", { name: collectionName }).click();
-  await expect(card.getByText("已加入所选 collection。")).toBeVisible();
+  await expect(card.getByText("已加入所选单词本。")).toBeVisible();
 
-  await card.getByRole("button", { name: "加入 collection" }).click();
+  await card.getByRole("button", { name: "加入单词本" }).click();
   await card.getByRole("button", { name: collectionName }).click();
-  await expect(card.getByText("这个词条已经在所选 collection 中。")).toBeVisible();
+  await expect(card.getByText("这个词条已经在所选单词本中。")).toBeVisible();
 
   await gotoCollections(page);
   await openCollectionDetail(page, collectionName);
@@ -744,7 +756,7 @@ test("AI auto-filter can sync matching local words into a collection", async ({
 
   const card = findCollectionCard(page, collectionName);
   await card.getByRole("button", { name: "编辑" }).click();
-  await page.getByLabel("编辑 collection 名称").fill(collectionName);
+  await page.getByLabel("编辑单词本名称").fill(collectionName);
   await page.getByRole("checkbox").check();
   await page
     .getByLabel("AI 自动筛选条件")
