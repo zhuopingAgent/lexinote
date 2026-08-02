@@ -10,6 +10,7 @@ const SESSION_B = "22222222-2222-4222-8222-222222222222";
 const NEW_SESSION = "33333333-3333-4333-8333-333333333333";
 const USER_MESSAGE = "44444444-4444-4444-8444-444444444444";
 const ASSISTANT_MESSAGE = "55555555-5555-4555-8555-555555555555";
+const RETRY_ASSISTANT_MESSAGE = "55555555-5555-4555-8555-555555555556";
 const LEARNING_ITEM = "66666666-6666-4666-8666-666666666666";
 const GRAMMAR_POINT = "77777777-7777-4777-8777-777777777777";
 const NOW = "2026-08-02T10:00:00.000Z";
@@ -30,7 +31,7 @@ function message(
   id: string,
   role: "user" | "assistant",
   content: string,
-  status: "streaming" | "completed" = "completed"
+  status: "streaming" | "completed" | "cancelled" | "failed" = "completed"
 ) {
   return {
     id,
@@ -301,9 +302,175 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
   await page.getByLabel("对话消息").press("Enter");
   await expect(page.getByText("予約時間を変更していただけますか。")).toBeVisible();
   await expect(page.getByText("変更する", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("article").getByText("默认单词本", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByText("设为默认单词本", { exact: true })).toBeHidden();
   await page.getByRole("button", { name: "加入单词本" }).click();
   await expect(page.getByText("変更する 已保存")).toBeVisible();
+
+  await page.getByRole("button", { name: "新对话" }).click();
+  await expect(page).toHaveURL(/\/conversation$/);
+  await expect(page.getByText("予約時間を変更していただけますか。")).toBeHidden();
+  await expect(page.getByLabel("对话消息")).toHaveValue("");
   await expectNoHorizontalOverflow(page);
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("cancelled conversation answer can be regenerated in place", async ({
+  page,
+}) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  await mockBootstrap(page);
+  let retryParentMessageId: string | null = null;
+
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    const body = route.request().postDataJSON() as {
+      retryParentMessageId?: string;
+    };
+    retryParentMessageId = body.retryParentMessageId ?? null;
+    const assistant = {
+      ...message(RETRY_ASSISTANT_MESSAGE, "assistant", "", "streaming"),
+      sessionId: SESSION_A,
+    };
+    const completed = {
+      ...message(
+        RETRY_ASSISTANT_MESSAGE,
+        "assistant",
+        "予約時間を変更していただけますか。"
+      ),
+      sessionId: SESSION_A,
+    };
+    const events = [
+      {
+        type: "assistant_created",
+        userMessage: { ...message(USER_MESSAGE, "user", "预约时间可以改吗？"), sessionId: SESSION_A },
+        assistantMessage: assistant,
+      },
+      { type: "text_delta", delta: "予約時間を変更していただけますか。" },
+      { type: "completed", message: completed },
+    ];
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: events
+        .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+        .join(""),
+    });
+  });
+  await page.route("**/api/conversations/*/messages/*/analysis", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        message: {
+          ...message(
+            RETRY_ASSISTANT_MESSAGE,
+            "assistant",
+            "予約時間を変更していただけますか。"
+          ),
+          sessionId: SESSION_A,
+          analysisStatus: "completed",
+        },
+        session: session(SESSION_A, "医院预约"),
+        memories: [],
+        learningItems: [],
+      }),
+    });
+  });
+  await page.route("**/api/conversations/*", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: session(SESSION_A, "医院预约"),
+        messages: [
+          { ...message(USER_MESSAGE, "user", "预约时间可以改吗？"), sessionId: SESSION_A },
+          {
+            ...message(ASSISTANT_MESSAGE, "assistant", "予約時間を", "cancelled"),
+            sessionId: SESSION_A,
+          },
+        ],
+        memories: [],
+        learningItems: [],
+        olderMessagesCursor: null,
+      }),
+    });
+  });
+
+  await page.goto(`/conversation/${SESSION_A}`);
+  await page.getByRole("button", { name: "重新生成" }).click();
+  await expect(page.getByText("予約時間を変更していただけますか。")).toBeVisible();
+  expect(retryParentMessageId).toBe(USER_MESSAGE);
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("conversation deletion uses an accessible in-app confirmation", async ({
+  page,
+}) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  await mockBootstrap(page);
+
+  await page.route("**/api/conversations/*", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: session(SESSION_A, "医院预约"),
+        messages: [],
+        memories: [],
+        learningItems: [],
+        olderMessagesCursor: null,
+      }),
+    });
+  });
+
+  await page.goto(`/conversation/${SESSION_A}`);
+  await page.getByLabel("删除 医院预约").click();
+  const dialog = page.getByRole("dialog", { name: "删除“医院预约”？" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "取消" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByLabel("删除 医院预约").click();
+  await dialog.getByRole("button", { name: "删除对话" }).click();
+  await expect(page).toHaveURL(/\/conversation$/);
+  await expect(dialog).toBeHidden();
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("conversation remains useful when AI Gateway is unavailable", async ({
+  page,
+}) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  await page.route("**/api/conversation/bootstrap**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        aiAvailable: false,
+        sessions: [],
+        nextCursor: null,
+        preferences,
+        globalMemories: [],
+        collections: [collection],
+      }),
+    });
+  });
+
+  await page.goto("/conversation");
+  await expect(page.getByText("暂无对话", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("对话消息")).toBeDisabled();
+  await expect(
+    page.getByText("AI Gateway 未配置，历史与记忆仍可查看，但暂时不能发送消息。")
+  ).toBeVisible();
+
+  await page.getByLabel("打开偏好与记忆").click();
+  await expect(
+    page.getByRole("complementary", { name: "对话偏好与记忆" })
+  ).toBeVisible();
   expectNoBrowserErrors(browserErrors);
 });
 
@@ -314,10 +481,18 @@ test("conversation session drawer works on mobile without overflow", async ({ pa
   await page.goto("/conversation");
 
   await page.getByLabel("打开对话列表").click();
-  await expect(page.getByRole("complementary", { name: "对话列表" })).toBeVisible();
+  const sidebar = page.locator('aside[aria-label="对话列表"]');
+  await expect(sidebar).toBeVisible();
   await expect(page.getByRole("link", { name: "医院预约" })).toBeVisible();
+  await expect(page.getByLabel("重命名 医院预约")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.getByLabel("关闭对话列表").first().click();
+  await expect(sidebar).toHaveAttribute("aria-hidden", "true");
+
+  const composer = page.getByLabel("对话消息");
+  await composer.fill("第一行\n第二行\n第三行");
+  expect(await composer.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(44);
+  await expectNoHorizontalOverflow(page);
   await expectNoBrowserErrors(browserErrors);
 });
 

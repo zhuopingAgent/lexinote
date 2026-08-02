@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   CheckIcon,
   CloseIcon,
@@ -22,6 +22,7 @@ type ConversationSidebarProps = {
   onClose: () => void;
   onDelete: (sessionId: string) => Promise<void>;
   onLoadMore: () => Promise<void>;
+  onNewSession: () => void;
   onQueryChange: (query: string) => void;
   onRename: (sessionId: string, title: string) => Promise<void>;
 };
@@ -46,12 +47,18 @@ export function ConversationSidebar({
   onClose,
   onDelete,
   onLoadMore,
+  onNewSession,
   onQueryChange,
   onRename,
 }: ConversationSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ConversationSession | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const newSessionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const isDesktop = useSyncExternalStore(
     subscribeToDesktopViewport,
     isDesktopViewport,
@@ -59,24 +66,43 @@ export function ConversationSidebar({
   );
   const isInteractive = isDesktop || isOpen;
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    newSessionButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCloseRef.current();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
+
   async function saveRename(sessionId: string) {
     if (!editingTitle.trim()) return;
     setBusyId(sessionId);
+    setActionError(null);
     try {
       await onRename(sessionId, editingTitle.trim());
       setEditingId(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "重命名失败，请重试。");
     } finally {
       setBusyId(null);
     }
   }
 
-  async function deleteSession(session: ConversationSession) {
-    if (!window.confirm(`删除对话“${session.title}”？已保存到词典或文法的内容会保留。`)) {
-      return;
-    }
-    setBusyId(session.id);
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setBusyId(deleteTarget.id);
+    setActionError(null);
     try {
-      await onDelete(session.id);
+      await onDelete(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "删除失败，请重试。");
     } finally {
       setBusyId(null);
     }
@@ -87,28 +113,30 @@ export function ConversationSidebar({
       {isOpen ? (
         <button
           type="button"
-          aria-label="关闭对话列表"
+          aria-hidden="true"
+          tabIndex={-1}
           className="fixed inset-0 z-30 bg-black/55 lg:hidden"
           onClick={onClose}
         />
       ) : null}
       <aside
         aria-label="对话列表"
-        aria-hidden={!isInteractive}
-        inert={!isInteractive}
+        aria-hidden={!isInteractive || Boolean(deleteTarget)}
+        inert={!isInteractive || Boolean(deleteTarget)}
         className={`fixed inset-y-0 left-0 z-40 flex w-[min(86vw,300px)] flex-col border-r border-border bg-surface shadow-2xl transition-transform lg:static lg:z-auto lg:w-[288px] lg:translate-x-0 lg:shadow-none ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
-          <Link
-            href="/conversation"
-            onClick={onClose}
+          <button
+            ref={newSessionButtonRef}
+            type="button"
+            onClick={onNewSession}
             className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
           >
             <PlusIcon className="size-4" />
             新对话
-          </Link>
+          </button>
           <button
             type="button"
             aria-label="关闭对话列表"
@@ -130,6 +158,12 @@ export function ConversationSidebar({
             className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm outline-none transition focus:border-foreground/30"
           />
         </div>
+
+        {actionError ? (
+          <p role="alert" className="mx-3 mb-2 rounded-md bg-danger-soft px-3 py-2 text-xs leading-5 text-danger">
+            {actionError}
+          </p>
+        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
           {sessions.map((session) => {
@@ -174,7 +208,7 @@ export function ConversationSidebar({
                     >
                       {session.title}
                     </Link>
-                    <div className="mr-1 flex shrink-0 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+                    <div className="mr-1 flex shrink-0 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
                       <button
                         type="button"
                         aria-label={`重命名 ${session.title}`}
@@ -189,7 +223,10 @@ export function ConversationSidebar({
                       <button
                         type="button"
                         aria-label={`删除 ${session.title}`}
-                        onClick={() => void deleteSession(session)}
+                        onClick={() => {
+                          setActionError(null);
+                          setDeleteTarget(session);
+                        }}
                         disabled={busyId === session.id}
                         className="inline-flex size-8 items-center justify-center rounded text-muted transition hover:bg-danger-soft hover:text-danger"
                       >
@@ -203,7 +240,9 @@ export function ConversationSidebar({
           })}
 
           {!isLoading && sessions.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-muted">没有匹配的对话</p>
+            <p className="px-3 py-8 text-center text-sm text-muted">
+              {query.trim() ? "没有匹配的对话" : "暂无对话"}
+            </p>
           ) : null}
 
           {nextCursor ? (
@@ -218,6 +257,64 @@ export function ConversationSidebar({
           ) : null}
         </div>
       </aside>
+
+      {deleteTarget ? (
+        <>
+          <button
+            type="button"
+            aria-hidden="true"
+            tabIndex={-1}
+            className="fixed inset-0 z-50 bg-black/62"
+            onClick={() => {
+              if (busyId !== deleteTarget.id) setDeleteTarget(null);
+            }}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-conversation-title"
+            aria-describedby="delete-conversation-description"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                if (busyId !== deleteTarget.id) setDeleteTarget(null);
+              }
+            }}
+            className="fixed left-1/2 top-1/2 z-[60] w-[min(calc(100vw-32px),420px)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface p-5 shadow-2xl"
+          >
+            <h2 id="delete-conversation-title" className="break-words text-base font-semibold text-foreground">
+              删除“{deleteTarget.title}”？
+            </h2>
+            <p id="delete-conversation-description" className="mt-2 text-sm leading-6 text-muted">
+              聊天记录和未确认候选会被删除，已保存到词典、单词本或文法复习的内容仍会保留。
+            </p>
+            {actionError ? (
+              <p role="alert" className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-xs leading-5 text-danger">
+                {actionError}
+              </p>
+            ) : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                autoFocus
+                type="button"
+                disabled={busyId === deleteTarget.id}
+                onClick={() => setDeleteTarget(null)}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-border px-4 text-sm text-muted transition hover:text-foreground disabled:opacity-45"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={busyId === deleteTarget.id}
+                onClick={() => void confirmDelete()}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-danger/30 bg-danger-soft px-4 text-sm font-semibold text-danger transition hover:border-danger/50 disabled:opacity-45"
+              >
+                {busyId === deleteTarget.id ? "删除中..." : "删除对话"}
+              </button>
+            </div>
+          </section>
+        </>
+      ) : null}
     </>
   );
 }

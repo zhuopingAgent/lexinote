@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookIcon,
   CheckIcon,
@@ -75,6 +75,19 @@ function LearningItemCard({
   const [newCollectionName, setNewCollectionName] = useState("");
   const [makeDefault, setMakeDefault] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const previousDefaultCollectionIdRef = useRef(defaultCollectionId);
+
+  useEffect(() => {
+    const previousDefault = previousDefaultCollectionIdRef.current?.toString() ?? "";
+    const nextDefault = defaultCollectionId?.toString() ?? "";
+    setCollectionId((current) =>
+      !current || current === previousDefault ? nextDefault : current
+    );
+    previousDefaultCollectionIdRef.current = defaultCollectionId;
+  }, [defaultCollectionId]);
+
+  const isSelectedCollectionDefault =
+    Boolean(collectionId) && Number(collectionId) === defaultCollectionId;
 
   async function promote() {
     setIsBusy(true);
@@ -119,6 +132,18 @@ function LearningItemCard({
     }
   }
 
+  async function dismiss() {
+    setIsBusy(true);
+    setNotice(null);
+    try {
+      await onDismiss(item.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "忽略失败，请重试。");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   if (item.status === "saved") {
     return (
       <div className="flex items-center gap-2 border-t border-border py-3 text-sm text-muted">
@@ -148,7 +173,7 @@ function LearningItemCard({
           {item.meaningZh ? <p className="mt-1 text-sm text-foreground/68">{item.meaningZh}</p> : null}
           {item.explanationZh ? <p className="mt-1 text-xs leading-5 text-muted">{item.explanationZh}</p> : null}
         </div>
-        <button type="button" aria-label={`忽略 ${item.surfaceForm}`} onClick={() => void onDismiss(item.id)} className="inline-flex size-8 shrink-0 items-center justify-center rounded text-muted hover:bg-danger-soft hover:text-danger">
+        <button type="button" aria-label={`忽略 ${item.surfaceForm}`} disabled={isBusy} onClick={() => void dismiss()} className="inline-flex size-8 shrink-0 items-center justify-center rounded text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-45">
           <TrashIcon className="size-3.5" />
         </button>
       </div>
@@ -170,7 +195,7 @@ function LearningItemCard({
           )
         ) : (
           <>
-            <select aria-label={`选择 ${item.surfaceForm} 的单词本`} value={collectionId} onChange={(event) => setCollectionId(event.target.value)} className="h-9 max-w-full rounded-md border border-border bg-background px-2 text-sm">
+            <select aria-label={`选择 ${item.surfaceForm} 的单词本`} value={collectionId} onChange={(event) => { setCollectionId(event.target.value); setMakeDefault(false); }} className="h-9 max-w-full rounded-md border border-border bg-background px-2 text-sm">
               <option value="">选择单词本</option>
               {collections.map((collection) => (
                 <option key={collection.collectionId} value={collection.collectionId}>
@@ -206,7 +231,12 @@ function LearningItemCard({
           <button type="button" disabled={isBusy || !newCollectionName.trim()} onClick={() => void createCollection()} className="inline-flex h-9 items-center rounded-md bg-accent px-3 text-sm font-semibold text-black disabled:opacity-45">创建</button>
         </div>
       ) : null}
-      {item.kind !== "grammar" && collectionId ? (
+      {item.kind !== "grammar" && isSelectedCollectionDefault ? (
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted">
+          <CheckIcon className="size-3.5 text-accent-strong" />
+          默认单词本
+        </p>
+      ) : item.kind !== "grammar" && collectionId ? (
         <label className="mt-2 inline-flex items-center gap-2 text-xs text-muted">
           <input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />
           设为默认单词本
@@ -232,6 +262,8 @@ export function ConversationMessageView({
   onUpdateMemory,
 }: ConversationMessageViewProps) {
   const [copied, setCopied] = useState(false);
+  const [busyMemoryId, setBusyMemoryId] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
   const messageLearningItems = useMemo(
     () => learningItems.filter((item) => item.sourceMessageId === message.id && item.status !== "dismissed"),
     [learningItems, message.id]
@@ -245,6 +277,21 @@ export function ConversationMessageView({
       message.details.nuanceNotes.length ||
       message.details.keyPoints.length
   );
+
+  async function updateSuggestedMemory(
+    memoryId: string,
+    status: "active" | "dismissed"
+  ) {
+    setBusyMemoryId(memoryId);
+    setMemoryError(null);
+    try {
+      await onUpdateMemory(memoryId, status);
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : "记忆更新失败，请重试。");
+    } finally {
+      setBusyMemoryId(null);
+    }
+  }
 
   if (message.role === "user") {
     return (
@@ -271,7 +318,14 @@ export function ConversationMessageView({
               <button type="button" onClick={() => void onRetry(message)} className="rounded-md border border-danger/30 px-3 py-1.5 text-xs transition hover:bg-danger-soft">重试</button>
             </div>
           ) : null}
-          {message.status === "cancelled" ? <p className="mt-2 text-xs text-muted">回答已停止</p> : null}
+          {message.status === "cancelled" ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span>回答已停止</span>
+              <button type="button" onClick={() => void onRetry(message)} className="rounded-md border border-border px-3 py-1.5 transition hover:text-foreground">
+                重新生成
+              </button>
+            </div>
+          ) : null}
 
           {hasDetails ? (
             <details className="mt-4 border-y border-border py-3">
@@ -302,10 +356,11 @@ export function ConversationMessageView({
               {messageMemories.map((memory) => (
                 <div key={memory.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-xs text-muted">
                   <span className="min-w-0 flex-1">记忆建议：{memory.content}</span>
-                  <button type="button" onClick={() => void onUpdateMemory(memory.id, "active")} className="rounded px-2 py-1 font-semibold text-accent-strong hover:bg-accent-soft">确认</button>
-                  <button type="button" onClick={() => void onUpdateMemory(memory.id, "dismissed")} className="rounded px-2 py-1 hover:bg-surface-strong">忽略</button>
+                  <button type="button" aria-label={`确认记忆建议：${memory.content}`} disabled={busyMemoryId === memory.id} onClick={() => void updateSuggestedMemory(memory.id, "active")} className="rounded px-2 py-1 font-semibold text-accent-strong hover:bg-accent-soft disabled:opacity-45">确认</button>
+                  <button type="button" aria-label={`忽略记忆建议：${memory.content}`} disabled={busyMemoryId === memory.id} onClick={() => void updateSuggestedMemory(memory.id, "dismissed")} className="rounded px-2 py-1 hover:bg-surface-strong disabled:opacity-45">忽略</button>
                 </div>
               ))}
+              {memoryError ? <p role="alert" className="text-xs text-danger">{memoryError}</p> : null}
             </div>
           ) : null}
 
