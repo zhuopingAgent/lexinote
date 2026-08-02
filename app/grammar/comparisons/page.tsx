@@ -1,9 +1,6 @@
 import { AppHeader } from "@/app/components/app-header";
 import { ComparisonLibrary } from "@/app/components/grammar/comparison-library";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 const TOP_NAV_ITEMS = [
   { label: "辞書", href: "/", active: false },
   { label: "文法", href: "/grammar", active: true },

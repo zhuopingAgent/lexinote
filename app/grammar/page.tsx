@@ -2,9 +2,6 @@ import { AppHeader } from "@/app/components/app-header";
 import { GrammarLearningShell } from "@/app/components/grammar/grammar-learning-shell";
 import { getTopNavigationItems } from "@/app/lib/top-navigation";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 export default function GrammarPage() {
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
