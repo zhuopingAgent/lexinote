@@ -115,6 +115,8 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("expression_function");
   await expect(page.getByText("已显示 36 个", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "待完成 2", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "待复习 1", exact: true })).toBeVisible();
   const masteredCard = page.locator("article").filter({
     has: page.getByRole("link", { name: "AはBです", exact: true }),
   });
@@ -213,6 +215,13 @@ test("review consolidates objective progress into one record per grammar point",
     page.getByRole("link", { name: "Aがあります", exact: true })
   ).toHaveCount(1);
   await expect(page.getByText("综合掌握 26%", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "待复习", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "待复习", exact: true }).locator("..").getByRole(
+      "link",
+      { name: "AはBです", exact: true }
+    )
+  ).toBeVisible();
 });
 
 test("practice sessions hide prompts, support retry, and return direct recorded feedback", async ({

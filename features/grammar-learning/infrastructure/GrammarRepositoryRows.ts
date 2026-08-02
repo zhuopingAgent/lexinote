@@ -239,6 +239,18 @@ export type ProgressGroupRow = {
   total_count: number | string;
   started_count: number | string;
   mastered_count: number | string;
+  pending_completion_count: number | string;
+  due_review_count: number | string;
+  review_count: number | string;
+  favorite_count: number | string;
+};
+
+export type ProgressTotalsRow = {
+  total_count: number | string;
+  started_count: number | string;
+  mastered_count: number | string;
+  pending_completion_count: number | string;
+  due_review_count: number | string;
   review_count: number | string;
   favorite_count: number | string;
 };

@@ -12,6 +12,7 @@ import {
   SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL,
   SELECT_FAVORITES_SQL,
   SELECT_GRAMMAR_CATEGORIES_SQL,
+  SELECT_GRAMMAR_PROGRESS_TOTALS_SQL,
   SELECT_GRAMMAR_PROGRESS_SQL,
   SELECT_GRAMMAR_POINT_DETAIL_SQL,
   SELECT_KNOWLEDGE_DIMENSIONS_SQL,
@@ -80,6 +81,7 @@ import type {
   LearningModuleRow,
   LearningStageRow,
   ProgressGroupRow,
+  ProgressTotalsRow,
   ReviewAggregationsRow,
   ObjectiveRecommendationRow,
   ReviewRow,
@@ -97,6 +99,16 @@ const GRAMMAR_LEARNING_OBJECTIVES = new Set<GrammarLearningObjective>([
   "collocation_naturalness",
   "discourse_function",
 ]);
+
+type GrammarProgressTotals = {
+  totalGrammarPoints: number;
+  startedCount: number;
+  masteredCount: number;
+  pendingCompletionCount: number;
+  dueReviewCount: number;
+  reviewCount: number;
+  favoriteCount: number;
+};
 
 function parseObjectiveProgress(value: unknown): GrammarObjectiveProgress[] {
   if (!Array.isArray(value)) {
@@ -138,6 +150,24 @@ function parseObjectiveProgress(value: unknown): GrammarObjectiveProgress[] {
 }
 
 export class GrammarRepository {
+  async getProgressTotals(userId: string): Promise<GrammarProgressTotals> {
+    const rows = await query<ProgressTotalsRow>(
+      SELECT_GRAMMAR_PROGRESS_TOTALS_SQL,
+      [userId]
+    );
+    const row = rows[0];
+
+    return {
+      totalGrammarPoints: toInteger(row?.total_count ?? 0),
+      startedCount: toInteger(row?.started_count ?? 0),
+      masteredCount: toInteger(row?.mastered_count ?? 0),
+      pendingCompletionCount: toInteger(row?.pending_completion_count ?? 0),
+      dueReviewCount: toInteger(row?.due_review_count ?? 0),
+      reviewCount: toInteger(row?.review_count ?? 0),
+      favoriteCount: toInteger(row?.favorite_count ?? 0),
+    };
+  }
+
   async listKnowledgeDimensions(): Promise<KnowledgeDimension[]> {
     const rows = await query<KnowledgeDimensionRow>(
       SELECT_KNOWLEDGE_DIMENSIONS_SQL
@@ -624,6 +654,8 @@ export class GrammarRepository {
       totalCount: toInteger(row.total_count),
       startedCount: toInteger(row.started_count),
       masteredCount: toInteger(row.mastered_count),
+      pendingCompletionCount: toInteger(row.pending_completion_count),
+      dueReviewCount: toInteger(row.due_review_count),
       reviewCount: toInteger(row.review_count),
       favoriteCount: toInteger(row.favorite_count),
     }));

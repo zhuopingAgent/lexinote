@@ -320,6 +320,15 @@ function createRepositoryMock(point: GrammarPointDetail = grammarPoint) {
     removeFavorite: vi.fn().mockResolvedValue(undefined),
     listFavorites: vi.fn().mockResolvedValue([grammarPoint]),
     listReviewItems: vi.fn().mockResolvedValue([]),
+    getProgressTotals: vi.fn().mockResolvedValue({
+      totalGrammarPoints: 1,
+      startedCount: 0,
+      masteredCount: 0,
+      pendingCompletionCount: 0,
+      dueReviewCount: 0,
+      reviewCount: 0,
+      favoriteCount: 0,
+    }),
     getProgress: vi.fn().mockResolvedValue([]),
     getReviewAggregations: vi.fn().mockResolvedValue({
       grammarPoints: [],
@@ -597,6 +606,74 @@ describe("GrammarLearningService", () => {
       ],
     });
     expect(result.objectiveRecommendations).toEqual([]);
+    expect(result.pendingCompletionCount).toBe(1);
+    expect(result.dueReviewCount).toBe(0);
+  });
+
+  it("keeps the overall progress total distinct when knowledge dimension tags overlap", async () => {
+    const repository = createRepositoryMock();
+    repository.getProgressTotals.mockResolvedValue({
+      totalGrammarPoints: 339,
+      startedCount: 10,
+      masteredCount: 4,
+      pendingCompletionCount: 2,
+      dueReviewCount: 1,
+      reviewCount: 3,
+      favoriteCount: 5,
+    });
+    repository.getProgress.mockResolvedValue([
+      {
+        id: "dimension-expression",
+        slug: "expression_function",
+        nameZh: "表达功能",
+        nameEn: "Expression function",
+        description: "",
+        priority: 1,
+        totalCount: 339,
+        startedCount: 10,
+        masteredCount: 4,
+        pendingCompletionCount: 2,
+        dueReviewCount: 1,
+        reviewCount: 3,
+        favoriteCount: 5,
+      },
+      {
+        id: "dimension-particles",
+        slug: "particle_system",
+        nameZh: "助词系统",
+        nameEn: "Particle system",
+        description: "",
+        priority: 4,
+        totalCount: 24,
+        startedCount: 1,
+        masteredCount: 0,
+        pendingCompletionCount: 1,
+        dueReviewCount: 0,
+        reviewCount: 1,
+        favoriteCount: 0,
+      },
+    ]);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.getProgress();
+
+    expect(result.totalGrammarPoints).toBe(339);
+    expect(result.masteredCount).toBe(4);
+    expect(result.reviewCount).toBe(3);
+    expect(result.groupProgress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slug: "particle_system",
+          totalCount: 24,
+          masteredCount: 0,
+        }),
+      ])
+    );
+    expect(repository.getProgress).toHaveBeenCalledWith(DEFAULT_USER_ID);
+    expect(repository.getProgressTotals).toHaveBeenCalledWith(DEFAULT_USER_ID);
   });
 
   it("resolves grammar details by stable sense key and logs the canonical ID", async () => {
