@@ -526,6 +526,8 @@ export type GrammarReviewResponse = {
   items: GrammarReviewItem[];
   aggregations: GrammarReviewAggregations;
   objectiveRecommendations?: GrammarObjectiveRecommendation[];
+  pendingCompletionCount: number;
+  dueReviewCount: number;
 };
 
 export type GrammarProgressGroup = {
@@ -538,6 +540,8 @@ export type GrammarProgressGroup = {
   totalCount: number;
   startedCount: number;
   masteredCount: number;
+  pendingCompletionCount: number;
+  dueReviewCount: number;
   reviewCount: number;
   favoriteCount: number;
 };
@@ -546,6 +550,8 @@ export type GrammarProgressResponse = {
   totalGrammarPoints: number;
   startedCount: number;
   masteredCount: number;
+  pendingCompletionCount: number;
+  dueReviewCount: number;
   reviewCount: number;
   favoriteCount: number;
   groupProgress: GrammarProgressGroup[];

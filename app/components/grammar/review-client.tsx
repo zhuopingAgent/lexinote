@@ -32,6 +32,8 @@ export function ReviewClient() {
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingCompletionCount, setPendingCompletionCount] = useState(0);
+  const [dueReviewCount, setDueReviewCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -46,6 +48,15 @@ export function ReviewClient() {
         }).then((response) => readJson<GrammarReviewResponse>(response));
         setItems(result.items);
         setObjectiveRecommendations(result.objectiveRecommendations ?? []);
+        setPendingCompletionCount(
+          result.pendingCompletionCount ??
+            result.items.filter((item) => item.status !== "mastered").length +
+              (result.objectiveRecommendations?.length ?? 0)
+        );
+        setDueReviewCount(
+          result.dueReviewCount ??
+            result.items.filter((item) => item.status === "mastered").length
+        );
         setAggregations(
           result.aggregations ?? {
             grammarPoints: [],
@@ -82,6 +93,9 @@ export function ReviewClient() {
     ...items.map((item) => item.grammarPoint.id),
     ...objectiveRecommendations.map((item) => item.grammarPointId),
   ]).size;
+  const pendingItems = items.filter((item) => item.status !== "mastered");
+  const dueReviewItems = items.filter((item) => item.status === "mastered");
+  const orderedItems = [...pendingItems, ...dueReviewItems];
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
@@ -90,7 +104,7 @@ export function ReviewClient() {
           <div>
             <p className="text-2xl leading-tight font-semibold text-white/78">复习</p>
             <p className="mt-1 text-sm leading-6 text-white/42">
-              当前 {reviewGrammarPointCount} 个具体用法需要回看。
+              共 {reviewGrammarPointCount} 个具体用法：待完成 {pendingCompletionCount}，待复习 {dueReviewCount}。
             </p>
           </div>
           <Link
@@ -133,11 +147,11 @@ export function ReviewClient() {
       ) : null}
 
       {!isLoading && !error && objectiveRecommendations.length > 0 ? (
-        <section className="mt-6 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
+        <section id="pending" className="mt-6 scroll-mt-20 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 id="objective-review-heading" className="text-lg font-semibold text-white/76">
-                建议先复习
+                待完成建议
               </h2>
               <p className="mt-1 text-sm leading-6 text-white/42">
                 每个语法点只显示一条综合进度，薄弱目标合并在同一条记录中。
@@ -207,13 +221,24 @@ export function ReviewClient() {
         </div>
       ) : null}
 
-      {!isLoading && items.length > 0 ? (
+      {!isLoading && orderedItems.length > 0 ? (
         <div className="mt-6 space-y-4">
-          {items.map((item) => (
-            <article
-              key={item.reviewRecordId}
-              className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
-            >
+          {orderedItems.map((item, index) => (
+            <div key={item.reviewRecordId}>
+              {index === 0 && pendingItems.length > 0 ? (
+                <h2
+                  id={objectiveRecommendations.length === 0 ? "pending" : undefined}
+                  className="mb-3 scroll-mt-20 text-lg font-semibold text-white/76"
+                >
+                  待完成
+                </h2>
+              ) : null}
+              {index === pendingItems.length && dueReviewItems.length > 0 ? (
+                <h2 id="due-review" className="mb-3 scroll-mt-20 text-lg font-semibold text-white/76">
+                  待复习
+                </h2>
+              ) : null}
+              <article className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -319,7 +344,8 @@ export function ReviewClient() {
                   再练一次
                 </Link>
               </div>
-            </article>
+              </article>
+            </div>
           ))}
         </div>
       ) : null}
