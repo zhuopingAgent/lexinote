@@ -217,6 +217,18 @@ function resolvePrimaryObjectives(
     ...objectiveStates.flatMap((state) => state.recentErrorCodes),
   ]);
   const supported = supportedObjectives(grammarPoint);
+  const isNewPoliteRequestLearner =
+    /て(?:もらえ|いただけ)ますか/.test(grammarPoint.grammarPoint) &&
+    errors.size === 0 &&
+    history.consecutiveFailures === 0 &&
+    !history.lastPracticedAt &&
+    (history.recentHintCount ?? 0) === 0 &&
+    states.every((state) => state.attempts === 0) &&
+    objectiveStates.every((state) => state.attempts === 0) &&
+    (history.exposureCount ?? 0) === 0;
+  if (isNewPoliteRequestLearner) {
+    return new Set<LearningObjective>(["meaning", "register_control"]);
+  }
   const errorObjective = Array.from(errors)
     .map((code) => ERROR_OBJECTIVES[code])
     .find((objective) => objective && supported.includes(objective));

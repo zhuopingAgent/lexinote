@@ -4,6 +4,10 @@ import { CollectionAutoFilterJobService } from "@/features/collections/applicati
 import { CollectionAutoFilterService } from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionService } from "@/features/collections/application/CollectionService";
 import { CollectionWordService } from "@/features/collections/application/CollectionWordService";
+import { ConversationLearningService } from "@/features/conversation/application/ConversationLearningService";
+import { ConversationService } from "@/features/conversation/application/ConversationService";
+import { ConversationAiClient } from "@/features/conversation/infrastructure/ConversationAiClient";
+import { ConversationRepository } from "@/features/conversation/infrastructure/ConversationRepository";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
@@ -25,6 +29,10 @@ let collectionAutoFilterService: CollectionAutoFilterService | null = null;
 let collectionRepository: CollectionRepository | null = null;
 let collectionService: CollectionService | null = null;
 let collectionWordService: CollectionWordService | null = null;
+let conversationAiClient: ConversationAiClient | null = null;
+let conversationLearningService: ConversationLearningService | null = null;
+let conversationRepository: ConversationRepository | null = null;
+let conversationService: ConversationService | null = null;
 let dictionaryService: JapaneseDictionaryService | null = null;
 let grammarAiClient: GrammarAiClient | null = null;
 let grammarLearningService: GrammarLearningService | null = null;
@@ -83,6 +91,16 @@ function getPracticeRepository() {
   return practiceRepository;
 }
 
+function getConversationRepository() {
+  conversationRepository ??= new ConversationRepository();
+  return conversationRepository;
+}
+
+function getConversationAiClient() {
+  conversationAiClient ??= new ConversationAiClient();
+  return conversationAiClient;
+}
+
 export function getCollectionService() {
   collectionService ??= new CollectionService(
     getCollectionRepository(),
@@ -136,6 +154,27 @@ export function getPracticeSessionService() {
     getGrammarLearningService()
   );
   return practiceSessionService;
+}
+
+export function getConversationService() {
+  conversationService ??= new ConversationService(
+    getConversationRepository(),
+    getConversationAiClient(),
+    getCollectionService(),
+    getGrammarLearningService()
+  );
+  return conversationService;
+}
+
+export function getConversationLearningService() {
+  conversationLearningService ??= new ConversationLearningService(
+    getConversationRepository(),
+    getVocabularyCoreService(),
+    getWordLookupService(),
+    getCollectionWordService(),
+    getGrammarLearningService()
+  );
+  return conversationLearningService;
 }
 
 export function ensureAutoFilterJobRunnerStarted() {

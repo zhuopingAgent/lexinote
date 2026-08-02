@@ -1026,8 +1026,158 @@ CREATE TABLE IF NOT EXISTS learner_objective_states (
   PRIMARY KEY (user_id, grammar_point_id, sense_key, learning_objective)
 );
 
+CREATE TABLE IF NOT EXISTS conversation_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '新对话',
+  mode TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN (
+    'auto',
+    'zh_to_ja',
+    'ja_to_zh',
+    'polish_ja',
+    'explain_ja'
+  )),
+  summary TEXT NOT NULL DEFAULT '',
+  title_is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+  summary_updated_at TIMESTAMPTZ,
+  summary_through_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE conversation_sessions
+  ADD COLUMN IF NOT EXISTS summary_through_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL DEFAULT '',
+  mode TEXT CHECK (mode IN (
+    'auto',
+    'zh_to_ja',
+    'ja_to_zh',
+    'polish_ja',
+    'explain_ja'
+  )),
+  status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN (
+    'streaming',
+    'completed',
+    'failed',
+    'cancelled'
+  )),
+  client_message_id TEXT,
+  parent_message_id UUID REFERENCES conversation_messages(id) ON DELETE SET NULL,
+  model_name TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  analysis_status TEXT NOT NULL DEFAULT 'not_requested' CHECK (analysis_status IN (
+    'not_requested',
+    'pending',
+    'running',
+    'completed',
+    'failed'
+  )),
+  analysis_locked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  UNIQUE (session_id, client_message_id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_preferences (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  default_mode TEXT NOT NULL DEFAULT 'auto' CHECK (default_mode IN (
+    'auto',
+    'zh_to_ja',
+    'ja_to_zh',
+    'polish_ja',
+    'explain_ja'
+  )),
+  translation_style TEXT NOT NULL DEFAULT 'natural_first' CHECK (
+    translation_style IN ('natural_first')
+  ),
+  default_register TEXT NOT NULL DEFAULT 'auto' CHECK (default_register IN (
+    'auto',
+    'casual',
+    'polite',
+    'business'
+  )),
+  default_collection_id BIGINT REFERENCES collections(collection_id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS conversation_memories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK (scope IN ('session', 'global')),
+  kind TEXT NOT NULL CHECK (kind IN ('preference', 'context', 'goal')),
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'suggested' CHECK (status IN (
+    'suggested',
+    'active',
+    'dismissed'
+  )),
+  source_message_id UUID REFERENCES conversation_messages(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    (scope = 'global' AND session_id IS NULL)
+    OR (scope = 'session' AND session_id IS NOT NULL)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS conversation_learning_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES conversation_sessions(id) ON DELETE SET NULL,
+  source_message_id UUID REFERENCES conversation_messages(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('vocabulary', 'expression', 'grammar')),
+  surface_form TEXT NOT NULL,
+  reading TEXT,
+  meaning_zh TEXT NOT NULL DEFAULT '',
+  explanation_zh TEXT NOT NULL DEFAULT '',
+  source_excerpt TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'suggested' CHECK (status IN (
+    'suggested',
+    'needs_review',
+    'saved',
+    'dismissed',
+    'failed'
+  )),
+  grammar_candidates JSONB NOT NULL DEFAULT '[]'::jsonb,
+  word_id BIGINT REFERENCES japanese_dictionary_entries(word_id) ON DELETE SET NULL,
+  grammar_point_id UUID REFERENCES grammar_points(id) ON DELETE SET NULL,
+  collection_id BIGINT REFERENCES collections(collection_id) ON DELETE SET NULL,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_learner_objective_states_due
   ON learner_objective_states (user_id, next_review_at, estimate);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_sessions_user_updated
+  ON conversation_sessions (user_id, updated_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_session_created
+  ON conversation_messages (session_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_analysis
+  ON conversation_messages (analysis_status, analysis_locked_at)
+  WHERE role = 'assistant';
+
+CREATE INDEX IF NOT EXISTS idx_conversation_memories_context
+  ON conversation_memories (user_id, scope, session_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_learning_items_session
+  ON conversation_learning_items (session_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_learning_items_inbox
+  ON conversation_learning_items (user_id, kind, status, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_exercise_instances_generation_metrics
   ON exercise_instances (created_at DESC, generation_source, fallback_reason);

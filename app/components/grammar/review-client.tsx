@@ -18,6 +18,7 @@ import { TagBadge } from "@/app/components/grammar/tag-badge";
 import { getErrorMessage, readJson } from "@/app/lib/api-client";
 import { formatShortDateTime } from "@/app/lib/date";
 import { PRACTICE_OBJECTIVE_LABELS } from "@/features/grammar-learning/domain/practice";
+import { ConversationReviewInbox } from "@/app/components/grammar/conversation-review-inbox";
 
 export function ReviewClient() {
   const [items, setItems] = useState<GrammarReviewItem[]>([]);
@@ -32,6 +33,7 @@ export function ReviewClient() {
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [conversationInboxCount, setConversationInboxCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -132,6 +134,8 @@ export function ReviewClient() {
         </div>
       ) : null}
 
+      <ConversationReviewInbox onCountChange={setConversationInboxCount} />
+
       {!isLoading && !error && objectiveRecommendations.length > 0 ? (
         <section className="mt-6 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -192,7 +196,11 @@ export function ReviewClient() {
         </div>
       ) : null}
 
-      {!isLoading && !error && items.length === 0 && objectiveRecommendations.length === 0 ? (
+      {!isLoading &&
+      !error &&
+      items.length === 0 &&
+      objectiveRecommendations.length === 0 &&
+      conversationInboxCount === 0 ? (
         <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
           <p className="text-base font-medium text-white/60">暂时没有复习项</p>
           <Link

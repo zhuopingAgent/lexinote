@@ -48,7 +48,13 @@ test("mobile navigation keeps core views usable without horizontal overflow", as
   await expect(page).toHaveURL(/\/grammar$/);
   await expect(page.getByRole("link", { name: "辞書" })).toBeVisible();
   await expect(page.getByRole("link", { name: "文法" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "対話" })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "搜索语法" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole("link", { name: "対話" }).click();
+  await expect(page).toHaveURL(/\/conversation$/);
+  await expect(page.getByLabel("对话消息")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   expectNoBrowserErrors(browserErrors);

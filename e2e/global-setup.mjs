@@ -568,6 +568,11 @@ export default async function globalSetup() {
 
     await pool.query(`
       TRUNCATE TABLE
+        conversation_learning_items,
+        conversation_memories,
+        conversation_messages,
+        conversation_preferences,
+        conversation_sessions,
         practice_attempt_issues,
         mastery_evidence,
         practice_attempts,

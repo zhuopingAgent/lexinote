@@ -6,6 +6,7 @@ import { CollectionIcon } from "@/app/components/icons";
 import { CollectionService } from "@/features/collections/application/CollectionService";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
 import { NotFoundError } from "@/shared/utils/errors";
+import { getTopNavigationItems } from "@/app/lib/top-navigation";
 
 type CollectionDetailPageProps = {
   searchParams: Promise<{
@@ -15,11 +16,6 @@ type CollectionDetailPageProps = {
 };
 
 const collectionService = new CollectionService(new CollectionRepository());
-const COLLECTION_NAV_ITEMS = [
-  { label: "辞書", active: false },
-  { label: "Collection", active: true },
-];
-
 function formatWordCount(count: number) {
   return `${count} 个单词`;
 }
@@ -52,7 +48,7 @@ export default async function CollectionDetailPage({
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <AppHeader navItems={COLLECTION_NAV_ITEMS} />
+      <AppHeader navItems={getTopNavigationItems("dictionary")} />
 
       <section className="px-[clamp(16px,4vw,40px)] py-[clamp(28px,4vw,48px)]">
         <div className="mx-auto w-full max-w-[960px]">

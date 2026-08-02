@@ -27,10 +27,12 @@
 - `AI_GATEWAY_API_KEY` is optional for local development. Vercel deployments can use `VERCEL_OIDC_TOKEN` instead. If neither Gateway credential is available, local dictionary lookups still return core fields but AI-generated example sentences stay empty, and unknown words return fallback word fields.
 - Common Japanese inflections and adjective forms can still resolve locally without AI Gateway credentials when the conservative local base-form fallback hits an existing persisted entry.
 - Grammar practice generation and sentence feedback also work without AI Gateway credentials by using deterministic local fallback output.
+- Conversation sending requires AI Gateway credentials because it has no local translation fallback. With credentials missing, `/conversation` still supports history, session navigation, preferences, and memory management, and displays the send-disabled state.
 - `PRACTICE_GENERATION_V2=1` enables the validated practice pipeline: persisted five-item intent plans, type-specific prompts, bounded repair, contract-aware evaluation, and validated fallback. Keep it explicit so Preview can be observed before Production rollout.
 - `AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
 - Canonical AI Gateway model roles live in `shared/ai/gateway.ts`: `cheap` is `openai/gpt-5-nano`, `defaultTeacher` is `openai/gpt-4.1-mini`, `premiumTeacher` is `openai/gpt-5-mini`, `longContext` is `alibaba/qwen3.7-plus`, and `speech` is `openai/whisper-1`.
 - Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.
+- Conversation uses `defaultTeacher` for the streamed learner-facing answer and `cheap` for JSON Schema title, summary, details, learning-item, and memory analysis.
 - For local AI access, either set `AI_GATEWAY_API_KEY` from Vercel AI Gateway API Keys or run `vercel link && vercel env pull` to obtain a project-scoped `VERCEL_OIDC_TOKEN`. Local OIDC tokens are short-lived, so pull again if they expire.
 - `APP_BASIC_AUTH_PASSWORD` enables Basic Auth for all app routes and APIs. Vercel Production and Preview deployments should set it while local development can leave it empty. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
 - `APP_TWO_FACTOR_TOTP_SECRET` enables the TOTP second factor after Basic Auth. `APP_TWO_FACTOR_COOKIE_SECRET` signs the HttpOnly 2FA session cookie, and `APP_TWO_FACTOR_SESSION_SECONDS` defaults to `43200`.
@@ -79,6 +81,9 @@
 - The same `word_id` can appear only once inside a given collection, no matter whether it is added manually or by AI auto-filtering.
 - `collection_words.source` distinguishes `manual` vs `auto` membership.
 - `auto_filter_jobs` stores asynchronous collection auto-filter work; lookup requests enqueue jobs instead of doing all classification inline.
+- Conversation storage uses `conversation_sessions`, `conversation_messages`, `conversation_preferences`, `conversation_memories`, and `conversation_learning_items`. Apply `shared/db/sql/schema.sql` before deploying `/conversation`; production request handling will not create these tables.
+- A conversation request sends at most 16 recent messages and about 16,000 characters plus a 2,000-character-bounded summary. Only `active` memories are prompt context.
+- Completed conversation answers have an independent analysis state. Use the message-level analysis endpoint to retry `failed` analysis; a stale `running` lease becomes claimable after five minutes.
 - `auto_filter_jobs` uses bounded retries plus a stale-running lease. API entry points start a lightweight in-process poller so pending or crashed jobs can resume after the app receives traffic.
 - When a stale `collection_sync` job exhausts retries, the recovery SQL also marks the owning collection as `failed` if that job still matches the current auto-filter rule version.
 - Editing auto-filter criteria affects future incremental classification, but rescanning existing words now requires an explicit collection-level AI resync.
@@ -134,6 +139,7 @@
 - Check that the local database exists and `shared/db/sql/seed.sql` has been applied.
 - If AI Gateway credentials are missing, dictionary hits still work but example sentences stay empty, and unknown words fall back to placeholder fields.
 - If AI Gateway credentials are missing, grammar practice and feedback should still return usable fallback content. The acceptance fallback for `〜てもらえますか` + hospital + polite should flag `先生、もう一度説明してもらえる？` as too casual and suggest `すみません、もう一度説明していただけますか。`.
+- If AI Gateway credentials are missing, `/conversation` should load normally but disable sending. This is intentional; do not expect a local translation response.
 
 ### E2E Test Fails Before Browser Starts
 

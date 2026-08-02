@@ -15,11 +15,28 @@ export type AiModelRole = keyof typeof AI_MODELS;
 export type AiTextModelRole = Exclude<AiModelRole, "speech">;
 export type AiReasoningEffort = "minimal" | "low" | "medium" | "high";
 
+export type AiGatewayInputMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
 type AiGatewayTextPrompt = {
   role: AiTextModelRole;
   maxOutputTokens: number;
   systemPrompt: string;
   userPrompt: string;
+};
+
+type AiGatewayMessagesPrompt = {
+  role: AiTextModelRole;
+  maxOutputTokens: number;
+  messages: AiGatewayInputMessage[];
+  signal?: AbortSignal;
+};
+
+type AiGatewayStructuredPrompt = AiGatewayMessagesPrompt & {
+  schemaName: string;
+  schema: Record<string, unknown>;
 };
 
 type AiGatewayTextRequestConfig = {
@@ -161,6 +178,161 @@ export async function requestAiGatewayText(
   } catch (error) {
     rethrowAiQuotaError(error);
     return null;
+  }
+}
+
+function buildGatewayInput(messages: AiGatewayInputMessage[]) {
+  return messages.map((message) => ({
+    type: "message",
+    role: message.role,
+    content: message.content,
+  }));
+}
+
+export async function requestAiGatewayTextStream(
+  request: NonNullable<ReturnType<typeof resolveAiGatewayRequest>>,
+  prompt: AiGatewayMessagesPrompt
+): Promise<AsyncIterable<string> | null> {
+  try {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      signal: prompt.signal,
+      body: JSON.stringify({
+        ...buildAiGatewayTextRequestConfig(prompt.role, prompt.maxOutputTokens),
+        input: buildGatewayInput(prompt.messages),
+        stream: true,
+      }),
+    });
+
+    await throwIfOpenAiQuotaExhausted(response);
+
+    if (!response.ok || !response.body) {
+      return null;
+    }
+
+    return parseAiGatewayTextStream(response.body);
+  } catch (error) {
+    rethrowAiQuotaError(error);
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    return null;
+  }
+}
+
+export async function requestAiGatewayStructuredText(
+  request: NonNullable<ReturnType<typeof resolveAiGatewayRequest>>,
+  prompt: AiGatewayStructuredPrompt
+): Promise<string | null> {
+  try {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      signal: prompt.signal,
+      body: JSON.stringify({
+        ...buildAiGatewayTextRequestConfig(prompt.role, prompt.maxOutputTokens),
+        input: buildGatewayInput(prompt.messages),
+        text: {
+          format: {
+            type: "json_schema",
+            name: prompt.schemaName,
+            strict: true,
+            schema: prompt.schema,
+          },
+        },
+      }),
+    });
+
+    await throwIfOpenAiQuotaExhausted(response);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return extractAiGatewayResponseText((await response.json()) as AiGatewayResponse);
+  } catch (error) {
+    rethrowAiQuotaError(error);
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    return null;
+  }
+}
+
+export async function* parseAiGatewayTextStream(
+  stream: ReadableStream<Uint8Array>
+): AsyncGenerator<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  function readEvent(block: string) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+
+    if (!data || data === "[DONE]") {
+      return "";
+    }
+
+    let event: {
+      type?: unknown;
+      delta?: unknown;
+      message?: unknown;
+      error?: { message?: unknown };
+      response?: { error?: { message?: unknown } };
+    };
+    try {
+      event = JSON.parse(data) as typeof event;
+    } catch {
+      return "";
+    }
+
+    if (event.type === "error" || event.type === "response.failed") {
+      const message =
+        (typeof event.message === "string" && event.message) ||
+        (typeof event.error?.message === "string" && event.error.message) ||
+        (typeof event.response?.error?.message === "string" &&
+          event.response.error.message) ||
+        "AI Gateway stream failed";
+      throw new Error(message);
+    }
+
+    return event.type === "response.output_text.delta" &&
+      typeof event.delta === "string"
+      ? event.delta
+      : "";
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop() ?? "";
+
+      for (const block of blocks) {
+        const delta = readEvent(block);
+        if (delta) {
+          yield delta;
+        }
+      }
+
+      if (done) {
+        break;
+      }
+    }
+
+    const finalDelta = readEvent(buffer);
+    if (finalDelta) {
+      yield finalDelta;
+    }
+  } finally {
+    reader.releaseLock();
   }
 }
 
