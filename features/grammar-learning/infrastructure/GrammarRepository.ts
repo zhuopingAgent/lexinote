@@ -609,15 +609,7 @@ export class GrammarRepository {
       const estimate = Number(row.estimate);
       const recentErrorCodes = parseStringArray(row.recent_error_codes);
       const objectives = parseObjectiveProgress(row.objective_progress);
-      const reasonZh = exposureCount > 0
-        ? "看过参考答案后还没有形成独立证据，建议先做一次无答案复现。"
-        : attempts > 0 && assistedAttempts / attempts >= 0.5
-          ? "最近较依赖提示，建议保留少量支架后重新作答。"
-          : recentErrorCodes.length > 0
-            ? "最近仍有结构化错误记录，建议针对同一学习目标复练。"
-            : estimate < 0.55
-              ? "当前掌握估计较低，建议先完成一组聚焦练习。"
-              : "已到建议复习时间，用延迟回忆确认是否真正掌握。";
+      const reasonZh = "尚未完成，建议完成一次练习并确认掌握。";
       return {
         grammarPointId: row.grammar_point_id,
         grammarPoint: row.grammar_point,

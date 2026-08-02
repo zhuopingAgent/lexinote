@@ -162,65 +162,23 @@ export const SELECT_ERROR_TYPES_SQL = `
 export const SELECT_GRAMMAR_PROGRESS_TOTALS_SQL = `
   SELECT
     COUNT(DISTINCT gp.id)::int AS total_count,
-    COUNT(DISTINCT rr.grammar_point_id) FILTER (
+    COUNT(DISTINCT gp.id) FILTER (
       WHERE rr.id IS NOT NULL
+        OR learner_objective_states.grammar_point_id IS NOT NULL
     )::int AS started_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.status = 'mastered'
     )::int AS mastered_count,
     COUNT(DISTINCT gp.id) FILTER (
       WHERE COALESCE(rr.status, 'new') <> 'mastered'
-        AND (
-          (
-            rr.id IS NOT NULL
-            AND (
-              rr.next_review_at IS NULL
-              OR rr.next_review_at <= NOW()
-              OR rr.mistake_count > 0
-            )
-          )
-          OR (
-            learner_objective_states.grammar_point_id IS NOT NULL
-            AND (
-              learner_objective_states.next_review_at IS NULL
-              OR learner_objective_states.next_review_at <= NOW()
-              OR learner_objective_states.estimate < 0.72
-              OR learner_objective_states.exposure_count > 0
-            )
-          )
-        )
+        AND (rr.id IS NOT NULL OR learner_objective_states.grammar_point_id IS NOT NULL)
     )::int AS pending_completion_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.status = 'mastered'
-        AND (rr.next_review_at IS NULL OR rr.next_review_at <= NOW())
     )::int AS due_review_count,
     COUNT(DISTINCT gp.id) FILTER (
-      WHERE (
-          rr.status = 'mastered'
-          AND (rr.next_review_at IS NULL OR rr.next_review_at <= NOW())
-        )
-        OR (
-          COALESCE(rr.status, 'new') <> 'mastered'
-          AND (
-            (
-              rr.id IS NOT NULL
-              AND (
-                rr.next_review_at IS NULL
-                OR rr.next_review_at <= NOW()
-                OR rr.mistake_count > 0
-              )
-            )
-            OR (
-              learner_objective_states.grammar_point_id IS NOT NULL
-              AND (
-                learner_objective_states.next_review_at IS NULL
-                OR learner_objective_states.next_review_at <= NOW()
-                OR learner_objective_states.estimate < 0.72
-                OR learner_objective_states.exposure_count > 0
-              )
-            )
-          )
-        )
+      WHERE rr.id IS NOT NULL
+        OR learner_objective_states.grammar_point_id IS NOT NULL
     )::int AS review_count,
     COUNT(DISTINCT favorites.grammar_point_id)::int AS favorite_count
   FROM grammar_points gp
@@ -929,20 +887,6 @@ export const SELECT_REVIEW_ITEMS_SQL = `
     LIMIT 1
   ) AS latest_feedback ON TRUE
   WHERE rr.user_id = $1::uuid
-    AND (
-      (
-        rr.status = 'mastered'
-        AND (rr.next_review_at IS NULL OR rr.next_review_at <= NOW())
-      )
-      OR (
-        rr.status <> 'mastered'
-        AND (
-          rr.next_review_at IS NULL
-          OR rr.next_review_at <= NOW()
-          OR rr.mistake_count > 0
-        )
-      )
-    )
   ORDER BY
     rr.next_review_at ASC NULLS FIRST,
     rr.mistake_count DESC,
@@ -980,20 +924,6 @@ export const SELECT_REVIEW_AGGREGATIONS_SQL = `
       LIMIT 1
     ) latest_feedback ON TRUE
     WHERE rr.user_id = $1::uuid
-      AND (
-        (
-          rr.status = 'mastered'
-          AND (rr.next_review_at IS NULL OR rr.next_review_at <= NOW())
-        )
-        OR (
-          rr.status <> 'mastered'
-          AND (
-            rr.next_review_at IS NULL
-            OR rr.next_review_at <= NOW()
-            OR rr.mistake_count > 0
-          )
-        )
-      )
   ),
   grammar_point_counts AS (
     SELECT
@@ -1111,13 +1041,7 @@ export const SELECT_OBJECTIVE_RECOMMENDATIONS_SQL = `
   recommendation_scope AS (
     SELECT DISTINCT grammar_point_id
     FROM objective_scope
-    WHERE (
-        next_review_at IS NULL
-        OR next_review_at <= NOW()
-        OR estimate < 0.72
-        OR exposure_count > 0
-      )
-      AND NOT EXISTS (
+    WHERE NOT EXISTS (
         SELECT 1
         FROM review_records
         WHERE review_records.user_id = objective_scope.user_id
@@ -1208,65 +1132,23 @@ export const SELECT_GRAMMAR_PROGRESS_SQL = `
     td.description,
     td.display_order AS priority,
     COUNT(DISTINCT gp.id)::int AS total_count,
-    COUNT(DISTINCT rr.grammar_point_id) FILTER (
+    COUNT(DISTINCT gp.id) FILTER (
       WHERE rr.id IS NOT NULL
+        OR learner_objective_states.grammar_point_id IS NOT NULL
     )::int AS started_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.status = 'mastered'
     )::int AS mastered_count,
     COUNT(DISTINCT gp.id) FILTER (
       WHERE COALESCE(rr.status, 'new') <> 'mastered'
-        AND (
-          (
-            rr.id IS NOT NULL
-            AND (
-              rr.next_review_at IS NULL
-              OR rr.next_review_at <= NOW()
-              OR rr.mistake_count > 0
-            )
-          )
-          OR (
-            learner_objective_states.grammar_point_id IS NOT NULL
-            AND (
-              learner_objective_states.next_review_at IS NULL
-              OR learner_objective_states.next_review_at <= NOW()
-              OR learner_objective_states.estimate < 0.72
-              OR learner_objective_states.exposure_count > 0
-            )
-          )
-        )
+        AND (rr.id IS NOT NULL OR learner_objective_states.grammar_point_id IS NOT NULL)
     )::int AS pending_completion_count,
     COUNT(DISTINCT rr.grammar_point_id) FILTER (
       WHERE rr.status = 'mastered'
-        AND (rr.next_review_at IS NULL OR rr.next_review_at <= NOW())
     )::int AS due_review_count,
     COUNT(DISTINCT gp.id) FILTER (
-      WHERE (
-          rr.status = 'mastered'
-          AND (rr.next_review_at IS NULL OR rr.next_review_at <= NOW())
-        )
-        OR (
-          COALESCE(rr.status, 'new') <> 'mastered'
-          AND (
-            (
-              rr.id IS NOT NULL
-              AND (
-                rr.next_review_at IS NULL
-                OR rr.next_review_at <= NOW()
-                OR rr.mistake_count > 0
-              )
-            )
-            OR (
-              learner_objective_states.grammar_point_id IS NOT NULL
-              AND (
-                learner_objective_states.next_review_at IS NULL
-                OR learner_objective_states.next_review_at <= NOW()
-                OR learner_objective_states.estimate < 0.72
-                OR learner_objective_states.exposure_count > 0
-              )
-            )
-          )
-        )
+      WHERE rr.id IS NOT NULL
+        OR learner_objective_states.grammar_point_id IS NOT NULL
     )::int AS review_count,
     COUNT(DISTINCT favorites.grammar_point_id)::int AS favorite_count
   FROM taxonomy_dimensions td

@@ -154,7 +154,7 @@ export function ReviewClient() {
                 待完成建议
               </h2>
               <p className="mt-1 text-sm leading-6 text-white/42">
-                每个语法点只显示一条综合进度，薄弱目标合并在同一条记录中。
+                每个尚未完成的语法点只显示一条记录，学习目标合并展示。
               </p>
             </div>
           </div>
