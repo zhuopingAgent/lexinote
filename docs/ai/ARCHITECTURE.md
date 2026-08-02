@@ -117,6 +117,7 @@
 - Keep local base-form fallback conservative: generated candidates should only be used after a local dictionary hit.
 - Do not assume every query with context should call AI; the service is now local-first in many cases.
 - Do not assume context-shaped readings should be persisted as standalone entries.
+- Client lookups must abort and generation-guard superseded requests. Restoring history also invalidates the active request, and browser-storage failures must not break a successful lookup.
 - If you change lookup behavior, also review `Memory.md`, `RUNBOOK.md`, and `e2e/app-regression.spec.ts`.
 
 ## Collections
@@ -154,6 +155,7 @@
 - Auto-filter jobs should remain recoverable: preserve retry, lease, and stale-running semantics when touching `auto_filter_jobs`.
 - Do not assume editing an auto-filter rule should rescan the whole dictionary; explicit resync is now a separate user action.
 - Do not remove the AI re-sync candidate cap unless a replacement cost-control mechanism exists.
+- Collection summary loads and polling must be abortable and generation-guarded; successful mutations invalidate overlapping list requests before updating local state.
 - Paginated client lists must guard reset/load-more requests with aborts or generation tokens, and reset stale cursors when the search query changes.
 - If you change collection membership semantics, update both docs and E2E fixtures/specs in the same change.
 

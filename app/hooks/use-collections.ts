@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import type { AppView } from "@/app/lib/app-view";
 import {
   getErrorMessage,
+  isAbortError,
   isAiQuotaErrorMessage,
   isAiQuotaExhaustedError,
   readJson,
@@ -37,6 +38,15 @@ export function useCollections(activeView: AppView) {
   const [hasLoadedCollections, setHasLoadedCollections] = useState(false);
   const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
   const notifiedAiQuotaCollectionIdsRef = useRef(new Set<number>());
+  const activeCollectionsLoadAbortControllerRef = useRef<AbortController | null>(null);
+  const collectionsLoadGenerationRef = useRef(0);
+
+  const invalidateCollectionsLoad = useCallback(() => {
+    collectionsLoadGenerationRef.current += 1;
+    activeCollectionsLoadAbortControllerRef.current?.abort();
+    activeCollectionsLoadAbortControllerRef.current = null;
+    setIsCollectionsLoading(false);
+  }, []);
 
   const notifyAiQuotaAutoFilterFailures = useCallback(
     (nextCollections: CollectionSummary[]) => {
@@ -60,6 +70,14 @@ export function useCollections(activeView: AppView) {
   const loadCollections = useCallback(
     async (options?: { silent?: boolean }) => {
       const silent = options?.silent ?? false;
+      activeCollectionsLoadAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      const loadGeneration = collectionsLoadGenerationRef.current + 1;
+      collectionsLoadGenerationRef.current = loadGeneration;
+      activeCollectionsLoadAbortControllerRef.current = abortController;
+      const isCurrentLoad = () =>
+        !abortController.signal.aborted &&
+        collectionsLoadGenerationRef.current === loadGeneration;
 
       if (!silent) {
         setCollectionError(null);
@@ -67,13 +85,23 @@ export function useCollections(activeView: AppView) {
       }
 
       try {
-        const response = await fetch("/api/collections");
+        const response = await fetch("/api/collections", {
+          signal: abortController.signal,
+        });
 
         const payload = await readJson<CollectionListResponse>(response);
+        if (!isCurrentLoad()) {
+          return;
+        }
+
         setCollections(payload.collections);
         setHasLoadedCollections(true);
         notifyAiQuotaAutoFilterFailures(payload.collections);
       } catch (collectionLoadError) {
+        if (isAbortError(collectionLoadError) || !isCurrentLoad()) {
+          return;
+        }
+
         const message = getErrorMessage(collectionLoadError, "发生了意外错误");
         if (isAiQuotaExhaustedError(collectionLoadError)) {
           setAiApiErrorMessage(message);
@@ -82,13 +110,21 @@ export function useCollections(activeView: AppView) {
           setCollectionError(message);
         }
       } finally {
-        if (!silent) {
+        if (isCurrentLoad()) {
+          activeCollectionsLoadAbortControllerRef.current = null;
           setIsCollectionsLoading(false);
         }
       }
     },
     [notifyAiQuotaAutoFilterFailures]
   );
+
+  useEffect(() => {
+    return () => {
+      collectionsLoadGenerationRef.current += 1;
+      activeCollectionsLoadAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (activeView === "collections" && !hasLoadedCollections && !isCollectionsLoading) {
@@ -145,6 +181,7 @@ export function useCollections(activeView: AppView) {
     const payload = await readJson<AddCollectionWordsResponse>(response);
 
     if (payload.addedCount > 0) {
+      invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
           collection.collectionId === collectionId
@@ -189,6 +226,7 @@ export function useCollections(activeView: AppView) {
     }
 
     if (payload.status === "added") {
+      invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
           collection.collectionId === collectionId
@@ -227,6 +265,7 @@ export function useCollections(activeView: AppView) {
       });
 
       const payload = await readJson<CollectionResponse>(response);
+      invalidateCollectionsLoad();
       setCollections((currentCollections) => [payload.collection, ...currentCollections]);
       setCollectionName("");
       setHasLoadedCollections(true);
@@ -292,6 +331,7 @@ export function useCollections(activeView: AppView) {
       });
 
       const payload = await readJson<CollectionResponse>(response);
+      invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
           collection.collectionId === collectionId ? payload.collection : collection
@@ -325,6 +365,7 @@ export function useCollections(activeView: AppView) {
 
       await readJson<{ ok?: boolean }>(response);
 
+      invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.filter((collection) => collection.collectionId !== collectionId)
       );
@@ -359,6 +400,7 @@ export function useCollections(activeView: AppView) {
       });
 
       const payload = await readJson<CollectionResponse>(response);
+      invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
           collection.collectionId === collectionId ? payload.collection : collection

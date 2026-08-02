@@ -61,13 +61,13 @@ export function loadSearchHistory() {
     return [] as SearchHistoryItem[];
   }
 
-  const rawValue = window.localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
-
-  if (!rawValue) {
-    return [] as SearchHistoryItem[];
-  }
-
   try {
+    const rawValue = window.localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
+
+    if (!rawValue) {
+      return [] as SearchHistoryItem[];
+    }
+
     const parsedValue = JSON.parse(rawValue);
 
     if (!Array.isArray(parsedValue)) {
@@ -85,7 +85,11 @@ export function saveSearchHistory(items: SearchHistoryItem[]) {
     return;
   }
 
-  window.localStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(items));
+  try {
+    window.localStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // History persistence is best-effort and must not break a successful lookup.
+  }
 }
 
 export function clearSearchHistory() {
@@ -93,7 +97,11 @@ export function clearSearchHistory() {
     return;
   }
 
-  window.localStorage.removeItem(SEARCH_HISTORY_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(SEARCH_HISTORY_STORAGE_KEY);
+  } catch {
+    // Keep the in-memory clear action usable when browser storage is unavailable.
+  }
 }
 
 function buildSearchHistoryItemId({

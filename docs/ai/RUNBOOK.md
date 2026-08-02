@@ -92,6 +92,8 @@
 - Lookup responses include result metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness; the dictionary UI uses this for status tags.
 - Re-running `shared/db/sql/seed.sql` keeps existing persisted examples because the seed only upserts the core dictionary fields.
 - Overview and collection add-word screens use guarded pagination requests; stale cursors should be cleared whenever a search reset starts.
+- Dictionary lookup and collection-summary polling use abort signals plus generation guards. Restoring a history item or completing a collection mutation invalidates overlapping requests before local state is updated.
+- Browser search history is best-effort. If local storage is unavailable, lookup and clear actions continue with in-memory state for the current page session.
 - Grammar learning tables, 7 knowledge dimensions, 46 knowledge taxonomy nodes, 153 core learning units, 9 core comparison sets, 10 stable error types, 5 learning stages, and 11 migrated legacy compatibility records are created by `shared/db/sql/schema.sql`.
 - `shared/db/sql/grammar-content.sql` expands the curriculum to 339 active learning units, 27 structured comparison sets, and 19 non-empty learning modules. `shared/db/sql/seed.sql` applies both SQL files for local setup.
 - Grammar seed migrations are key-based and repeatable. E2E global setup applies both grammar SQL files twice and verifies stable record counts, three examples for every expanded unit, active-unit content completeness, comparison member integrity, legacy feedback migration, module and curriculum coverage, prerequisite acyclicity/order, polysemous senses, and taxonomy integrity before loading fixtures.

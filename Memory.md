@@ -66,11 +66,14 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - Optional lookup context can be supplied to disambiguate meaning and regenerate context-aware examples, but the lookup flow is now more local-first: if a persisted entry already has examples and the context is not instructional, the app may return the local result without calling AI.
 - Before AI base-form resolution, lookup uses conservative local fallback rules for common Japanese inflections and adjective forms, and only adopts a fallback when it hits a persisted local entry.
 - Lookup responses include metadata for resolution type, contextual status, persistence status, selected pronunciation, and example readiness; the dictionary UI surfaces these as result status tags.
+- Client dictionary lookups are abortable and generation-guarded. Starting another lookup or restoring history invalidates the previous request so stale responses cannot replace the current result or append history.
+- Browser search-history persistence is best-effort. Storage access failures must fall back to in-memory history without breaking lookup or clear actions.
 - Context-aware results are not persisted as standalone contextual rows by default. The service normalizes context-shaped readings back to dictionary-form pronunciations before deciding whether anything should be saved.
 - Collections are now a first-class product surface. `collections` and `collection_words` model a many-to-many relation between concrete dictionary entries (`word_id`) and collections.
 - A single dictionary entry can belong to multiple collections, but the same `word_id` can appear only once inside a given collection, no matter whether it was added manually or by AI auto-filtering.
 - Collection cards keep their navigation link separate from edit, delete, resync, and remove buttons. Do not use a `role="link"` card that contains nested interactive controls.
 - Overview and collection add-word pagination use abortable, generation-guarded requests. When resetting a search, clear stale cursors so old pages cannot be appended to new query results.
+- Collection summary loads and auto-filter polling are abortable and generation-guarded. Successful collection mutations invalidate overlapping list responses before updating local state.
 - Collection auto-filtering runs asynchronously through `auto_filter_jobs`. New dictionary entries only enqueue classification when a truly new entry is persisted.
 - `auto_filter_jobs` has bounded retries, a stale-running lease, and request-triggered polling so pending or crashed jobs can be recovered without manual database edits. Exhausted stale `collection_sync` jobs must also move the owning collection to `failed` when the job still matches the current rule version.
 - Saving or editing an auto-filter rule no longer rescans all existing words by default. Existing words are only re-evaluated when the user explicitly requests an AI re-sync for that collection.

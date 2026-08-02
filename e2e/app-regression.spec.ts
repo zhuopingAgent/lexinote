@@ -90,6 +90,88 @@ test("dictionary lookup, retry selection, and history recovery work end-to-end",
   expectNoBrowserErrors(browserErrors);
 });
 
+test("restoring history is not overwritten by a stale lookup response", async ({ page }) => {
+  const browserErrors = createBrowserErrorCollector(page);
+
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    const controlledWindow = window as typeof window & {
+      releaseDelayedDictionaryLookup?: () => void;
+    };
+
+    window.fetch = async (input, init) => {
+      const requestUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      const requestBody = typeof init?.body === "string" ? init.body : "";
+
+      if (
+        requestUrl.endsWith("/api/words/lookup") &&
+        requestBody.includes('"word":"静か"')
+      ) {
+        await new Promise<void>((resolve) => {
+          controlledWindow.releaseDelayedDictionaryLookup = resolve;
+        });
+
+        return new Response(
+          JSON.stringify({
+            word: "静か",
+            lookupWord: "静か",
+            source: "dictionary",
+            entry: {
+              word: "静か",
+              pronunciation: "しずか",
+              meaningZh: "安静；安稳",
+              partOfSpeech: "形容动词",
+              examples: [],
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      return originalFetch(input, init);
+    };
+  });
+
+  await gotoDictionary(page);
+  await searchWord(page, "食べる");
+  await expect(page.getByText("たべる", { exact: true })).toBeVisible();
+
+  await searchWord(page, "静か");
+  await page.waitForFunction(
+    () =>
+      Boolean(
+        (window as typeof window & { releaseDelayedDictionaryLookup?: () => void })
+          .releaseDelayedDictionaryLookup
+      )
+  );
+
+  await page.getByRole("button", { name: "履歴" }).click();
+  await page.getByRole("button").filter({ hasText: "食べる" }).first().click();
+  await expect(page.getByText("たべる", { exact: true })).toBeVisible();
+
+  await page.evaluate(() => {
+    const controlledWindow = window as typeof window & {
+      releaseDelayedDictionaryLookup?: () => void;
+    };
+    controlledWindow.releaseDelayedDictionaryLookup?.();
+  });
+
+  await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("静か", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "履歴" }).click();
+  await expect(page.getByRole("button").filter({ hasText: "静か" })).toHaveCount(0);
+  expectNoBrowserErrors(browserErrors);
+});
+
 test("dictionary result actions can add a word into a collection and prevent duplicates", async ({
   page,
 }, testInfo) => {
@@ -118,6 +200,64 @@ test("dictionary result actions can add a word into a collection and prevent dup
   await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("手动添加")).toBeVisible();
 
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("a stale collection list cannot overwrite a completed mutation", async ({
+  page,
+}, testInfo) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  const collectionName = createCollectionName("e2e-stale-list", testInfo);
+
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    const controlledWindow = window as typeof window & {
+      releaseDelayedCollectionList?: () => void;
+    };
+
+    window.fetch = async (input, init) => {
+      const requestUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      const requestMethod = init?.method?.toUpperCase() ?? "GET";
+
+      if (requestUrl.endsWith("/api/collections") && requestMethod === "GET") {
+        await new Promise<void>((resolve) => {
+          controlledWindow.releaseDelayedCollectionList = resolve;
+        });
+
+        return new Response(JSON.stringify({ collections: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      return originalFetch(input, init);
+    };
+  });
+
+  await gotoCollections(page);
+  await page.waitForFunction(
+    () =>
+      Boolean(
+        (window as typeof window & { releaseDelayedCollectionList?: () => void })
+          .releaseDelayedCollectionList
+      )
+  );
+
+  await createCollection(page, collectionName);
+
+  await page.evaluate(() => {
+    const controlledWindow = window as typeof window & {
+      releaseDelayedCollectionList?: () => void;
+    };
+    controlledWindow.releaseDelayedCollectionList?.();
+  });
+
+  await expect(findCollectionCard(page, collectionName)).toBeVisible();
   expectNoBrowserErrors(browserErrors);
 });
 
