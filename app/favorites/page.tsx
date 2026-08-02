@@ -2,9 +2,6 @@ import { AppHeader } from "@/app/components/app-header";
 import { FavoritesClient } from "@/app/components/grammar/favorites-client";
 import { getTopNavigationItems } from "@/app/lib/top-navigation";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 export default function FavoritesPage() {
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
