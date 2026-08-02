@@ -10,6 +10,10 @@ type GrammarSearchProps = {
   onQueryChange: (query: string) => void;
   onClearQuery: () => void;
   onSubmit: () => void;
+  practicality: string;
+  learningStatus: string;
+  onPracticalityChange: (value: string) => void;
+  onLearningStatusChange: (value: string) => void;
 };
 
 export function GrammarSearch({
@@ -19,6 +23,10 @@ export function GrammarSearch({
   onQueryChange,
   onClearQuery,
   onSubmit,
+  practicality,
+  learningStatus,
+  onPracticalityChange,
+  onLearningStatusChange,
 }: GrammarSearchProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -26,8 +34,8 @@ export function GrammarSearch({
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <form role="search" onSubmit={handleSubmit} className="min-w-0 flex-1">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(260px,1fr)_auto_auto] sm:items-center">
+      <form role="search" onSubmit={handleSubmit} className="col-span-2 min-w-0 sm:col-span-1">
         <label htmlFor="grammar-search" className="sr-only">
           搜索语法
         </label>
@@ -55,11 +63,36 @@ export function GrammarSearch({
         </div>
       </form>
 
-      <p
-        aria-live="polite"
-        className="min-w-[86px] text-right text-xs tabular-nums text-muted"
+      <label className="sr-only" htmlFor="grammar-practicality-filter">实用度</label>
+      <select
+        id="grammar-practicality-filter"
+        value={practicality}
+        onChange={(event) => onPracticalityChange(event.target.value)}
+        className="h-11 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-foreground/40"
       >
-        {isLoading ? "正在查找..." : `已显示 ${resultCount} 个`}
+        <option value="">全部实用度</option>
+        <option value="S">S · 高频必会</option>
+        <option value="A">A · 常用</option>
+        <option value="B">B · 实用补充</option>
+        <option value="C">C · 进阶</option>
+        <option value="D">D · 低频</option>
+      </select>
+
+      <label className="sr-only" htmlFor="grammar-status-filter">学习状态</label>
+      <select
+        id="grammar-status-filter"
+        value={learningStatus}
+        onChange={(event) => onLearningStatusChange(event.target.value)}
+        className="h-11 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-foreground/40"
+      >
+        <option value="">全部状态</option>
+        <option value="not_started">未开始</option>
+        <option value="learning">学习中</option>
+        <option value="mastered">已掌握</option>
+      </select>
+
+      <p aria-live="polite" className="col-span-2 text-right text-xs tabular-nums text-muted sm:col-span-3">
+        {isLoading ? "正在查找..." : `当前显示 ${resultCount} 个`}
       </p>
     </div>
   );

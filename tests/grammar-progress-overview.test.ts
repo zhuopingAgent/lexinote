@@ -25,5 +25,7 @@ describe("grammar progress overview", () => {
     expect(markup).toContain('aria-label="待复习 1"');
     expect(markup).toContain("待完成");
     expect(markup).toContain("待复习");
+    expect(markup).toContain("知识维度允许交叉归类");
+    expect(markup).toContain("易混对比");
   });
 });

@@ -485,6 +485,8 @@ describe("GrammarLearningService", () => {
       groupSlug: "expressive_functions",
       stageSlug: "functional_patterns",
       moduleSlug: undefined,
+      practicality: "A",
+      learningStatus: "learning",
       limit: 12,
       offset: 36,
     });
@@ -494,6 +496,8 @@ describe("GrammarLearningService", () => {
       categorySlug: "time_and_sequence",
       dimensionSlug: "expression_function",
       stageSlug: "functional_patterns",
+      practicality: "A",
+      learningStatus: "learning",
       limit: 12,
       offset: 36,
       userId: DEFAULT_USER_ID,
@@ -607,6 +611,31 @@ describe("GrammarLearningService", () => {
     });
     expect(result.objectiveRecommendations).toEqual([]);
     expect(result.pendingCompletionCount).toBe(1);
+    expect(result.dueReviewCount).toBe(0);
+  });
+
+  it("counts only mastered grammar whose review time has arrived", async () => {
+    const repository = createRepositoryMock(grammarPoint);
+    repository.listReviewItems.mockResolvedValue([
+      {
+        reviewRecordId: "review-future",
+        grammarPoint,
+        status: "mastered",
+        mistakeCount: 0,
+        nextReviewAt: "2999-01-01T00:00:00.000Z",
+        lastReviewedAt: null,
+        mistakeTypes: [],
+        issues: [],
+      },
+    ]);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.listReviewItems();
+
+    expect(result.pendingCompletionCount).toBe(0);
     expect(result.dueReviewCount).toBe(0);
   });
 
@@ -921,8 +950,13 @@ describe("GrammarLearningService", () => {
     ]);
     expect(result.feedbackText).toContain("太随便");
     expect(result.correctedSentence).toBe(
-      "すみません、もう一度説明していただけますか。"
+      "すみません、もう一度説明してもらえますか。"
     );
+    expect(result.betterVersions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sentence: "すみません、もう一度説明していただけますか。",
+      }),
+    ]));
     expect(repository.updateReviewRecord).toHaveBeenCalledWith({
       userId: DEFAULT_USER_ID,
       grammarPointId: GRAMMAR_POINT_ID,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type {
   GrammarBootstrapResponse,
   GrammarPointSummary,
@@ -33,6 +34,8 @@ export function GrammarLearningShell() {
   const [categorySlug, setCategorySlug] = useState("");
   const [stageSlug, setStageSlug] = useState(DEFAULT_STAGE_SLUG);
   const [moduleSlug, setModuleSlug] = useState("");
+  const [practicality, setPracticality] = useState("");
+  const [learningStatus, setLearningStatus] = useState("");
   const [knowledgeDimensions, setKnowledgeDimensions] = useState<
     KnowledgeDimension[]
   >([]);
@@ -160,6 +163,8 @@ export function GrammarLearningShell() {
         if (browseMode === "curriculum" && moduleSlug) {
           params.set("module", moduleSlug);
         }
+        if (practicality) params.set("practicality", practicality);
+        if (learningStatus) params.set("learningStatus", learningStatus);
         params.set("limit", String(GRAMMAR_FETCH_LIMIT));
 
         try {
@@ -198,6 +203,8 @@ export function GrammarLearningShell() {
     dimensionSlug,
     moduleSlug,
     stageSlug,
+    practicality,
+    learningStatus,
   ]);
 
   useEffect(() => {
@@ -217,6 +224,8 @@ export function GrammarLearningShell() {
     setCategorySlug("");
     setStageSlug(DEFAULT_STAGE_SLUG);
     setModuleSlug("");
+    setPracticality("");
+    setLearningStatus("");
   }
 
   function clearQuery() {
@@ -268,6 +277,8 @@ export function GrammarLearningShell() {
     if (browseMode === "curriculum" && moduleSlug) {
       params.set("module", moduleSlug);
     }
+    if (practicality) params.set("practicality", practicality);
+    if (learningStatus) params.set("learningStatus", learningStatus);
     params.set("limit", String(GRAMMAR_FETCH_LIMIT));
     params.set("offset", String(items.length));
 
@@ -323,6 +334,12 @@ export function GrammarLearningShell() {
     browseMode === "knowledge" ? selectedDimension : selectedStage;
   const selectedSubcategory =
     browseMode === "knowledge" ? selectedCategory : selectedModule;
+  const inProgressCurriculumItem = items.find(
+    (item) => item.learningStatus && item.learningStatus !== "mastered"
+  );
+  const nextCurriculumItem = inProgressCurriculumItem ??
+    items.find((item) => item.learningStatus !== "mastered") ??
+    items[0];
 
   return (
     <div className="mx-auto w-full max-w-[1180px]">
@@ -330,9 +347,11 @@ export function GrammarLearningShell() {
         progress={progress}
         isLoading={isProgressLoading}
         error={progressError}
+        onShowCurriculum={() => handleBrowseModeChange("curriculum")}
       />
 
-      <div className="mt-5 inline-flex h-10 items-center rounded-lg border border-border bg-surface p-1">
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <div className="inline-flex h-10 items-center rounded-lg border border-border bg-surface p-1">
         <button
           type="button"
           aria-pressed={browseMode === "knowledge"}
@@ -357,16 +376,24 @@ export function GrammarLearningShell() {
         >
           课程顺序
         </button>
+        </div>
+        <Link href="/grammar/comparisons" className="text-sm font-semibold text-muted transition hover:text-foreground sm:hidden">
+          易混对比
+        </Link>
       </div>
 
       <div className="mt-6">
-        <GrammarSearch
+          <GrammarSearch
           query={query}
           isLoading={isSearchLoading}
           resultCount={items.length}
           onQueryChange={setQuery}
           onClearQuery={clearQuery}
           onSubmit={() => setSubmittedQuery(query)}
+          practicality={practicality}
+          learningStatus={learningStatus}
+          onPracticalityChange={setPracticality}
+          onLearningStatusChange={setLearningStatus}
         />
       </div>
 
@@ -399,7 +426,7 @@ export function GrammarLearningShell() {
         )}
 
         <section className="min-w-0" aria-labelledby="grammar-results-heading">
-          <div className="border-b border-border pb-5">
+            <div className="border-b border-border pb-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-muted">
@@ -415,6 +442,16 @@ export function GrammarLearningShell() {
                   <p className="mt-1 max-w-[680px] text-sm leading-6 text-muted">
                     {selectedPath.description}
                   </p>
+                ) : null}
+                {browseMode === "curriculum" && nextCurriculumItem ? (
+                  <Link
+                    href={`/practice?grammarId=${nextCurriculumItem.id}`}
+                    className="mt-3 inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong"
+                  >
+                    {inProgressCurriculumItem
+                      ? "继续当前阶段"
+                      : "按顺序开始"}
+                  </Link>
                 ) : null}
               </div>
             </div>
@@ -552,7 +589,18 @@ export function GrammarLearningShell() {
           {!isSearchLoading && !searchError && items.length > 0 ? (
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {items.map((item) => (
-                <GrammarCard key={item.id} grammarPoint={item} />
+                <GrammarCard
+                  key={item.id}
+                  grammarPoint={item}
+                  curriculumOrder={browseMode === "curriculum" && item.curriculum
+                    ? moduleSlug
+                      ? item.curriculum.moduleOrder ?? item.curriculum.recommendedOrder
+                      : item.curriculum.recommendedOrder
+                    : null}
+                  contextualCategory={browseMode === "knowledge"
+                    ? item.taxonomyTags.find((tag) => tag.dimensionSlug === dimensionSlug)?.nameZh ?? null
+                    : null}
+                />
               ))}
             </div>
           ) : null}

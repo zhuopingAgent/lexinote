@@ -34,6 +34,11 @@ export function ReviewClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingCompletionCount, setPendingCompletionCount] = useState(0);
   const [dueReviewCount, setDueReviewCount] = useState(0);
+  const [activeFilter, setActiveFilter] = useState<{
+    group: "grammarPoint" | "errorType" | "scenario" | "register";
+    key: string;
+    label: string;
+  } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,7 +60,11 @@ export function ReviewClient() {
         );
         setDueReviewCount(
           result.dueReviewCount ??
-            result.items.filter((item) => item.status === "mastered").length
+            result.items.filter((item) =>
+              item.status === "mastered" &&
+              item.nextReviewAt !== null &&
+              new Date(item.nextReviewAt).getTime() <= Date.now()
+            ).length
         );
         setAggregations(
           result.aggregations ?? {
@@ -84,18 +93,43 @@ export function ReviewClient() {
   }, []);
 
   const aggregationGroups = [
-    { label: "具体用法", items: aggregations.grammarPoints },
-    { label: "错误类型", items: aggregations.errorTypes },
-    { label: "场景", items: aggregations.scenarios },
-    { label: "语体", items: aggregations.registers },
+    { label: "具体用法", group: "grammarPoint" as const, items: aggregations.grammarPoints },
+    { label: "错误类型", group: "errorType" as const, items: aggregations.errorTypes },
+    { label: "场景", group: "scenario" as const, items: aggregations.scenarios },
+    { label: "语体", group: "register" as const, items: aggregations.registers },
   ];
   const reviewGrammarPointCount = new Set([
     ...items.map((item) => item.grammarPoint.id),
     ...objectiveRecommendations.map((item) => item.grammarPointId),
   ]).size;
-  const pendingItems = items.filter((item) => item.status !== "mastered");
-  const dueReviewItems = items.filter((item) => item.status === "mastered");
-  const orderedItems = [...pendingItems, ...dueReviewItems];
+  const filteredItems = activeFilter ? items.filter((item) => {
+    if (activeFilter.group === "grammarPoint") {
+      return item.grammarPoint.id === activeFilter.key;
+    }
+    if (activeFilter.group === "errorType") {
+      return item.issues.some((issue) => issue.errorTypeCode === activeFilter.key) ||
+        item.mistakeTypes.includes(activeFilter.key);
+    }
+    if (activeFilter.group === "scenario") {
+      return item.sceneTag?.nameEn === activeFilter.key;
+    }
+    return item.registerTag?.nameEn === activeFilter.key;
+  }) : items;
+  const filteredRecommendations = activeFilter
+    ? activeFilter.group === "grammarPoint"
+      ? objectiveRecommendations.filter((item) => item.grammarPointId === activeFilter.key)
+      : []
+    : objectiveRecommendations;
+  const pendingItems = filteredItems.filter((item) => item.status !== "mastered");
+  const dueReviewItems = filteredItems.filter((item) =>
+    item.status === "mastered" &&
+    item.nextReviewAt !== null &&
+    new Date(item.nextReviewAt).getTime() <= Date.now()
+  );
+  const scheduledReviewItems = filteredItems.filter((item) =>
+    item.status === "mastered" && !dueReviewItems.includes(item)
+  );
+  const orderedItems = [...pendingItems, ...dueReviewItems, ...scheduledReviewItems];
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
@@ -117,24 +151,48 @@ export function ReviewClient() {
       </section>
 
       {!isLoading && !error && items.length > 0 ? (
-        <section className="mt-6 grid gap-5 border-y border-white/8 py-5 sm:grid-cols-2 lg:grid-cols-4">
-          {aggregationGroups.map((group) => (
-            <div key={group.label}>
-              <p className="text-sm font-semibold text-white/46">{group.label}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {group.items.map((aggregateItem) => (
-                  <span
-                    key={aggregateItem.key}
-                    className="inline-flex min-h-8 items-center rounded-full border border-white/10 px-3 py-1 text-xs text-white/58"
-                  >
-                    {aggregateItem.label}
-                    <span className="ml-2 text-white/30">{aggregateItem.count}</span>
-                  </span>
-                ))}
+        <details className="group mt-6 border-y border-white/8 py-4">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white/58 marker:hidden">
+            <span>{activeFilter ? `筛选：${activeFilter.label}` : "筛选复习记录"}</span>
+            <span aria-hidden="true" className="text-white/32 transition group-open:rotate-180">⌄</span>
+          </summary>
+          <section className="grid gap-5 pt-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="复习筛选">
+            {aggregationGroups.map((group) => (
+              <div key={group.label}>
+                <p className="text-sm font-semibold text-white/46">{group.label}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {group.items.map((aggregateItem) => (
+                    <button
+                      type="button"
+                      key={aggregateItem.key}
+                      aria-pressed={activeFilter?.group === group.group && activeFilter.key === aggregateItem.key}
+                      onClick={() => setActiveFilter((current) =>
+                        current?.group === group.group && current.key === aggregateItem.key
+                          ? null
+                          : { group: group.group, key: aggregateItem.key, label: aggregateItem.label }
+                      )}
+                      className={activeFilter?.group === group.group && activeFilter.key === aggregateItem.key
+                        ? "inline-flex min-h-8 items-center rounded-full border border-accent/40 bg-accent-soft px-3 py-1 text-xs font-semibold text-accent-strong"
+                        : "inline-flex min-h-8 items-center rounded-full border border-white/10 px-3 py-1 text-xs text-white/58 transition hover:border-white/22 hover:text-white/76"}
+                    >
+                      {aggregateItem.label}
+                      <span className="ml-2 text-white/30">{aggregateItem.count}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+        </details>
+      ) : null}
+
+      {activeFilter ? (
+        <div className="mt-5 flex items-center justify-between gap-3 border-b border-white/8 pb-4 text-sm text-white/54">
+          <span>正在查看：{activeFilter.label} · {filteredItems.length} 条</span>
+          <button type="button" onClick={() => setActiveFilter(null)} className="font-semibold text-accent-strong transition hover:text-accent">
+            清除筛选
+          </button>
+        </div>
       ) : null}
 
       {error ? (
@@ -146,7 +204,7 @@ export function ReviewClient() {
         </div>
       ) : null}
 
-      {!isLoading && !error && objectiveRecommendations.length > 0 ? (
+      {!isLoading && !error && filteredRecommendations.length > 0 ? (
         <section id="pending" className="mt-6 scroll-mt-20 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -159,7 +217,7 @@ export function ReviewClient() {
             </div>
           </div>
           <div className="mt-4 divide-y divide-white/8">
-            {objectiveRecommendations.slice(0, 4).map((recommendation) => (
+            {filteredRecommendations.slice(0, 4).map((recommendation) => (
               <div
                 key={recommendation.grammarPointId}
                 className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
@@ -209,9 +267,11 @@ export function ReviewClient() {
         </div>
       ) : null}
 
-      {!isLoading && !error && items.length === 0 && objectiveRecommendations.length === 0 ? (
+      {!isLoading && !error && filteredItems.length === 0 && filteredRecommendations.length === 0 ? (
         <div className="mt-6 rounded-[20px] border border-dashed border-white/12 bg-[#17171799] px-6 py-12 text-center">
-          <p className="text-base font-medium text-white/60">暂时没有复习项</p>
+          <p className="text-base font-medium text-white/60">
+            {activeFilter ? "这个筛选下没有复习项" : "暂时没有复习项"}
+          </p>
           <Link
             href="/grammar"
             className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-accent px-5 text-sm font-semibold text-black transition hover:bg-accent-strong"
@@ -227,7 +287,7 @@ export function ReviewClient() {
             <div key={item.reviewRecordId}>
               {index === 0 && pendingItems.length > 0 ? (
                 <h2
-                  id={objectiveRecommendations.length === 0 ? "pending" : undefined}
+                  id={filteredRecommendations.length === 0 ? "pending" : undefined}
                   className="mb-3 scroll-mt-20 text-lg font-semibold text-white/76"
                 >
                   待完成
@@ -235,7 +295,12 @@ export function ReviewClient() {
               ) : null}
               {index === pendingItems.length && dueReviewItems.length > 0 ? (
                 <h2 id="due-review" className="mb-3 scroll-mt-20 text-lg font-semibold text-white/76">
-                  待复习
+                  今日待复习
+                </h2>
+              ) : null}
+              {index === pendingItems.length + dueReviewItems.length && scheduledReviewItems.length > 0 ? (
+                <h2 className="mb-3 text-lg font-semibold text-white/76">
+                  之后复习
                 </h2>
               ) : null}
               <article className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
@@ -341,7 +406,7 @@ export function ReviewClient() {
                   href={`/practice?grammarId=${item.grammarPoint.id}&mode=review`}
                   className="inline-flex h-10 items-center justify-center rounded-full bg-accent px-4 text-sm font-semibold text-black transition hover:bg-accent-strong"
                 >
-                  再练一次
+                  {item.status === "mastered" ? "开始复习" : "继续练习"}
                 </Link>
               </div>
               </article>

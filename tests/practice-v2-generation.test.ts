@@ -426,9 +426,50 @@ describe("practice V2 validators and fallback", () => {
     const wrong = await client.evaluateSentence({ grammarPoint: requestPoint, sentence: "先生、もう一度説明してもらえる？", sceneTag: "hospital", registerTag: "polite", answerContract: item.answerContract });
     expect(wrong.issues.map((issue) => issue.errorTypeCode)).toContain("register_mismatch");
     expect(wrong.grammarScore).toBeGreaterThan(wrong.registerScore);
-    expect(wrong.correctedSentence).toBe("すみません、もう一度説明していただけますか。");
-    const accepted = await client.evaluateSentence({ grammarPoint: requestPoint, sentence: "すみません、もう一度説明していただけますか。", sceneTag: "hospital", registerTag: "polite", answerContract: item.answerContract });
+    expect(wrong.correctedSentence).toBe("すみません、もう一度説明してもらえますか。");
+    expect(wrong.betterVersions.some((version) =>
+      version.sentence === "すみません、もう一度説明していただけますか。"
+    )).toBe(true);
+    const accepted = await client.evaluateSentence({ grammarPoint: requestPoint, sentence: "すみません、もう一度説明してもらえますか。", sceneTag: "hospital", registerTag: "polite", answerContract: item.answerContract });
     expect(accepted.isCorrect).toBe(true);
+    const differentTarget = await client.evaluateSentence({ grammarPoint: requestPoint, sentence: "すみません、もう一度説明していただけますか。", sceneTag: "hospital", registerTag: "polite", answerContract: item.answerContract });
+    expect(differentTarget.isCorrect).toBe(false);
+    expect(differentTarget.issues.map((issue) => issue.errorTypeCode)).toContain("semantic_error");
+  });
+
+  it("does not accept an existence sentence with the wrong location particle", async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    const client = new GrammarAiClient();
+    const intent = translationIntent();
+    const item = buildLocalFallbackV2({ intent, grammarPoint, fallbackReason: "TEST" });
+    const locationItem = {
+      ...item,
+      referenceAnswers: [{
+        jp: "駅の近くにコンビニがあります。",
+        zh: "车站附近有便利店。",
+        noteZh: "存在地点使用「に」。",
+      }],
+      answerContract: {
+        ...item.answerContract,
+        allowedVariants: ["駅の近くにコンビニがあります。"],
+        requiredGrammarFeatures: [
+          ...item.answerContract.requiredGrammarFeatures,
+          "location-ni",
+          "subject-ga",
+          "existence-predicate",
+        ],
+      },
+    };
+    const feedback = await client.evaluateSentence({
+      grammarPoint,
+      sentence: "駅の近くでコンビニがあります。",
+      sceneTag: "daily_life",
+      registerTag: "polite",
+      answerContract: locationItem.answerContract,
+    });
+    expect(feedback.isCorrect).toBe(false);
+    expect(feedback.issues.map((issue) => issue.errorTypeCode)).toContain("particle_error");
+    expect(feedback.correctedSentence).toBe("駅の近くにコンビニがあります。");
   });
 
   it("accepts a validated natural equivalent even when AI feedback is overly strict", async () => {

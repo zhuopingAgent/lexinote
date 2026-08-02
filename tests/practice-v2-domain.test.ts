@@ -300,7 +300,7 @@ describe("answer equivalence and specialization", () => {
   const contract: AnswerContract = {
     requiredMeaningSlots: ["再说明一次"],
     requiredGrammarFeatures: ["sense:te_moraemasu_request"],
-    allowedVariants: ["すみません、もう一度説明していただけますか。"],
+    allowedVariants: ["すみません、もう一度説明してもらえますか。"],
     allowedRegisterRange: ["polite"],
     prohibitedPatterns: [],
     acceptableAlternativePolicy: "natural_variants",
@@ -312,24 +312,32 @@ describe("answer equivalence and specialization", () => {
     },
   };
 
-  it("accepts a natural softener variant but rejects a casual register", () => {
+  it("accepts a natural softener without changing the target grammar", () => {
     const point = {
       ...grammarPoint,
       canonicalForm: "〜てもらえますか",
       connections: [{ baseType: "verb", requiredForm: "te_form", pattern: "Vて + もらえますか", notes: "", sortOrder: 1 }],
     } as unknown as GrammarPointDetail;
     expect(evaluateAnswerEquivalence({
-      sentence: "恐れ入りますが、もう一度説明していただけますか。",
+      sentence: "恐れ入りますが、もう一度説明してもらえますか。",
       answerContract: contract,
       grammarPoint: point,
     }).equivalent).toBe(true);
     const casual = evaluateAnswerEquivalence({
-      sentence: "もう一度説明していただける？",
+      sentence: "もう一度説明してもらえる？",
       answerContract: contract,
       grammarPoint: point,
     });
     expect(casual.equivalent).toBe(false);
     expect(casual.registerSatisfied).toBe(false);
+
+    const differentGrammar = evaluateAnswerEquivalence({
+      sentence: "すみません、もう一度説明していただけますか。",
+      answerContract: contract,
+      grammarPoint: point,
+    });
+    expect(differentGrammar.equivalent).toBe(false);
+    expect(differentGrammar.grammarFeatureSatisfied).toBe(false);
   });
 
   it("keeps specialization IDs unique and covers the high-frequency families", () => {

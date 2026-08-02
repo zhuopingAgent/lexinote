@@ -501,7 +501,16 @@ export function parsePrerequisites(value: unknown): GrammarPrerequisite[] {
       return [];
     }
 
-    return [{ grammarPointId, grammarPoint, canonicalForm, senseKey, relationType }];
+    return [{
+      grammarPointId,
+      grammarPoint,
+      canonicalForm,
+      senseKey,
+      relationType,
+      learningStatus: typeof record.learningStatus === "string"
+        ? parseReviewStatus(record.learningStatus)
+        : null,
+    }];
   });
 }
 

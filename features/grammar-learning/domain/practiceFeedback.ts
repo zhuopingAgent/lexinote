@@ -97,8 +97,14 @@ function issueCodeFor(grammarPoint: GrammarPointDetail): GrammarErrorCode {
 export function buildChoiceFeedback(input: {
   isCorrect: boolean;
   grammarPoint: GrammarPointDetail;
+  exerciseType: "meaning_choice" | "contrast_choice";
+  selectedOptionLabel: string;
+  selectedOptionReason?: string | null;
 }): AIFeedbackResult {
   if (input.isCorrect) {
+    const explanation = input.exerciseType === "meaning_choice"
+      ? `「${input.selectedOptionLabel}」准确概括了「${input.grammarPoint.grammarPoint}」当前学习的意思。`
+      : `「${input.selectedOptionLabel}」最符合题目给出的语境和使用条件。`;
     return {
       isCorrect: true,
       grammarScore: 5,
@@ -107,9 +113,9 @@ export function buildChoiceFeedback(input: {
       registerScore: 4,
       sceneFitScore: 5,
       issues: [],
-      explanation: "判断正确。你抓住了这个语境中的关键条件。",
+      explanation,
       nextHint: "下一题会换一个条件，确认你能独立迁移。",
-      feedbackText: "选得对。这个表达符合当前语境。",
+      feedbackText: "回答正确。",
       correctedSentence: null,
       betterVersions: [],
       mistakeTypes: [],
@@ -121,7 +127,7 @@ export function buildChoiceFeedback(input: {
   const issue: AIFeedbackIssue = {
     errorTypeCode,
     severity: "medium",
-    explanation: "当前选择没有满足题目中的核心语义或使用条件。",
+    explanation: input.selectedOptionReason || "当前选择没有满足题目中的核心语义或使用条件。",
     correction: "",
     relatedGrammarPointId: input.grammarPoint.id,
   };
@@ -133,9 +139,9 @@ export function buildChoiceFeedback(input: {
     registerScore: 3,
     sceneFitScore: 2,
     issues: [issue],
-    explanation: "这个选项没有满足题目里的核心条件。请重新看人物关系、动作类型或信息来源。",
+    explanation: `你选择的「${input.selectedOptionLabel}」不合适。${input.selectedOptionReason || "它没有满足题目里的核心条件。"}`,
     nextHint: "按题目中的关键条件排除不合适的选项，再选一次。",
-    feedbackText: "这个选项不对。",
+    feedbackText: "回答不正确，再看一下这个选项表达的意思。",
     correctedSentence: null,
     betterVersions: [],
     mistakeTypes: [errorTypeCode],

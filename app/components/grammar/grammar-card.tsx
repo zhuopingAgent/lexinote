@@ -4,10 +4,41 @@ import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 
 type GrammarCardProps = {
   grammarPoint: GrammarPointSummary;
+  curriculumOrder?: number | null;
+  contextualCategory?: string | null;
 };
 
-export function GrammarCard({ grammarPoint }: GrammarCardProps) {
+const LEARNING_STATUS_STYLES = {
+  mastered: {
+    label: "已掌握",
+    className: "border-[#4ade8050] bg-[#4ade8014] text-[#86efac]",
+  },
+  learning: {
+    label: "学习中",
+    className: "border-accent/35 bg-accent-soft text-accent-strong",
+  },
+  reviewing: {
+    label: "学习中",
+    className: "border-accent/35 bg-accent-soft text-accent-strong",
+  },
+  new: {
+    label: "已开始",
+    className: "border-border bg-surface-strong text-foreground/65",
+  },
+} as const;
+
+export function GrammarCard({
+  grammarPoint,
+  curriculumOrder,
+  contextualCategory,
+}: GrammarCardProps) {
   const titleId = `grammar-card-title-${grammarPoint.id}`;
+  const learningStatus = grammarPoint.learningStatus
+    ? LEARNING_STATUS_STYLES[grammarPoint.learningStatus]
+    : {
+        label: "未开始",
+        className: "border-border bg-transparent text-muted",
+      };
 
   return (
     <article className="flex min-h-[220px] flex-col rounded-lg border border-border bg-surface p-5">
@@ -20,24 +51,29 @@ export function GrammarCard({ grammarPoint }: GrammarCardProps) {
           >
             {grammarPoint.grammarPoint}
           </Link>
-          {grammarPoint.reading ? (
+          {grammarPoint.reading && grammarPoint.reading !== grammarPoint.grammarPoint ? (
             <p className="mt-1 break-words text-sm leading-6 text-muted">
               {grammarPoint.reading}
             </p>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {grammarPoint.learningStatus === "mastered" ? (
-            <span className="inline-flex min-h-7 items-center rounded-full border border-[#4ade8050] bg-[#4ade8014] px-3 py-1 text-xs font-semibold text-[#86efac]">
-              已掌握
-            </span>
-          ) : null}
+          <span className={`inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-semibold ${learningStatus.className}`}>
+            {learningStatus.label}
+          </span>
           <PracticalityBadge practicality={grammarPoint.practicality} />
         </div>
       </div>
 
       <p className="mt-3 text-xs leading-5 text-muted">
-        {grammarPoint.primaryCategory ? (
+        {curriculumOrder ? (
+          <span className="mr-2 font-semibold text-accent-strong">
+            第 {curriculumOrder} 项
+          </span>
+        ) : null}
+        {contextualCategory ? (
+          contextualCategory
+        ) : grammarPoint.primaryCategory ? (
           <>
             {grammarPoint.primaryCategory.nameZh}
             {grammarPoint.subCategory ? ` · ${grammarPoint.subCategory}` : ""}
