@@ -103,6 +103,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   >(async () => {});
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingScrollRestoreRef = useRef<{
     scrollHeight: number;
     scrollTop: number;
@@ -143,7 +144,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         setGlobalMemories(result.globalMemories);
         setCollections(result.collections);
         setAiAvailable(result.aiAvailable);
-        if (!activeSessionId) setMode(result.preferences.defaultMode);
+        if (!activeSessionIdRef.current) setMode(result.preferences.defaultMode);
       } catch (loadError) {
         if (!controller.signal.aborted) {
           setError(getErrorMessage(loadError, "对话列表加载失败，请稍后再试。"));
@@ -159,7 +160,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query, activeSessionId]);
+  }, [query]);
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -178,6 +179,11 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const controller = new AbortController();
     setIsSessionLoading(true);
     setError(null);
+    setCurrentSession(null);
+    setMessages([]);
+    setLearningItems([]);
+    setSessionMemories([]);
+    setOlderMessagesCursor(null);
     void fetch(`/api/conversations/${activeSessionId}`, { signal: controller.signal })
       .then((response) => readJson<ConversationSessionResponse>(response))
       .then((result) => {
@@ -223,6 +229,35 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     }
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
+
+  useLayoutEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }, [input]);
+
+  function startNewConversation() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    activeSessionIdRef.current = null;
+    skipSessionLoadRef.current = null;
+    pendingScrollRestoreRef.current = null;
+    setActiveSessionId(null);
+    setCurrentSession(null);
+    setMessages([]);
+    setLearningItems([]);
+    setSessionMemories([]);
+    setOlderMessagesCursor(null);
+    setInput("");
+    setQuery("");
+    setMode(preferences.defaultMode);
+    setError(null);
+    setIsGenerating(false);
+    setIsSessionLoading(false);
+    setIsSidebarOpen(false);
+    router.push("/conversation");
+  }
 
   async function loadMoreSessions() {
     if (!nextCursor) return;
@@ -490,29 +525,32 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     );
     setSessions((current) => current.filter((session) => session.id !== sessionId));
     if (activeSessionId === sessionId) {
-      setActiveSessionId(null);
-      setCurrentSession(null);
-      setMessages([]);
-      router.push("/conversation");
+      startNewConversation();
     }
   }
 
   async function changeMode(nextMode: ConversationMode) {
+    const previousMode = mode;
     setMode(nextMode);
     if (!activeSessionId) return;
-    const result = await fetch(`/api/conversations/${activeSessionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: nextMode }),
-    }).then((response) => readJson<{ session: ConversationSession }>(response));
-    setCurrentSession(result.session);
-    setSessions((current) =>
-      sortSessionsByActivity(
-        current.map((session) =>
-          session.id === result.session.id ? result.session : session
+    try {
+      const result = await fetch(`/api/conversations/${activeSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: nextMode }),
+      }).then((response) => readJson<{ session: ConversationSession }>(response));
+      setCurrentSession(result.session);
+      setSessions((current) =>
+        sortSessionsByActivity(
+          current.map((session) =>
+            session.id === result.session.id ? result.session : session
+          )
         )
-      )
-    );
+      );
+    } catch (modeError) {
+      setMode(previousMode);
+      setError(getErrorMessage(modeError, "对话模式保存失败，请重试。"));
+    }
   }
 
   async function updatePreferences(input: Partial<ConversationPreferences>) {
@@ -524,6 +562,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
       readJson<{ preferences: ConversationPreferences }>(response)
     );
     setPreferences(result.preferences);
+    if (!activeSessionId && input.defaultMode) {
+      setMode(result.preferences.defaultMode);
+    }
   }
 
   async function createCollection(name: string) {
@@ -610,6 +651,13 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   }
 
   const allMemories = [...globalMemories, ...sessionMemories];
+  const activeSessionPreview = sessions.find(
+    (session) => session.id === activeSessionId
+  );
+  const headerTitle =
+    currentSession?.title ??
+    activeSessionPreview?.title ??
+    (isSessionLoading ? "正在加载..." : "新对话");
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-background text-foreground">
@@ -624,6 +672,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         onClose={() => setIsSidebarOpen(false)}
         onDelete={deleteSession}
         onLoadMore={loadMoreSessions}
+        onNewSession={startNewConversation}
         onQueryChange={setQuery}
         onRename={renameSession}
       />
@@ -632,7 +681,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface-soft px-3 sm:px-4">
           <button type="button" aria-label="打开对话列表" onClick={() => setIsSidebarOpen(true)} className="inline-flex size-10 items-center justify-center rounded-md text-muted transition hover:bg-surface-strong hover:text-foreground lg:hidden"><MenuIcon className="size-5" /></button>
           <h1 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground/80">
-            {currentSession?.title ?? "新对话"}
+            {headerTitle}
           </h1>
           <select aria-label="对话模式" value={mode} disabled={isGenerating} onChange={(event) => void changeMode(event.target.value as ConversationMode)} className="h-9 max-w-[132px] rounded-md border border-border bg-background px-2 text-sm sm:max-w-none">
             {Object.entries(MODE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -682,6 +731,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
             {!aiAvailable ? <div className="mb-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-sm text-muted">AI Gateway 未配置，历史与记忆仍可查看，但暂时不能发送消息。</div> : null}
             <div className="flex items-end gap-2 rounded-lg border border-border bg-surface p-2 shadow-[0_12px_36px_rgba(0,0,0,0.16)] focus-within:border-foreground/30">
               <textarea
+                ref={inputRef}
                 aria-label="对话消息"
                 value={input}
                 disabled={!aiAvailable}
@@ -690,12 +740,16 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
                 placeholder={`${MODE_LABELS[mode]}...`}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
                     event.preventDefault();
                     void sendMessage();
                   }
                 }}
-                className="max-h-40 min-h-11 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-[15px] leading-6 outline-none disabled:cursor-not-allowed"
+                className="max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2.5 text-[15px] leading-6 outline-none disabled:cursor-not-allowed"
               />
               {isGenerating ? (
                 <button type="button" aria-label="停止生成" onClick={() => abortControllerRef.current?.abort()} className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition hover:opacity-85"><StopIcon className="size-4" /></button>

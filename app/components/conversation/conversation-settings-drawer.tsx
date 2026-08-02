@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckIcon, CloseIcon, EditIcon, PlusIcon, TrashIcon } from "@/app/components/icons";
 import type {
   CollectionSummary,
@@ -46,13 +46,41 @@ function MemoryRow({
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(memory.content);
   const [isBusy, setIsBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function save() {
     if (!content.trim()) return;
     setIsBusy(true);
+    setActionError(null);
     try {
       await onUpdate(memory.id, { content: content.trim(), status: "active" });
       setIsEditing(false);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "记忆保存失败，请重试。");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function updateStatus(status: "active" | "dismissed") {
+    setIsBusy(true);
+    setActionError(null);
+    try {
+      await onUpdate(memory.id, { status });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "记忆更新失败，请重试。");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function remove() {
+    setIsBusy(true);
+    setActionError(null);
+    try {
+      await onDelete(memory.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "记忆删除失败，请重试。");
     } finally {
       setIsBusy(false);
     }
@@ -62,9 +90,9 @@ function MemoryRow({
     <div className="border-t border-border py-3 first:border-t-0">
       {isEditing ? (
         <div className="flex items-start gap-2">
-          <textarea aria-label="编辑记忆" value={content} maxLength={300} onChange={(event) => setContent(event.target.value)} className="min-h-20 min-w-0 flex-1 resize-y rounded-md border border-border bg-background p-2 text-sm outline-none focus:border-foreground/30" />
-          <button type="button" aria-label="保存记忆" disabled={isBusy} onClick={() => void save()} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><CheckIcon className="size-4" /></button>
-          <button type="button" aria-label="取消编辑" onClick={() => { setContent(memory.content); setIsEditing(false); }} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><CloseIcon className="size-4" /></button>
+          <textarea aria-label={`编辑记忆：${memory.content}`} value={content} maxLength={300} onChange={(event) => setContent(event.target.value)} className="min-h-20 min-w-0 flex-1 resize-y rounded-md border border-border bg-background p-2 text-sm outline-none focus:border-foreground/30" />
+          <button type="button" aria-label={`保存记忆：${memory.content}`} disabled={isBusy} onClick={() => void save()} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground disabled:opacity-45"><CheckIcon className="size-4" /></button>
+          <button type="button" aria-label={`取消编辑记忆：${memory.content}`} disabled={isBusy} onClick={() => { setContent(memory.content); setIsEditing(false); }} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground disabled:opacity-45"><CloseIcon className="size-4" /></button>
         </div>
       ) : (
         <div className="flex items-start gap-2">
@@ -79,16 +107,17 @@ function MemoryRow({
           </div>
           {memory.status === "suggested" ? (
             <>
-              <button type="button" aria-label="确认记忆" onClick={() => void onUpdate(memory.id, { status: "active" })} className="inline-flex size-9 items-center justify-center rounded-md text-accent-strong hover:bg-accent-soft"><CheckIcon className="size-4" /></button>
-              <button type="button" aria-label="编辑并确认记忆" onClick={() => setIsEditing(true)} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><EditIcon className="size-4" /></button>
-              <button type="button" aria-label="忽略记忆" onClick={() => void onUpdate(memory.id, { status: "dismissed" })} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><CloseIcon className="size-4" /></button>
+              <button type="button" aria-label={`确认记忆：${memory.content}`} disabled={isBusy} onClick={() => void updateStatus("active")} className="inline-flex size-9 items-center justify-center rounded-md text-accent-strong hover:bg-accent-soft disabled:opacity-45"><CheckIcon className="size-4" /></button>
+              <button type="button" aria-label={`编辑并确认记忆：${memory.content}`} disabled={isBusy} onClick={() => setIsEditing(true)} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground disabled:opacity-45"><EditIcon className="size-4" /></button>
+              <button type="button" aria-label={`忽略记忆：${memory.content}`} disabled={isBusy} onClick={() => void updateStatus("dismissed")} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground disabled:opacity-45"><CloseIcon className="size-4" /></button>
             </>
           ) : (
-            <button type="button" aria-label="编辑记忆" onClick={() => setIsEditing(true)} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><EditIcon className="size-4" /></button>
+            <button type="button" aria-label={`编辑记忆：${memory.content}`} disabled={isBusy} onClick={() => setIsEditing(true)} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground disabled:opacity-45"><EditIcon className="size-4" /></button>
           )}
-          <button type="button" aria-label="删除记忆" onClick={() => void onDelete(memory.id)} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-danger-soft hover:text-danger"><TrashIcon className="size-4" /></button>
+          <button type="button" aria-label={`删除记忆：${memory.content}`} disabled={isBusy} onClick={() => void remove()} className="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-45"><TrashIcon className="size-4" /></button>
         </div>
       )}
+      {actionError ? <p role="alert" className="mt-2 text-xs leading-5 text-danger">{actionError}</p> : null}
     </div>
   );
 }
@@ -112,11 +141,39 @@ export function ConversationSettingsDrawer({
   const [memoryKind, setMemoryKind] = useState<ConversationMemoryKind>("preference");
   const [collectionName, setCollectionName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCloseRef.current();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
+
+  async function savePreferences(input: Partial<ConversationPreferences>) {
+    setActionError(null);
+    try {
+      await onUpdatePreferences(input);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "偏好保存失败，请重试。");
+    }
+  }
 
   async function submitMemory(event: FormEvent) {
     event.preventDefault();
     if (!memoryContent.trim()) return;
     setIsBusy(true);
+    setActionError(null);
     try {
       await onCreateMemory({
         scope: memoryScope === "session" && !sessionId ? "global" : memoryScope,
@@ -124,6 +181,8 @@ export function ConversationSettingsDrawer({
         content: memoryContent.trim(),
       });
       setMemoryContent("");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "记忆保存失败，请重试。");
     } finally {
       setIsBusy(false);
     }
@@ -133,10 +192,13 @@ export function ConversationSettingsDrawer({
     event.preventDefault();
     if (!collectionName.trim()) return;
     setIsBusy(true);
+    setActionError(null);
     try {
       const collection = await onCreateCollection(collectionName.trim());
       await onUpdatePreferences({ defaultCollectionId: collection.collectionId });
       setCollectionName("");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "单词本创建失败，请重试。");
     } finally {
       setIsBusy(false);
     }
@@ -144,18 +206,19 @@ export function ConversationSettingsDrawer({
 
   return (
     <>
-      {isOpen ? <button type="button" aria-label="关闭设置" className="fixed inset-0 z-40 bg-black/55" onClick={onClose} /> : null}
+      {isOpen ? <button type="button" aria-hidden="true" tabIndex={-1} className="fixed inset-0 z-40 bg-black/55" onClick={onClose} /> : null}
       <aside aria-label="对话偏好与记忆" aria-hidden={!isOpen} inert={!isOpen} className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] flex-col border-l border-border bg-surface shadow-2xl transition-transform ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
         <div className="flex h-14 items-center justify-between border-b border-border px-4">
           <h2 className="text-sm font-semibold text-foreground">偏好与记忆</h2>
-          <button type="button" aria-label="关闭设置" onClick={onClose} className="inline-flex size-10 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><CloseIcon className="size-5" /></button>
+          <button ref={closeButtonRef} type="button" aria-label="关闭设置" onClick={onClose} className="inline-flex size-10 items-center justify-center rounded-md text-muted hover:bg-surface-strong hover:text-foreground"><CloseIcon className="size-5" /></button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {actionError ? <p role="alert" className="mb-4 rounded-md bg-danger-soft px-3 py-2 text-xs leading-5 text-danger">{actionError}</p> : null}
           <section>
             <h3 className="text-xs font-semibold uppercase text-muted">回答偏好</h3>
             <label className="mt-3 block text-xs text-muted" htmlFor="conversation-default-mode">默认模式</label>
-            <select id="conversation-default-mode" value={preferences.defaultMode} onChange={(event) => void onUpdatePreferences({ defaultMode: event.target.value as ConversationPreferences["defaultMode"] })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+            <select id="conversation-default-mode" value={preferences.defaultMode} onChange={(event) => void savePreferences({ defaultMode: event.target.value as ConversationPreferences["defaultMode"] })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
               <option value="auto">自动识别</option>
               <option value="zh_to_ja">中译日</option>
               <option value="ja_to_zh">日译中</option>
@@ -163,7 +226,7 @@ export function ConversationSettingsDrawer({
               <option value="explain_ja">用法讲解</option>
             </select>
             <label className="mt-3 block text-xs text-muted" htmlFor="conversation-register">默认语体</label>
-            <select id="conversation-register" value={preferences.defaultRegister} onChange={(event) => void onUpdatePreferences({ defaultRegister: event.target.value as ConversationPreferences["defaultRegister"] })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+            <select id="conversation-register" value={preferences.defaultRegister} onChange={(event) => void savePreferences({ defaultRegister: event.target.value as ConversationPreferences["defaultRegister"] })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
               <option value="auto">根据语境</option>
               <option value="casual">随意</option>
               <option value="polite">礼貌</option>
@@ -171,7 +234,7 @@ export function ConversationSettingsDrawer({
             </select>
 
             <label className="mt-3 block text-xs text-muted" htmlFor="conversation-collection">默认单词本</label>
-            <select id="conversation-collection" value={preferences.defaultCollectionId ?? ""} onChange={(event) => void onUpdatePreferences({ defaultCollectionId: event.target.value ? Number(event.target.value) : null })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+            <select id="conversation-collection" value={preferences.defaultCollectionId ?? ""} onChange={(event) => void savePreferences({ defaultCollectionId: event.target.value ? Number(event.target.value) : null })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
               <option value="">未设置</option>
               {collections.map((collection) => <option key={collection.collectionId} value={collection.collectionId}>{collection.name}</option>)}
             </select>
