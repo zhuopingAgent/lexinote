@@ -67,11 +67,18 @@ export async function createCollection(page: Page, name: string) {
 }
 
 export function findCollectionCard(page: Page, name: string): Locator {
-  return page.getByRole("link").filter({ hasText: name }).first();
+  return page.locator("article").filter({
+    has: page.getByRole("link", {
+      name: `打开单词本 ${name}`,
+      exact: true,
+    }),
+  });
 }
 
 export async function openCollectionDetail(page: Page, name: string) {
-  await findCollectionCard(page, name).click();
+  await findCollectionCard(page, name)
+    .getByRole("link", { name: `打开单词本 ${name}`, exact: true })
+    .click();
   await expect(page.getByRole("heading", { name })).toBeVisible();
 }
 

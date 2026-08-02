@@ -34,6 +34,9 @@
   `collection` for internal code, API, and database naming only.
 - Present non-persistable lookup placeholders as incomplete or not found. Do not
   label them as AI-generated content when no complete entry was produced.
+- Keep card navigation links and card action buttons as sibling interactive
+  controls. Never place edit, delete, resync, or remove actions inside a link or
+  a container with `role="link"`.
 
 ## Naming
 

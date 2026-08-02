@@ -685,6 +685,12 @@ test("collection CRUD, add/remove word, and word detail navigation work end-to-e
   await createCollection(page, initialName);
 
   const initialCard = findCollectionCard(page, initialName);
+  const initialCardLink = initialCard.getByRole("link", {
+    name: `打开单词本 ${initialName}`,
+    exact: true,
+  });
+  await expect(initialCardLink).toBeVisible();
+  await expect(initialCardLink.getByRole("button")).toHaveCount(0);
   await initialCard.getByRole("button", { name: "编辑" }).click();
   await page.getByLabel("编辑单词本名称").fill(renamedName);
   await page.getByRole("button", { name: "保存" }).click();
@@ -709,7 +715,10 @@ test("collection CRUD, add/remove word, and word detail navigation work end-to-e
   await expect(page.getByText("静か", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("手动添加")).toBeVisible();
 
-  await page.getByRole("link", { name: "查看 静か 的详情" }).click();
+  const wordDetailLink = page.getByRole("link", { name: "查看 静か 的详情" });
+  await expect(wordDetailLink.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "移除" })).toBeVisible();
+  await wordDetailLink.click();
   await expect(page.getByText("静か", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("安静；安稳", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: `返回 ${renamedName}` }).click();

@@ -69,6 +69,7 @@ Keep repo-specific agent instructions here so they stay consistent across machin
 - Context-aware results are not persisted as standalone contextual rows by default. The service normalizes context-shaped readings back to dictionary-form pronunciations before deciding whether anything should be saved.
 - Collections are now a first-class product surface. `collections` and `collection_words` model a many-to-many relation between concrete dictionary entries (`word_id`) and collections.
 - A single dictionary entry can belong to multiple collections, but the same `word_id` can appear only once inside a given collection, no matter whether it was added manually or by AI auto-filtering.
+- Collection cards keep their navigation link separate from edit, delete, resync, and remove buttons. Do not use a `role="link"` card that contains nested interactive controls.
 - Overview and collection add-word pagination use abortable, generation-guarded requests. When resetting a search, clear stale cursors so old pages cannot be appended to new query results.
 - Collection auto-filtering runs asynchronously through `auto_filter_jobs`. New dictionary entries only enqueue classification when a truly new entry is persisted.
 - `auto_filter_jobs` has bounded retries, a stale-running lease, and request-triggered polling so pending or crashed jobs can be recovered without manual database edits. Exhausted stale `collection_sync` jobs must also move the owning collection to `failed` when the job still matches the current rule version.
