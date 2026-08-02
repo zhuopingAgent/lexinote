@@ -173,6 +173,48 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   expectNoBrowserErrors(browserErrors);
 });
 
+test("review consolidates objective progress into one record per grammar point", async ({
+  page,
+}) => {
+  const reviewResponse = await page.request.get("/api/review/today");
+  expect(reviewResponse.ok()).toBe(true);
+  const review = (await reviewResponse.json()) as {
+    items: Array<{ grammarPoint: { id: string; grammarPoint: string } }>;
+    objectiveRecommendations: Array<{
+      grammarPointId: string;
+      grammarPoint: string;
+      overallEstimate: number;
+      objectives: Array<{ learningObjective: string }>;
+    }>;
+  };
+  const availabilityRecommendations = review.objectiveRecommendations.filter(
+    (recommendation) => recommendation.grammarPoint === "Aがあります"
+  );
+
+  expect(availabilityRecommendations).toHaveLength(1);
+  expect(availabilityRecommendations[0]?.objectives).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ learningObjective: "meaning" }),
+      expect.objectContaining({ learningObjective: "form_connection" }),
+    ])
+  );
+  expect(availabilityRecommendations[0]?.overallEstimate).toBeCloseTo(0.2585);
+
+  const visibleGrammarPointIds = [
+    ...review.items.map((item) => item.grammarPoint.id),
+    ...review.objectiveRecommendations.map(
+      (recommendation) => recommendation.grammarPointId
+    ),
+  ];
+  expect(new Set(visibleGrammarPointIds).size).toBe(visibleGrammarPointIds.length);
+
+  await page.goto("/review");
+  await expect(
+    page.getByRole("link", { name: "Aがあります", exact: true })
+  ).toHaveCount(1);
+  await expect(page.getByText("综合掌握 26%", { exact: true })).toBeVisible();
+});
+
 test("practice sessions hide prompts, support retry, and return direct recorded feedback", async ({
   page,
 }) => {
@@ -333,18 +375,22 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     items: Array<{
       grammarPoint: { id: string };
       mistakeCount: number;
+      objectiveProgress: Array<{ learningObjective: string }>;
     }>;
     objectiveRecommendations?: Array<{ grammarPointId: string; reasonZh: string }>;
   };
-  const mistakeCountBeforeReveal = reviewBeforeReveal.items.find(
+  const targetReviewItems = reviewBeforeReveal.items.filter(
     (item) => item.grammarPoint.id === grammarPoint?.id
-  )?.mistakeCount;
-  expect(mistakeCountBeforeReveal).toBeGreaterThanOrEqual(1);
-  expect(reviewBeforeReveal.objectiveRecommendations).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ grammarPointId: grammarPoint?.id }),
-    ])
   );
+  const mistakeCountBeforeReveal = targetReviewItems[0]?.mistakeCount;
+  expect(targetReviewItems).toHaveLength(1);
+  expect(targetReviewItems[0]?.objectiveProgress.length).toBeGreaterThanOrEqual(1);
+  expect(
+    reviewBeforeReveal.objectiveRecommendations?.filter(
+      (recommendation) => recommendation.grammarPointId === grammarPoint?.id
+    )
+  ).toHaveLength(0);
+  expect(mistakeCountBeforeReveal).toBeGreaterThanOrEqual(1);
 
   const revealResponse = await page.request.post(
     `/api/practice/exercises/${second.exercise.id}/reveal`,

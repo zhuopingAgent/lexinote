@@ -38,6 +38,8 @@ import type {
   GrammarExample,
   GrammarPointDetail,
   GrammarPointSummary,
+  GrammarLearningObjective,
+  GrammarObjectiveProgress,
   GrammarProgressGroup,
   GrammarReviewAggregations,
   GrammarObjectiveRecommendation,
@@ -86,6 +88,54 @@ import type {
   TagRow,
   TaxonomyNodeRow,
 } from "@/features/grammar-learning/infrastructure/GrammarRepositoryRows";
+
+const GRAMMAR_LEARNING_OBJECTIVES = new Set<GrammarLearningObjective>([
+  "meaning",
+  "form_connection",
+  "grammar_selection",
+  "register_control",
+  "collocation_naturalness",
+  "discourse_function",
+]);
+
+function parseObjectiveProgress(value: unknown): GrammarObjectiveProgress[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+
+    const record = item as Record<string, unknown>;
+    const learningObjective = record.learningObjective;
+    if (
+      typeof learningObjective !== "string" ||
+      !GRAMMAR_LEARNING_OBJECTIVES.has(
+        learningObjective as GrammarLearningObjective
+      )
+    ) {
+      return [];
+    }
+
+    return [{
+      learningObjective: learningObjective as GrammarLearningObjective,
+      estimate: Number(record.estimate) || 0,
+      confidence: Number(record.confidence) || 0,
+      attempts: toInteger(record.attempts as number | string | null),
+      assistedAttempts: toInteger(
+        record.assistedAttempts as number | string | null
+      ),
+      exposureCount: toInteger(record.exposureCount as number | string | null),
+      recentErrorCodes: parseStringArray(record.recentErrorCodes),
+      nextReviewAt:
+        typeof record.nextReviewAt === "string"
+          ? toIsoString(record.nextReviewAt)
+          : null,
+    }];
+  });
+}
 
 export class GrammarRepository {
   async listKnowledgeDimensions(): Promise<KnowledgeDimension[]> {
@@ -528,6 +578,7 @@ export class GrammarRepository {
       const exposureCount = toInteger(row.exposure_count);
       const estimate = Number(row.estimate);
       const recentErrorCodes = parseStringArray(row.recent_error_codes);
+      const objectives = parseObjectiveProgress(row.objective_progress);
       const reasonZh = exposureCount > 0
         ? "看过参考答案后还没有形成独立证据，建议先做一次无答案复现。"
         : attempts > 0 && assistedAttempts / attempts >= 0.5
@@ -550,6 +601,9 @@ export class GrammarRepository {
         exposureCount,
         recentErrorCodes,
         nextReviewAt: toIsoString(row.next_review_at),
+        overallEstimate: Number(row.overall_estimate),
+        overallConfidence: Number(row.overall_confidence),
+        objectives,
         reasonZh,
       };
     });

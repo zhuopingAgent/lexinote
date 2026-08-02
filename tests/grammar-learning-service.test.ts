@@ -525,6 +525,80 @@ describe("GrammarLearningService", () => {
     expect(review.items[0].grammarPoint.id).toBe(tenseGrammarPoint.id);
   });
 
+  it("consolidates objective states into one progress record per grammar point", async () => {
+    const repository = createRepositoryMock(grammarPoint);
+    repository.listReviewItems.mockResolvedValue([
+      {
+        reviewRecordId: "review-1",
+        grammarPoint,
+        status: "reviewing",
+        mistakeCount: 2,
+        nextReviewAt: null,
+        lastReviewedAt: null,
+        mistakeTypes: ["connection_error"],
+        issues: [],
+      },
+    ]);
+    repository.listObjectiveRecommendations.mockResolvedValue([
+      {
+        grammarPointId: grammarPoint.id,
+        grammarPoint: grammarPoint.grammarPoint,
+        coreMeaning: grammarPoint.coreMeaning,
+        senseKey: grammarPoint.senseKey,
+        learningObjective: "form_connection",
+        estimate: 0.2,
+        confidence: 0.5,
+        attempts: 3,
+        assistedAttempts: 1,
+        exposureCount: 0,
+        recentErrorCodes: ["connection_error"],
+        nextReviewAt: null,
+        overallEstimate: 0.4,
+        overallConfidence: 0.5,
+        objectives: [
+          {
+            learningObjective: "form_connection",
+            estimate: 0.2,
+            confidence: 0.5,
+            attempts: 3,
+            assistedAttempts: 1,
+            exposureCount: 0,
+            recentErrorCodes: ["connection_error"],
+            nextReviewAt: null,
+          },
+          {
+            learningObjective: "meaning",
+            estimate: 0.6,
+            confidence: 0.5,
+            attempts: 2,
+            assistedAttempts: 0,
+            exposureCount: 0,
+            recentErrorCodes: [],
+            nextReviewAt: null,
+          },
+        ],
+        reasonZh: "当前接续仍需复习。",
+      },
+    ]);
+    const service = new GrammarLearningService(
+      repository as never,
+      new GrammarAiClient()
+    );
+
+    const result = await service.listReviewItems();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      reviewRecordId: "review-1",
+      overallEstimate: 0.4,
+      objectiveProgress: [
+        { learningObjective: "form_connection" },
+        { learningObjective: "meaning" },
+      ],
+    });
+    expect(result.objectiveRecommendations).toEqual([]);
+  });
+
   it("resolves grammar details by stable sense key and logs the canonical ID", async () => {
     const repository = createRepositoryMock(genericGrammarPoint);
     const service = new GrammarLearningService(

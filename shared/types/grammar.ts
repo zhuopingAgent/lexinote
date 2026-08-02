@@ -472,6 +472,8 @@ export type GrammarReviewItem = {
   nextHint?: string | null;
   sceneTag?: GrammarTag | null;
   registerTag?: GrammarTag | null;
+  objectiveProgress?: GrammarObjectiveProgress[];
+  overallEstimate?: number | null;
 };
 
 export type GrammarReviewAggregateItem = {
@@ -489,18 +491,17 @@ export type GrammarReviewAggregations = {
   registers: GrammarReviewAggregateItem[];
 };
 
-export type GrammarObjectiveRecommendation = {
-  grammarPointId: string;
-  grammarPoint: string;
-  coreMeaning: string;
-  senseKey: string;
+export type GrammarLearningObjective =
+  | "meaning"
+  | "form_connection"
+  | "grammar_selection"
+  | "register_control"
+  | "collocation_naturalness"
+  | "discourse_function";
+
+export type GrammarObjectiveProgress = {
   learningObjective:
-    | "meaning"
-    | "form_connection"
-    | "grammar_selection"
-    | "register_control"
-    | "collocation_naturalness"
-    | "discourse_function";
+    GrammarLearningObjective;
   estimate: number;
   confidence: number;
   attempts: number;
@@ -508,6 +509,16 @@ export type GrammarObjectiveRecommendation = {
   exposureCount: number;
   recentErrorCodes: string[];
   nextReviewAt: string | null;
+};
+
+export type GrammarObjectiveRecommendation = GrammarObjectiveProgress & {
+  grammarPointId: string;
+  grammarPoint: string;
+  coreMeaning: string;
+  senseKey: string;
+  overallEstimate: number;
+  overallConfidence: number;
+  objectives: GrammarObjectiveProgress[];
   reasonZh: string;
 };
 

@@ -184,3 +184,96 @@ ON CONFLICT (user_id, grammar_point_id) DO UPDATE SET
   mistake_count = EXCLUDED.mistake_count,
   last_reviewed_at = EXCLUDED.last_reviewed_at,
   updated_at = NOW();
+
+INSERT INTO learner_objective_states (
+  user_id,
+  grammar_point_id,
+  sense_key,
+  learning_objective,
+  estimate,
+  confidence,
+  attempts,
+  assisted_attempts,
+  exposure_count,
+  recent_error_codes,
+  next_review_at
+)
+SELECT
+  '00000000-0000-0000-0000-000000000001'::uuid,
+  grammar_points.id,
+  grammar_points.sense_key,
+  objective.learning_objective,
+  objective.estimate,
+  objective.confidence,
+  objective.attempts,
+  objective.assisted_attempts,
+  objective.exposure_count,
+  objective.recent_error_codes,
+  NOW() - INTERVAL '1 day'
+FROM grammar_points
+CROSS JOIN (
+  VALUES
+    ('meaning', 0.450, 0.360, 3, 0, 0, '[]'::jsonb),
+    ('form_connection', 0.067, 0.600, 5, 2, 1, '["connection_error"]'::jsonb)
+) AS objective(
+  learning_objective,
+  estimate,
+  confidence,
+  attempts,
+  assisted_attempts,
+  exposure_count,
+  recent_error_codes
+)
+WHERE grammar_points.seed_key = 'gp_a_ga_arimasu'
+ON CONFLICT (user_id, grammar_point_id, sense_key, learning_objective) DO UPDATE SET
+  estimate = EXCLUDED.estimate,
+  confidence = EXCLUDED.confidence,
+  attempts = EXCLUDED.attempts,
+  assisted_attempts = EXCLUDED.assisted_attempts,
+  exposure_count = EXCLUDED.exposure_count,
+  recent_error_codes = EXCLUDED.recent_error_codes,
+  next_review_at = EXCLUDED.next_review_at,
+  updated_at = NOW();
+
+INSERT INTO learner_objective_states (
+  user_id,
+  grammar_point_id,
+  sense_key,
+  learning_objective,
+  estimate,
+  confidence,
+  attempts,
+  assisted_attempts,
+  exposure_count,
+  recent_error_codes,
+  next_review_at
+)
+SELECT
+  '00000000-0000-0000-0000-000000000001'::uuid,
+  grammar_points.id,
+  grammar_points.sense_key,
+  objective.learning_objective,
+  objective.estimate,
+  0.500,
+  2,
+  0,
+  0,
+  '[]'::jsonb,
+  NOW() + INTERVAL '3 days'
+FROM grammar_points
+CROSS JOIN (
+  VALUES
+    ('meaning', 0.100),
+    ('form_connection', 0.700),
+    ('register_control', 0.700)
+) AS objective(learning_objective, estimate)
+WHERE grammar_points.seed_key = 'gp_te_moraemasu_ka'
+ON CONFLICT (user_id, grammar_point_id, sense_key, learning_objective) DO UPDATE SET
+  estimate = EXCLUDED.estimate,
+  confidence = EXCLUDED.confidence,
+  attempts = EXCLUDED.attempts,
+  assisted_attempts = EXCLUDED.assisted_attempts,
+  exposure_count = EXCLUDED.exposure_count,
+  recent_error_codes = EXCLUDED.recent_error_codes,
+  next_review_at = EXCLUDED.next_review_at,
+  updated_at = NOW();

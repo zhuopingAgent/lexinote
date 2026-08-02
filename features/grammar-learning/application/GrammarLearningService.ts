@@ -529,11 +529,34 @@ export class GrammarLearningService {
       this.repository.getReviewAggregations(normalizedUserId),
       this.repository.listObjectiveRecommendations(normalizedUserId),
     ]);
+    const recommendationsByGrammarPoint = new Map(
+      objectiveRecommendations.map((recommendation) => [
+        recommendation.grammarPointId,
+        recommendation,
+      ])
+    );
+    const consolidatedItems = items.map((item) => {
+      const recommendation = recommendationsByGrammarPoint.get(
+        item.grammarPoint.id
+      );
+
+      return {
+        ...item,
+        objectiveProgress: recommendation?.objectives ?? [],
+        overallEstimate: recommendation?.overallEstimate ?? null,
+      };
+    });
+    const reviewGrammarPointIds = new Set(
+      consolidatedItems.map((item) => item.grammarPoint.id)
+    );
 
     return {
-      items,
+      items: consolidatedItems,
       aggregations,
-      objectiveRecommendations,
+      objectiveRecommendations: objectiveRecommendations.filter(
+        (recommendation) =>
+          !reviewGrammarPointIds.has(recommendation.grammarPointId)
+      ),
     };
   }
 

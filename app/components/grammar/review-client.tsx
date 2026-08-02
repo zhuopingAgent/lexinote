@@ -140,14 +140,14 @@ export function ReviewClient() {
                 建议先复习
               </h2>
               <p className="mt-1 text-sm leading-6 text-white/42">
-                按具体用法和学习目标排序，不会因为分类标签重复计算。
+                每个语法点只显示一条综合进度，薄弱目标合并在同一条记录中。
               </p>
             </div>
           </div>
           <div className="mt-4 divide-y divide-white/8">
             {objectiveRecommendations.slice(0, 4).map((recommendation) => (
               <div
-                key={`${recommendation.grammarPointId}:${recommendation.learningObjective}`}
+                key={recommendation.grammarPointId}
                 className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
               >
                 <div className="min-w-0">
@@ -158,11 +158,14 @@ export function ReviewClient() {
                     >
                       {recommendation.grammarPoint}
                     </Link>
-                    <TagBadge
-                      tag={PRACTICE_OBJECTIVE_LABELS[recommendation.learningObjective]}
-                    />
+                    {recommendation.objectives.map((objective) => (
+                      <TagBadge
+                        key={objective.learningObjective}
+                        tag={PRACTICE_OBJECTIVE_LABELS[objective.learningObjective]}
+                      />
+                    ))}
                     <span className="text-xs text-white/34">
-                      掌握估计 {Math.round(recommendation.estimate * 100)}%
+                      综合掌握 {Math.round(recommendation.overallEstimate * 100)}%
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-white/52">
@@ -231,6 +234,21 @@ export function ReviewClient() {
                   <p className="mt-2 text-sm leading-6 text-white/52">
                     {item.grammarPoint.coreMeaning}
                   </p>
+                  {item.objectiveProgress && item.objectiveProgress.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {item.objectiveProgress.map((objective) => (
+                        <TagBadge
+                          key={objective.learningObjective}
+                          tag={PRACTICE_OBJECTIVE_LABELS[objective.learningObjective]}
+                        />
+                      ))}
+                      {item.overallEstimate !== null && item.overallEstimate !== undefined ? (
+                        <span className="text-xs text-white/34">
+                          综合掌握 {Math.round(item.overallEstimate * 100)}%
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="shrink-0 text-sm leading-6 text-white/38">
                   下次：{formatShortDateTime(item.nextReviewAt, "待安排")}
