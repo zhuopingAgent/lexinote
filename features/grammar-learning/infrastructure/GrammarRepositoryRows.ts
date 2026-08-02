@@ -224,6 +224,9 @@ export type ObjectiveRecommendationRow = {
   exposure_count: number | string;
   recent_error_codes: unknown;
   next_review_at: string | Date | null;
+  overall_estimate: number | string;
+  overall_confidence: number | string;
+  objective_progress: unknown;
 };
 
 export type ProgressGroupRow = {

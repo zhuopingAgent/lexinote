@@ -1001,39 +1001,97 @@ export const SELECT_REVIEW_AGGREGATIONS_SQL = `
 `;
 
 export const SELECT_OBJECTIVE_RECOMMENDATIONS_SQL = `
+  WITH objective_scope AS (
+    SELECT
+      learner_objective_states.*,
+      grammar_points.grammar_point,
+      grammar_points.core_meaning,
+      grammar_points.sense_key AS grammar_sense_key
+    FROM learner_objective_states
+    JOIN grammar_points
+      ON grammar_points.id = learner_objective_states.grammar_point_id
+    WHERE learner_objective_states.user_id = $1::uuid
+      AND grammar_points.status = 'active'
+  ),
+  recommendation_scope AS (
+    SELECT DISTINCT grammar_point_id
+    FROM objective_scope
+    WHERE next_review_at IS NULL
+      OR next_review_at <= NOW()
+      OR estimate < 0.72
+      OR exposure_count > 0
+  ),
+  ranked_objectives AS (
+    SELECT
+      objective_scope.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY objective_scope.grammar_point_id
+        ORDER BY
+          (objective_scope.next_review_at <= NOW()) DESC NULLS LAST,
+          objective_scope.exposure_count DESC,
+          CASE
+            WHEN objective_scope.attempts = 0 THEN 0
+            ELSE objective_scope.assisted_attempts::numeric / objective_scope.attempts
+          END DESC,
+          objective_scope.estimate ASC,
+          objective_scope.confidence ASC,
+          objective_scope.learning_objective ASC
+      ) AS objective_rank
+    FROM objective_scope
+    JOIN recommendation_scope
+      ON recommendation_scope.grammar_point_id = objective_scope.grammar_point_id
+  ),
+  objective_aggregates AS (
+    SELECT
+      grammar_point_id,
+      AVG(estimate)::float8 AS overall_estimate,
+      AVG(confidence)::float8 AS overall_confidence,
+      jsonb_agg(
+        jsonb_build_object(
+          'learningObjective', learning_objective,
+          'estimate', estimate::float8,
+          'confidence', confidence::float8,
+          'attempts', attempts,
+          'assistedAttempts', assisted_attempts,
+          'exposureCount', exposure_count,
+          'recentErrorCodes', recent_error_codes,
+          'nextReviewAt', next_review_at
+        )
+        ORDER BY objective_rank
+      ) AS objective_progress
+    FROM ranked_objectives
+    GROUP BY grammar_point_id
+  )
   SELECT
-    learner_objective_states.grammar_point_id::text,
-    grammar_points.grammar_point,
-    grammar_points.core_meaning,
-    learner_objective_states.sense_key,
-    learner_objective_states.learning_objective,
-    learner_objective_states.estimate::float8,
-    learner_objective_states.confidence::float8,
-    learner_objective_states.attempts,
-    learner_objective_states.assisted_attempts,
-    learner_objective_states.exposure_count,
-    learner_objective_states.recent_error_codes,
-    learner_objective_states.next_review_at
-  FROM learner_objective_states
-  JOIN grammar_points
-    ON grammar_points.id = learner_objective_states.grammar_point_id
-  WHERE learner_objective_states.user_id = $1::uuid
-    AND grammar_points.status = 'active'
-    AND (
-      learner_objective_states.next_review_at IS NULL
-      OR learner_objective_states.next_review_at <= NOW()
-      OR learner_objective_states.estimate < 0.72
-      OR learner_objective_states.exposure_count > 0
-    )
+    primary_objective.grammar_point_id::text,
+    primary_objective.grammar_point,
+    primary_objective.core_meaning,
+    primary_objective.grammar_sense_key AS sense_key,
+    primary_objective.learning_objective,
+    primary_objective.estimate::float8,
+    primary_objective.confidence::float8,
+    primary_objective.attempts,
+    primary_objective.assisted_attempts,
+    primary_objective.exposure_count,
+    primary_objective.recent_error_codes,
+    primary_objective.next_review_at,
+    objective_aggregates.overall_estimate,
+    objective_aggregates.overall_confidence,
+    objective_aggregates.objective_progress
+  FROM ranked_objectives primary_objective
+  JOIN objective_aggregates
+    ON objective_aggregates.grammar_point_id = primary_objective.grammar_point_id
+  WHERE primary_objective.objective_rank = 1
   ORDER BY
-    (learner_objective_states.next_review_at <= NOW()) DESC NULLS LAST,
-    learner_objective_states.exposure_count DESC,
+    (primary_objective.next_review_at <= NOW()) DESC NULLS LAST,
+    primary_objective.exposure_count DESC,
     CASE
-      WHEN learner_objective_states.attempts = 0 THEN 0
-      ELSE learner_objective_states.assisted_attempts::numeric / learner_objective_states.attempts
+      WHEN primary_objective.attempts = 0 THEN 0
+      ELSE primary_objective.assisted_attempts::numeric / primary_objective.attempts
     END DESC,
-    learner_objective_states.estimate ASC,
-    learner_objective_states.confidence ASC
+    objective_aggregates.overall_estimate ASC,
+    objective_aggregates.overall_confidence ASC,
+    primary_objective.grammar_point ASC
   LIMIT 8;
 `;
 
