@@ -5,16 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   getErrorMessage,
   isAbortError,
-  readResponseErrorMessage,
 } from "@/app/lib/api-client";
+import { addCollectionWords } from "@/app/lib/collection-api";
+import { fetchDictionaryOverview } from "@/app/lib/dictionary-api";
 import { summarizeMeaning } from "@/app/lib/text";
 import { mergeUniqueWordEntriesById } from "@/app/lib/word-list";
 import { WORD_PAGE_SIZE } from "@/shared/constants/pagination";
-import type { AddCollectionWordsResponse } from "@/shared/types/collections";
-import type {
-  DictionaryOverviewItem,
-  DictionaryOverviewResponse,
-} from "@/shared/types/dictionary";
+import type { DictionaryOverviewItem } from "@/shared/types/dictionary";
 
 type CollectionWordPickerProps = {
   collectionId: number;
@@ -98,26 +95,14 @@ export function CollectionWordPicker({
     }
 
     try {
-      const searchParams = new URLSearchParams();
-      if (options.query) {
-        searchParams.set("query", options.query);
-      }
-      searchParams.set("limit", String(WORD_PAGE_SIZE));
-      if (options.cursor) {
-        searchParams.set("cursor", options.cursor);
-      }
-
-      const response = await fetch(`/api/words?${searchParams.toString()}`, {
+      const payload = await fetchDictionaryOverview({
+        query: options.query || undefined,
+        cursor: options.cursor,
+        limit: WORD_PAGE_SIZE,
         signal: options.reset
           ? activeResetAbortControllerRef.current?.signal
           : activeLoadMoreAbortControllerRef.current?.signal,
       });
-
-      if (!response.ok) {
-        throw new Error(await readResponseErrorMessage(response, "请求失败"));
-      }
-
-      const payload = (await response.json()) as DictionaryOverviewResponse;
       if (isStaleRequest()) {
         return;
       }
@@ -172,21 +157,9 @@ export function CollectionWordPicker({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`/api/collections/${collectionId}/words/bulk`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          wordIds: selectedWordIds,
-        }),
+      const payload = await addCollectionWords(collectionId, {
+        wordIds: selectedWordIds,
       });
-
-      if (!response.ok) {
-        throw new Error(await readResponseErrorMessage(response, "请求失败"));
-      }
-
-      const payload = (await response.json()) as AddCollectionWordsResponse;
 
       if (payload.addedCount === 0) {
         setNotice("所选词条都已经在当前单词本中。");

@@ -9,8 +9,14 @@ import { TagBadge } from "@/app/components/grammar/tag-badge";
 import {
   getErrorMessage,
   isAiQuotaExhaustedError,
-  readJson,
 } from "@/app/lib/api-client";
+import {
+  advancePracticeSession,
+  createPracticeSession,
+  requestPracticeHint,
+  revealPracticeAnswer,
+  submitPracticeAttempt,
+} from "@/app/lib/practice-api";
 import {
   PRACTICE_OBJECTIVE_LABELS,
   PRACTICE_SKILL_LABELS,
@@ -18,8 +24,6 @@ import {
 import type { PracticeReferenceAnswer } from "@/shared/types/grammar";
 import type {
   PracticeAttemptResponse,
-  PracticeHintResponse,
-  PracticeRevealResponse,
   PracticeSessionEntryMode,
   PracticeSessionResponse,
 } from "@/shared/types/practice";
@@ -146,19 +150,16 @@ export function PracticeClient({
       setError(null);
       setAiApiErrorMessage(null);
       try {
-        const response = await fetch("/api/practice/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-          signal: controller.signal,
-          body: JSON.stringify({
+        const response = await createPracticeSession(
+          {
             clientSessionKey: sessionKey,
             grammarPointId,
             comparisonSetId,
             entryMode,
             plannedExerciseCount: 5,
-          }),
-        }).then((result) => readJson<PracticeSessionResponse>(result));
+          },
+          controller.signal
+        );
         if (!controller.signal.aborted) {
           setAiApiErrorMessage(null);
           setSessionData(response);
@@ -214,18 +215,11 @@ export function PracticeClient({
     setIsActing(true);
     setError(null);
     try {
-      const response = await fetch(
-        `/api/practice/exercises/${exercise.id}/attempts`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            answer: exercise.responseMode === "text" ? answer : undefined,
-            selectedOptionId:
-              exercise.responseMode === "choice" ? selectedOptionId : undefined,
-          }),
-        }
-      ).then((result) => readJson<PracticeAttemptResponse>(result));
+      const response = await submitPracticeAttempt(exercise.id, {
+        answer: exercise.responseMode === "text" ? answer : undefined,
+        selectedOptionId:
+          exercise.responseMode === "choice" ? selectedOptionId : undefined,
+      });
       setAttempt(response);
       setReferenceAnswers(response.referenceAnswers);
       setAiApiErrorMessage(null);
@@ -246,14 +240,7 @@ export function PracticeClient({
     setIsActing(true);
     setError(null);
     try {
-      const response = await fetch(
-        `/api/practice/exercises/${exercise.id}/hints`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        }
-      ).then((result) => readJson<PracticeHintResponse>(result));
+      const response = await requestPracticeHint(exercise.id);
       if (response.hint) {
         setHints((current) => [...current, response.hint as string]);
       }
@@ -283,14 +270,7 @@ export function PracticeClient({
     setIsActing(true);
     setError(null);
     try {
-      const response = await fetch(
-        `/api/practice/exercises/${exercise.id}/reveal`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        }
-      ).then((result) => readJson<PracticeRevealResponse>(result));
+      const response = await revealPracticeAnswer(exercise.id);
       setReferenceAnswers(response.referenceAnswers);
       setRevealedCorrectOptionId(response.correctOptionId);
       setIsRevealed(true);
@@ -308,15 +288,7 @@ export function PracticeClient({
     setIsActing(true);
     setError(null);
     try {
-      const response = await fetch(
-        `/api/practice/sessions/${sessionData.session.id}/next`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-          body: "{}",
-        }
-      ).then((result) => readJson<PracticeSessionResponse>(result));
+      const response = await advancePracticeSession(sessionData.session.id);
       resetExerciseState();
       setAiApiErrorMessage(null);
       setSessionData(response);

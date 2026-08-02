@@ -13,6 +13,8 @@ import {
 import {
   buildResultDifferenceNotes,
   buildResultDifferenceOverview,
+} from "@/app/lib/word-result-differences";
+import {
   getResultEntries,
   mapResultToWordDataList,
 } from "@/app/lib/word-data";
@@ -20,8 +22,8 @@ import {
   getErrorMessage,
   isAbortError,
   isAiQuotaExhaustedError,
-  readJson,
 } from "@/app/lib/api-client";
+import { lookupDictionaryWord } from "@/app/lib/dictionary-api";
 import type {
   DictionaryEntry,
   WordLookupResponse,
@@ -215,20 +217,14 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/words/lookup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const payload = await lookupDictionaryWord(
+        {
           word: normalizedWord,
           context: normalizedContext || undefined,
           pronunciation: normalizedPronunciation || undefined,
-        }),
-        signal: abortController.signal,
-      });
-
-      const payload = await readJson<WordLookupResponse>(response);
+        },
+        abortController.signal
+      );
       if (!isCurrentLookup()) {
         return;
       }

@@ -9,6 +9,7 @@ import type {
   AutoFilterDictionaryEntry,
   CollectionAutoFilterRule,
 } from "@/shared/types/collections";
+import { ruleTextMatchesEntry } from "@/features/collections/domain/auto-filter-rule";
 import type {
   DictionaryEntry,
   DictionaryExample,
@@ -184,38 +185,6 @@ function parseWordMatchOutput(text: string) {
   } catch {
     return [];
   }
-}
-
-function normalizeRuleText(value: string) {
-  return value.toLowerCase().replace(/\s+/g, "");
-}
-
-function tokenizeEntryForRuleMatch(entry: AutoFilterDictionaryEntry) {
-  return Array.from(
-    new Set(
-      [
-        entry.word,
-        entry.pronunciation,
-        entry.meaningZh,
-        entry.partOfSpeech,
-        ...entry.meaningZh.split(/[；;、,，。/／\s]+/),
-      ]
-        .map((token) => token.trim())
-        .filter((token) => token.length >= 2)
-    )
-  );
-}
-
-function ruleTextMatchesEntry(ruleText: string, entry: AutoFilterDictionaryEntry) {
-  const normalizedRuleText = normalizeRuleText(ruleText);
-
-  if (!normalizedRuleText) {
-    return false;
-  }
-
-  return tokenizeEntryForRuleMatch(entry).some((token) =>
-    normalizedRuleText.includes(normalizeRuleText(token))
-  );
 }
 
 function fallbackCollectionMatches(

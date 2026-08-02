@@ -3,6 +3,7 @@ import {
   createConversationSession,
   deleteConversationMemory,
   fetchConversationBootstrap,
+  fetchConversationReviewInbox,
   streamConversationMessage,
   updateConversationPreferences,
 } from "@/app/lib/conversation-api";
@@ -56,7 +57,6 @@ describe("conversation API client", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "ja_to_zh" }),
-      signal: undefined,
     });
   });
 
@@ -117,5 +117,20 @@ describe("conversation API client", () => {
       message: "偏好无效",
       statusCode: 400,
     });
+  });
+
+  it("loads the review inbox with cancellation support", async () => {
+    const controller = new AbortController();
+    const response = { items: [] };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchConversationReviewInbox(controller.signal)
+    ).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversation/review-inbox",
+      { signal: controller.signal }
+    );
   });
 });

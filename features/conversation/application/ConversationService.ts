@@ -5,6 +5,7 @@ import {
   selectConversationGrammarCandidates,
   trimConversationContextMessages,
 } from "@/features/conversation/domain/conversation";
+import { assertUuid, isUuid } from "@/features/conversation/domain/validation";
 import type { ConversationAiClient } from "@/features/conversation/infrastructure/ConversationAiClient";
 import type { ConversationRepository } from "@/features/conversation/infrastructure/ConversationRepository";
 import { buildConversationSystemPrompt } from "@/features/conversation/prompts/conversation";
@@ -40,16 +41,8 @@ import {
   ValidationError,
 } from "@/shared/utils/errors";
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SESSION_PAGE_SIZE = 30;
 const MESSAGE_PAGE_SIZE = 50;
-
-function assertUuid(value: string, fieldName: string) {
-  if (!UUID_PATTERN.test(value)) {
-    throw new ValidationError(`${fieldName} must be a valid UUID`);
-  }
-}
 
 function encodeCursor(value: object) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -73,7 +66,7 @@ function assertCursorPosition(
   const timestamp = cursor.updatedAt ?? cursor.createdAt;
   if (
     typeof cursor.id !== "string" ||
-    !UUID_PATTERN.test(cursor.id) ||
+    !isUuid(cursor.id) ||
     typeof timestamp !== "string" ||
     !Number.isFinite(Date.parse(timestamp))
   ) {

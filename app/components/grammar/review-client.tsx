@@ -6,7 +6,6 @@ import type {
   GrammarReviewAggregations,
   GrammarReviewItem,
   GrammarObjectiveRecommendation,
-  GrammarReviewResponse,
 } from "@/shared/types/grammar";
 import {
   displayFeedbackSeverityLabel,
@@ -15,8 +14,9 @@ import {
 } from "@/app/components/grammar/display-labels";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
 import { formatShortDateTime } from "@/app/lib/date";
+import { fetchGrammarReview } from "@/app/lib/grammar-api";
 import { PRACTICE_OBJECTIVE_LABELS } from "@/features/grammar-learning/domain/practice";
 import { ConversationReviewInbox } from "@/app/components/grammar/conversation-review-inbox";
 
@@ -50,9 +50,7 @@ export function ReviewClient() {
       setError(null);
 
       try {
-        const result = await fetch("/api/review/today", {
-          signal: controller.signal,
-        }).then((response) => readJson<GrammarReviewResponse>(response));
+        const result = await fetchGrammarReview(controller.signal);
         setItems(result.items);
         setObjectiveRecommendations(result.objectiveRecommendations ?? []);
         setPendingCompletionCount(

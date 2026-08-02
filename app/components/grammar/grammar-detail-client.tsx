@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from "react";
 import type {
-  GrammarDetailResponse,
   GrammarPointDetail,
   GrammarPointSummary,
-  GrammarSearchResponse,
 } from "@/shared/types/grammar";
 import { GrammarDetail } from "@/app/components/grammar/grammar-detail";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
+import {
+  addGrammarFavorite,
+  fetchGrammarDetail,
+  fetchGrammarSearch,
+  removeGrammarFavorite,
+} from "@/app/lib/grammar-api";
 
 export function GrammarDetailClient({
   grammarPointId,
@@ -31,21 +35,22 @@ export function GrammarDetailClient({
       setError(null);
 
       try {
-        const detail = await fetch(`/api/grammar/${grammarPointId}`, {
-          signal: controller.signal,
-        }).then((response) => readJson<GrammarDetailResponse>(response));
+        const detail = await fetchGrammarDetail(
+          grammarPointId,
+          controller.signal
+        );
         setGrammarPoint(detail.grammarPoint);
         const curriculum = detail.grammarPoint.curriculum;
         if (curriculum?.module) {
           try {
-            const params = new URLSearchParams({
+            const moduleItems = await fetchGrammarSearch(
+              {
               stage: curriculum.stage.slug,
               module: curriculum.module.slug,
-              limit: "80",
-            });
-            const moduleItems = await fetch(`/api/grammar?${params.toString()}`, {
-              signal: controller.signal,
-            }).then((response) => readJson<GrammarSearchResponse>(response));
+                limit: 80,
+              },
+              controller.signal
+            );
             const currentIndex = moduleItems.items.findIndex(
               (item) => item.id === detail.grammarPoint.id
             );
@@ -81,24 +86,11 @@ export function GrammarDetailClient({
     const resolvedGrammarPointId = grammarPoint?.id ?? grammarPointId;
 
     if (isFavorite) {
-      await fetch("/api/favorites", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ grammarPointId: resolvedGrammarPointId }),
-      }).then((response) => readJson<{ ok: true }>(response));
+      await addGrammarFavorite(resolvedGrammarPointId);
       return;
     }
 
-    const params = new URLSearchParams({ grammarPointId: resolvedGrammarPointId });
-    const response = await fetch(`/api/favorites?${params.toString()}`, {
-      method: "DELETE",
-    });
-
-    if (!response.ok) {
-      await readJson<{ ok?: boolean }>(response);
-    }
+    await removeGrammarFavorite(resolvedGrammarPointId);
   }
 
   if (isLoading) {

@@ -14,6 +14,7 @@ import {
   WORD_PAGE_SIZE,
 } from "@/shared/constants/pagination";
 import { query } from "@/shared/db/query";
+import { toInteger, toIsoString } from "@/shared/db/values";
 import type {
   DictionaryEntry,
   DictionaryEntryCandidate,
@@ -61,21 +62,6 @@ type DictionaryEntryDetailRow = {
 type DictionaryEntryRecordRow = {
   word_id: number | string;
 };
-
-function toIsoString(value: string | Date) {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function toInteger(value: number | string, fieldName: string) {
-  const nextValue =
-    typeof value === "string" ? Number.parseInt(value, 10) : value;
-
-  if (!Number.isInteger(nextValue)) {
-    throw new Error(`${fieldName} must be an integer`);
-  }
-
-  return nextValue;
-}
 
 function parseExamples(value: unknown): DictionaryExample[] {
   if (typeof value === "string") {

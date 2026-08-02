@@ -4,16 +4,8 @@ import type {
   CollectionDetail,
   CollectionSummary,
 } from "@/shared/types/collections";
+import { isUniqueViolation } from "@/shared/db/postgres-errors";
 import { NotFoundError, ValidationError } from "@/shared/utils/errors";
-
-function isUniqueViolation(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
-  );
-}
 
 export class CollectionService {
   constructor(

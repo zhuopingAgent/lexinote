@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { GrammarFavoritesResponse, GrammarPointSummary } from "@/shared/types/grammar";
+import type { GrammarPointSummary } from "@/shared/types/grammar";
 import { GrammarCard } from "@/app/components/grammar/grammar-card";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import { getErrorMessage } from "@/app/lib/api-client";
+import {
+  fetchGrammarFavorites,
+  removeGrammarFavorite,
+} from "@/app/lib/grammar-api";
 
 export function FavoritesClient() {
   const [items, setItems] = useState<GrammarPointSummary[]>([]);
@@ -20,9 +24,7 @@ export function FavoritesClient() {
       setError(null);
 
       try {
-        const result = await fetch("/api/favorites", {
-          signal: controller.signal,
-        }).then((response) => readJson<GrammarFavoritesResponse>(response));
+        const result = await fetchGrammarFavorites(controller.signal);
         setItems(result.items);
       } catch (loadError) {
         if (!controller.signal.aborted) {
@@ -46,13 +48,7 @@ export function FavoritesClient() {
     setRemovingIds((current) => new Set(current).add(grammarPointId));
     setError(null);
     try {
-      const params = new URLSearchParams({ grammarPointId });
-      const response = await fetch(`/api/favorites?${params.toString()}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        await readJson(response);
-      }
+      await removeGrammarFavorite(grammarPointId);
       setItems((current) => current.filter((item) => item.id !== grammarPointId));
     } catch (removeError) {
       setError(getErrorMessage(removeError, "取消收藏失败，请稍后再试。"));

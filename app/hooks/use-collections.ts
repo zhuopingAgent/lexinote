@@ -7,20 +7,21 @@ import {
   isAbortError,
   isAiQuotaErrorMessage,
   isAiQuotaExhaustedError,
-  readJson,
 } from "@/app/lib/api-client";
+import {
+  addCollectionWord,
+  addCollectionWords,
+  createCollection,
+  deleteCollection,
+  fetchCollections,
+  updateCollection,
+} from "@/app/lib/collection-api";
 import {
   isAutoFilterSyncActive,
   isAutoFilterSyncFailed,
 } from "@/app/lib/collection-status";
 import { isPositiveInteger } from "@/app/lib/number";
-import type {
-  AddCollectionWordResponse,
-  AddCollectionWordsResponse,
-  CollectionListResponse,
-  CollectionResponse,
-  CollectionSummary,
-} from "@/shared/types/collections";
+import type { CollectionSummary } from "@/shared/types/collections";
 
 export function useCollections(activeView: AppView) {
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
@@ -85,11 +86,7 @@ export function useCollections(activeView: AppView) {
       }
 
       try {
-        const response = await fetch("/api/collections", {
-          signal: abortController.signal,
-        });
-
-        const payload = await readJson<CollectionListResponse>(response);
+        const payload = await fetchCollections(abortController.signal);
         if (!isCurrentLoad()) {
           return;
         }
@@ -168,17 +165,9 @@ export function useCollections(activeView: AppView) {
       throw new Error("当前词条或单词本信息无效，请刷新页面后重试。");
     }
 
-    const response = await fetch(`/api/collections/${collectionId}/words/bulk`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        wordIds: [wordId],
-      }),
+    const payload = await addCollectionWords(collectionId, {
+      wordIds: [wordId],
     });
-
-    const payload = await readJson<AddCollectionWordsResponse>(response);
 
     if (payload.addedCount > 0) {
       invalidateCollectionsLoad();
@@ -208,18 +197,10 @@ export function useCollections(activeView: AppView) {
       throw new Error("当前词条或单词本信息无效，请刷新页面后重试。");
     }
 
-    const response = await fetch(`/api/collections/${collectionId}/words`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        word: word.trim(),
-        pronunciation: pronunciation.trim(),
-      }),
+    const payload = await addCollectionWord(collectionId, {
+      word: word.trim(),
+      pronunciation: pronunciation.trim(),
     });
-
-    const payload = await readJson<AddCollectionWordResponse>(response);
 
     if (payload.status === "requires_selection") {
       throw new Error("这个词有多个读音，请先选择一个具体词条。");
@@ -254,17 +235,9 @@ export function useCollections(activeView: AppView) {
     setIsCreatingCollection(true);
 
     try {
-      const response = await fetch("/api/collections", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: collectionName.trim(),
-        }),
+      const payload = await createCollection({
+        name: collectionName.trim(),
       });
-
-      const payload = await readJson<CollectionResponse>(response);
       invalidateCollectionsLoad();
       setCollections((currentCollections) => [payload.collection, ...currentCollections]);
       setCollectionName("");
@@ -318,19 +291,11 @@ export function useCollections(activeView: AppView) {
     setBusyCollectionId(collectionId);
 
     try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const payload = await updateCollection(collectionId, {
           name: editingCollectionName.trim(),
           autoFilterEnabled: editingCollectionAutoFilterEnabled,
           autoFilterCriteria: editingCollectionAutoFilterCriteria.trim(),
-        }),
       });
-
-      const payload = await readJson<CollectionResponse>(response);
       invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>
@@ -359,11 +324,7 @@ export function useCollections(activeView: AppView) {
     setBusyCollectionId(collectionId);
 
     try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        method: "DELETE",
-      });
-
-      await readJson<{ ok?: boolean }>(response);
+      await deleteCollection(collectionId);
 
       invalidateCollectionsLoad();
       setCollections((currentCollections) =>
@@ -389,17 +350,9 @@ export function useCollections(activeView: AppView) {
     setBusyCollectionId(collectionId);
 
     try {
-      const response = await fetch(`/api/collections/${collectionId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          resyncAutoFilter: true,
-        }),
+      const payload = await updateCollection(collectionId, {
+        resyncAutoFilter: true,
       });
-
-      const payload = await readJson<CollectionResponse>(response);
       invalidateCollectionsLoad();
       setCollections((currentCollections) =>
         currentCollections.map((collection) =>

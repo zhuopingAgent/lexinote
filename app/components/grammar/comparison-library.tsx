@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { ComparisonSet, GrammarTaxonomyResponse } from "@/shared/types/grammar";
-import { getErrorMessage, readJson } from "@/app/lib/api-client";
+import type { ComparisonSet } from "@/shared/types/grammar";
+import { getErrorMessage } from "@/app/lib/api-client";
+import { fetchGrammarTaxonomy } from "@/app/lib/grammar-api";
 
 function memberLabel(set: ComparisonSet, position: number) {
   return set.members.find((member) => member.sortOrder === position)?.grammarPoint ?? "对应表达";
@@ -21,8 +22,7 @@ export function ComparisonLibrary() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/grammar/taxonomy", { signal: controller.signal })
-      .then((response) => readJson<GrammarTaxonomyResponse>(response))
+    fetchGrammarTaxonomy(controller.signal)
       .then((result) => setItems(result.comparisonSets))
       .catch((loadError) => {
         if (!controller.signal.aborted) {

@@ -13,6 +13,7 @@
 - Keep global concerns in root `app/layout.tsx`.
 - Keep route-specific logic inside the route segment folder.
 - Keep route handlers thin; move business logic into `features/`.
+- Keep endpoint URLs, request serialization, and response DTOs in typed `app/lib/*-api.ts` modules; components and hooks own interaction state, not transport details.
 
 ## Backend Structure
 
@@ -25,6 +26,8 @@
 - Keep AI generation logic separate from dictionary lookup logic.
 - Keep SQL centralized under `shared/db/sql/`.
 - Use parameterized SQL only.
+- Reuse strict row-value and PostgreSQL error helpers from `shared/db/`; keep feature-specific permissive fallbacks local when their semantics differ.
+- Resolve application services through `shared/server/service-container.ts`; Server Pages and route handlers should not construct repositories directly.
 
 ## Styling
 
@@ -56,8 +59,8 @@
 
 ## Quality Bar
 
-- Run `npm run lint` before commit.
-- Run `npm run build` before commit when changing app structure, types, or route handlers.
+- Run `npm run check` before commit.
+- Run `npm run check:ci` when changing dependencies or CI configuration.
 - Run `npm run test:e2e` when changing core user flows such as lookup, overview, history, collections, conversation, review inbox, or collection auto-filtering.
 - Keep commits focused and descriptive.
 - Update `docs/ai/*` when architecture or workflow changes.

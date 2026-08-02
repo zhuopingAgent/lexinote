@@ -16,6 +16,11 @@ import {
   REPLACE_COLLECTION_AUTO_WORDS_SQL,
 } from "@/shared/db/sql/collections.sql";
 import { query } from "@/shared/db/query";
+import {
+  toInteger,
+  toIsoString,
+  toNullableIsoString,
+} from "@/shared/db/values";
 import type {
   AutoFilterSyncStatus,
   CollectionAutoFilterRule,
@@ -66,29 +71,6 @@ type CollectionWordRow = {
   source: "manual" | "auto";
   matched_rule_version: number | string | null;
 };
-
-function toIsoString(value: string | Date) {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function toNullableIsoString(value: string | Date | null) {
-  if (!value) {
-    return null;
-  }
-
-  return toIsoString(value);
-}
-
-function toInteger(value: number | string, fieldName: string) {
-  const nextValue =
-    typeof value === "string" ? Number.parseInt(value, 10) : value;
-
-  if (!Number.isInteger(nextValue)) {
-    throw new Error(`${fieldName} must be an integer`);
-  }
-
-  return nextValue;
-}
 
 export class CollectionRepository {
   private mapSummaryRow(row: CollectionSummaryRow): CollectionSummary {

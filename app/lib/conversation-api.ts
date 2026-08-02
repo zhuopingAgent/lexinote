@@ -1,5 +1,11 @@
-import { readJson } from "@/app/lib/api-client";
-import type { CollectionResponse, CollectionSummary } from "@/shared/types/collections";
+import {
+  jsonRequest,
+  readJson,
+  requestJson,
+  requestWithoutResponseBody,
+} from "@/app/lib/api-client";
+import { createCollection } from "@/app/lib/collection-api";
+import type { CollectionSummary } from "@/shared/types/collections";
 import type {
   ConversationAnalysisResponse,
   ConversationBootstrapResponse,
@@ -7,6 +13,7 @@ import type {
   ConversationMemory,
   ConversationMode,
   ConversationPreferences,
+  ConversationReviewInboxResponse,
   ConversationSession,
   ConversationSessionResponse,
   CreateConversationMemoryRequest,
@@ -17,26 +24,6 @@ import type {
   UpdateConversationPreferencesRequest,
   UpdateConversationSessionRequest,
 } from "@/shared/types/conversation";
-
-const JSON_HEADERS = { "Content-Type": "application/json" } as const;
-
-async function requestJson<T>(url: string, init?: RequestInit) {
-  return readJson<T>(await fetch(url, init));
-}
-
-async function requestWithoutResponseBody(url: string, init: RequestInit) {
-  const response = await fetch(url, init);
-  if (!response.ok) await readJson<never>(response);
-}
-
-function jsonRequest(method: string, body: unknown, signal?: AbortSignal): RequestInit {
-  return {
-    method,
-    headers: JSON_HEADERS,
-    body: JSON.stringify(body),
-    signal,
-  };
-}
 
 export function fetchConversationBootstrap({
   query,
@@ -91,7 +78,7 @@ export async function streamConversationMessage(
 ) {
   const response = await fetch(
     `/api/conversations/${sessionId}/messages`,
-    jsonRequest("POST", input, signal)
+    jsonRequest("POST", input, { signal })
   );
   if (!response.ok) await readJson<never>(response);
   return response;
@@ -127,10 +114,7 @@ export async function updateConversationPreferences(
 export async function createConversationCollection(
   name: string
 ): Promise<CollectionSummary> {
-  const result = await requestJson<CollectionResponse>(
-    "/api/collections",
-    jsonRequest("POST", { name })
-  );
+  const result = await createCollection({ name });
   return result.collection;
 }
 
@@ -177,4 +161,11 @@ export async function dismissConversationLearningItem(itemId: string) {
     { method: "DELETE" }
   );
   return result.item;
+}
+
+export function fetchConversationReviewInbox(signal?: AbortSignal) {
+  return requestJson<ConversationReviewInboxResponse>(
+    "/api/conversation/review-inbox",
+    { signal }
+  );
 }

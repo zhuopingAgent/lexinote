@@ -2,14 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppHeader } from "@/app/components/app-header";
 import { WordCard } from "@/app/components/word-card";
-import { mapEntryToWordData } from "@/app/lib/word-data";
-import { CollectionService } from "@/features/collections/application/CollectionService";
-import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { JapaneseDictionaryService } from "@/features/japanese-dictionary/application/JapaneseDictionaryService";
-import { JapaneseDictionaryRepository } from "@/features/japanese-dictionary/infrastructure/JapaneseDictionaryRepository";
-import { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
-import { NotFoundError } from "@/shared/utils/errors";
 import { getTopNavigationItems } from "@/app/lib/top-navigation";
+import { mapEntryToWordData } from "@/app/lib/word-data";
+import {
+  getCollectionService,
+  getVocabularyCoreService,
+} from "@/shared/server/service-container";
+import { NotFoundError } from "@/shared/utils/errors";
 
 type CollectionWordDetailPageProps = {
   searchParams: Promise<{
@@ -18,10 +17,8 @@ type CollectionWordDetailPageProps = {
   }>;
 };
 
-const collectionService = new CollectionService(new CollectionRepository());
-const vocabularyCoreService = new VocabularyCoreService(
-  new JapaneseDictionaryService(new JapaneseDictionaryRepository())
-);
+const collectionService = getCollectionService();
+const vocabularyCoreService = getVocabularyCoreService();
 export default async function CollectionWordDetailPage({
   searchParams,
 }: CollectionWordDetailPageProps) {
