@@ -156,10 +156,18 @@ export const SELECT_CONVERSATION_PREFERENCES_SQL = `
 export const UPDATE_CONVERSATION_PREFERENCES_SQL = `
   UPDATE conversation_preferences
   SET
-    default_mode = $2::text,
-    translation_style = $3::text,
-    default_register = $4::text,
-    default_collection_id = $5::bigint,
+    default_mode = CASE
+      WHEN $2::boolean THEN $3::text
+      ELSE default_mode
+    END,
+    default_register = CASE
+      WHEN $4::boolean THEN $5::text
+      ELSE default_register
+    END,
+    default_collection_id = CASE
+      WHEN $6::boolean THEN $7::bigint
+      ELSE default_collection_id
+    END,
     updated_at = NOW()
   WHERE user_id = $1::uuid
   RETURNING
@@ -247,6 +255,27 @@ export const INSERT_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
   )
   VALUES ($1::uuid, $2::uuid, 'assistant', $3::text, 'streaming', $4::uuid, $5::text, 'not_requested', $6::text)
   ON CONFLICT (session_id, client_message_id) DO NOTHING
+  RETURNING ${MESSAGE_COLUMNS};
+`;
+
+export const RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
+  UPDATE conversation_messages
+  SET
+    content = '',
+    mode = $3::text,
+    status = 'streaming',
+    model_name = $4::text,
+    error_code = NULL,
+    error_message = NULL,
+    details = '{}'::jsonb,
+    analysis_status = 'not_requested',
+    analysis_locked_at = NULL,
+    completed_at = NULL,
+    updated_at = NOW()
+  WHERE id = $1::uuid
+    AND user_id = $2::uuid
+    AND role = 'assistant'
+    AND status IN ('failed', 'cancelled')
   RETURNING ${MESSAGE_COLUMNS};
 `;
 

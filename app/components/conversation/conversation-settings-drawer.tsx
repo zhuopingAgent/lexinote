@@ -240,7 +240,7 @@ export function ConversationSettingsDrawer({
             </select>
 
             <form className="mt-2 flex gap-2" onSubmit={submitCollection}>
-              <input aria-label="新建默认单词本" value={collectionName} onChange={(event) => setCollectionName(event.target.value)} placeholder="新建单词本" className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-foreground/30" />
+              <input aria-label="新建默认单词本" value={collectionName} disabled={isBusy} onChange={(event) => setCollectionName(event.target.value)} placeholder="新建单词本" className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-55" />
               <button type="submit" disabled={isBusy || !collectionName.trim()} aria-label="新建单词本" className="inline-flex size-9 items-center justify-center rounded-md border border-border text-muted hover:text-foreground disabled:opacity-45"><PlusIcon className="size-4" /></button>
             </form>
           </section>
@@ -249,17 +249,17 @@ export function ConversationSettingsDrawer({
             <h3 className="text-xs font-semibold uppercase text-muted">新增记忆</h3>
             <form className="mt-3" onSubmit={submitMemory}>
               <div className="grid grid-cols-2 gap-2">
-                <select aria-label="记忆范围" value={memoryScope} onChange={(event) => setMemoryScope(event.target.value as "global" | "session")} className="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                <select aria-label="记忆范围" value={memoryScope} disabled={isBusy} onChange={(event) => setMemoryScope(event.target.value as "global" | "session")} className="h-9 rounded-md border border-border bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-55">
                   <option value="global">跨对话</option>
                   <option value="session" disabled={!sessionId}>当前对话</option>
                 </select>
-                <select aria-label="记忆类型" value={memoryKind} onChange={(event) => setMemoryKind(event.target.value as ConversationMemoryKind)} className="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                <select aria-label="记忆类型" value={memoryKind} disabled={isBusy} onChange={(event) => setMemoryKind(event.target.value as ConversationMemoryKind)} className="h-9 rounded-md border border-border bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-55">
                   <option value="preference">偏好</option>
                   <option value="context">背景</option>
                   <option value="goal">目标</option>
                 </select>
               </div>
-              <textarea aria-label="记忆内容" value={memoryContent} maxLength={300} onChange={(event) => setMemoryContent(event.target.value)} placeholder="输入需要保留的偏好或背景" className="mt-2 min-h-24 w-full resize-y rounded-md border border-border bg-background p-3 text-sm outline-none focus:border-foreground/30" />
+              <textarea aria-label="记忆内容" value={memoryContent} disabled={isBusy} maxLength={300} onChange={(event) => setMemoryContent(event.target.value)} placeholder="输入需要保留的偏好或背景" className="mt-2 min-h-24 w-full resize-y rounded-md border border-border bg-background p-3 text-sm outline-none focus:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-55" />
               <button type="submit" disabled={isBusy || !memoryContent.trim()} className="mt-2 inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-black hover:bg-accent-strong disabled:opacity-45"><PlusIcon className="size-4" />保存记忆</button>
             </form>
           </section>

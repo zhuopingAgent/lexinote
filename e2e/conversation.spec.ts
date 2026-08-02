@@ -10,7 +10,6 @@ const SESSION_B = "22222222-2222-4222-8222-222222222222";
 const NEW_SESSION = "33333333-3333-4333-8333-333333333333";
 const USER_MESSAGE = "44444444-4444-4444-8444-444444444444";
 const ASSISTANT_MESSAGE = "55555555-5555-4555-8555-555555555555";
-const RETRY_ASSISTANT_MESSAGE = "55555555-5555-4555-8555-555555555556";
 const LEARNING_ITEM = "66666666-6666-4666-8666-666666666666";
 const GRAMMAR_POINT = "77777777-7777-4777-8777-777777777777";
 const NOW = "2026-08-02T10:00:00.000Z";
@@ -323,19 +322,22 @@ test("cancelled conversation answer can be regenerated in place", async ({
   const browserErrors = createBrowserErrorCollector(page);
   await mockBootstrap(page);
   let retryParentMessageId: string | null = null;
+  let retryAssistantMessageId: string | null = null;
 
   await page.route("**/api/conversations/*/messages", async (route) => {
     const body = route.request().postDataJSON() as {
       retryParentMessageId?: string;
+      retryAssistantMessageId?: string;
     };
     retryParentMessageId = body.retryParentMessageId ?? null;
+    retryAssistantMessageId = body.retryAssistantMessageId ?? null;
     const assistant = {
-      ...message(RETRY_ASSISTANT_MESSAGE, "assistant", "", "streaming"),
+      ...message(ASSISTANT_MESSAGE, "assistant", "", "streaming"),
       sessionId: SESSION_A,
     };
     const completed = {
       ...message(
-        RETRY_ASSISTANT_MESSAGE,
+        ASSISTANT_MESSAGE,
         "assistant",
         "予約時間を変更していただけますか。"
       ),
@@ -364,7 +366,7 @@ test("cancelled conversation answer can be regenerated in place", async ({
       body: JSON.stringify({
         message: {
           ...message(
-            RETRY_ASSISTANT_MESSAGE,
+            ASSISTANT_MESSAGE,
             "assistant",
             "予約時間を変更していただけますか。"
           ),
@@ -401,6 +403,8 @@ test("cancelled conversation answer can be regenerated in place", async ({
   await page.getByRole("button", { name: "重新生成" }).click();
   await expect(page.getByText("予約時間を変更していただけますか。")).toBeVisible();
   expect(retryParentMessageId).toBe(USER_MESSAGE);
+  expect(retryAssistantMessageId).toBe(ASSISTANT_MESSAGE);
+  await expect(page.getByRole("article")).toHaveCount(1);
   expectNoBrowserErrors(browserErrors);
 });
 
@@ -471,6 +475,103 @@ test("conversation remains useful when AI Gateway is unavailable", async ({
   await expect(
     page.getByRole("complementary", { name: "对话偏好与记忆" })
   ).toBeVisible();
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("conversation serializes rapid partial preference updates", async ({
+  page,
+}) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  await mockBootstrap(page);
+  let currentPreferences = { ...preferences };
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const patches: Array<Record<string, unknown>> = [];
+  await page.route("**/api/conversation/preferences", async (route) => {
+    const patch = route.request().postDataJSON() as Record<string, unknown>;
+    patches.push(patch);
+    activeRequests += 1;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+    if (patch.defaultMode) {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+    currentPreferences = { ...currentPreferences, ...patch };
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ preferences: currentPreferences }),
+    });
+    activeRequests -= 1;
+  });
+
+  await page.goto("/conversation");
+  await page.getByLabel("打开偏好与记忆").click();
+  const defaultMode = page.getByLabel("默认模式");
+  const defaultRegister = page.getByLabel("默认语体");
+  await defaultMode.selectOption("ja_to_zh");
+  await defaultRegister.selectOption("business");
+
+  await expect(defaultMode).toHaveValue("ja_to_zh");
+  await expect(defaultRegister).toHaveValue("business");
+  expect(patches).toEqual([
+    { defaultMode: "ja_to_zh" },
+    { defaultRegister: "business" },
+  ]);
+  expect(maxActiveRequests).toBe(1);
+  expectNoBrowserErrors(browserErrors);
+});
+
+test("conversation surfaces SSE quota errors in an accessible modal", async ({
+  page,
+}) => {
+  const browserErrors = createBrowserErrorCollector(page);
+  await mockBootstrap(page);
+  const failedAssistant = {
+    ...message(ASSISTANT_MESSAGE, "assistant", "", "failed"),
+    errorCode: "AI_QUOTA_EXHAUSTED",
+    errorMessage: "AI API 账户余额或额度已用完，请充值或更新账单后再试。",
+  };
+  await page.route("**/api/conversations", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ session: session(NEW_SESSION, "新对话") }),
+    });
+  });
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    const events = [
+      {
+        type: "assistant_created",
+        userMessage: message(USER_MESSAGE, "user", "额度测试"),
+        assistantMessage: message(ASSISTANT_MESSAGE, "assistant", "", "streaming"),
+      },
+      {
+        type: "error",
+        code: "AI_QUOTA_EXHAUSTED",
+        message: failedAssistant.errorMessage,
+        retryable: true,
+        assistantMessage: failedAssistant,
+      },
+    ];
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: events
+        .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+        .join(""),
+    });
+  });
+
+  await page.goto("/conversation");
+  await page.getByLabel("对话消息").fill("额度测试");
+  await page.getByLabel("对话消息").press("Enter");
+  const dialog = page.getByRole("dialog", { name: "AI API 额度不足" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "我知道了" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.getByLabel("对话消息")).toBeFocused();
+  await expect(page.getByRole("button", { name: "重试" })).toBeVisible();
+  await expect(page.getByText(failedAssistant.errorMessage, { exact: true })).toHaveCount(1);
   expectNoBrowserErrors(browserErrors);
 });
 

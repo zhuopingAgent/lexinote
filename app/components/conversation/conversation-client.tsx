@@ -110,6 +110,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   } | null>(null);
   const skipSessionLoadRef = useRef<string | null>(null);
   const bootstrapGenerationRef = useRef(0);
+  const preferencesMutationRef = useRef<Promise<void>>(Promise.resolve());
   activeSessionIdRef.current = activeSessionId;
 
   useEffect(() => {
@@ -396,7 +397,8 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   async function sendMessage(
     overrideContent?: string,
     retryParentMessageId?: string,
-    overrideMode?: ConversationMode | null
+    overrideMode?: ConversationMode | null,
+    retryAssistantMessageId?: string
   ) {
     const content = (overrideContent ?? input).trim();
     if (!content || isGenerating || !aiAvailable) return;
@@ -417,6 +419,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
           content,
           mode: overrideMode ?? mode,
           retryParentMessageId,
+          retryAssistantMessageId,
         }),
       });
       if (!response.ok) {
@@ -464,7 +467,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
           );
           return;
         }
-        setError(event.message);
+        if (event.code === "AI_QUOTA_EXHAUSTED") {
+          setAiApiErrorMessage(event.message);
+        }
         if (event.assistantMessage) {
           setMessages((current) =>
             current.map((message) =>
@@ -473,6 +478,8 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
                 : message
             )
           );
+        } else {
+          setError(event.message);
         }
       });
       if (completedMessage) {
@@ -554,17 +561,23 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   }
 
   async function updatePreferences(input: Partial<ConversationPreferences>) {
-    const result = await fetch("/api/conversation/preferences", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }).then((response) =>
-      readJson<{ preferences: ConversationPreferences }>(response)
-    );
-    setPreferences(result.preferences);
-    if (!activeSessionId && input.defaultMode) {
-      setMode(result.preferences.defaultMode);
-    }
+    const request = preferencesMutationRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const result = await fetch("/api/conversation/preferences", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }).then((response) =>
+          readJson<{ preferences: ConversationPreferences }>(response)
+        );
+        setPreferences(result.preferences);
+        if (!activeSessionIdRef.current && input.defaultMode) {
+          setMode(result.preferences.defaultMode);
+        }
+      });
+    preferencesMutationRef.current = request;
+    return request;
   }
 
   async function createCollection(name: string) {
@@ -714,7 +727,14 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
                   onPromoteLearningItem={promoteLearningItem}
                   onRetry={async (assistantMessage) => {
                     const parent = messages.find((message) => message.id === assistantMessage.parentMessageId);
-                    if (parent) await sendMessage(parent.content, parent.id, assistantMessage.mode);
+                    if (parent) {
+                      await sendMessage(
+                        parent.content,
+                        parent.id,
+                        assistantMessage.mode,
+                        assistantMessage.id
+                      );
+                    }
                   }}
                   onSetDefaultCollection={(collectionId) => updatePreferences({ defaultCollectionId: collectionId })}
                   onUpdateMemory={(memoryId, status) => updateMemory(memoryId, { status })}

@@ -139,7 +139,6 @@ export function ConversationReviewInbox({
       .then((response) => readJson<ConversationReviewInboxResponse>(response))
       .then((result) => {
         setItems(result.items);
-        onCountChange?.(result.items.length);
       })
       .catch((loadError) => {
         if (!controller.signal.aborted) setError(getErrorMessage(loadError, "对话语法候选加载失败。"));
@@ -148,14 +147,16 @@ export function ConversationReviewInbox({
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [onCountChange]);
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading && !error) {
+      onCountChange?.(items.length);
+    }
+  }, [error, isLoading, items.length, onCountChange]);
 
   function removeItem(itemId: string) {
-    setItems((current) => {
-      const next = current.filter((item) => item.id !== itemId);
-      onCountChange?.(next.length);
-      return next;
-    });
+    setItems((current) => current.filter((item) => item.id !== itemId));
   }
 
   if (!isLoading && !error && items.length === 0) return null;

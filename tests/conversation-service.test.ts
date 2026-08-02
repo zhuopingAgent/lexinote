@@ -292,6 +292,71 @@ describe("ConversationService", () => {
     );
   });
 
+  it("restarts a failed assistant message in place", async () => {
+    const failedAssistant = {
+      ...streamingAssistant,
+      status: "failed" as const,
+      content: "予約時間を",
+      errorCode: "AI_RESPONSE_FAILED",
+      errorMessage: "回答生成失败，请重试。",
+    };
+    const restartAssistantMessage = vi
+      .fn()
+      .mockResolvedValue(streamingAssistant);
+    const repository = {
+      findSession: vi.fn().mockResolvedValue(session),
+      findMessage: vi.fn().mockImplementation((messageId: string) =>
+        Promise.resolve(
+          messageId === USER_MESSAGE_ID ? userMessage : failedAssistant
+        )
+      ),
+      restartAssistantMessage,
+      insertAssistantMessage: vi.fn(),
+      getPreferences: vi.fn().mockResolvedValue(preferences),
+      listActiveMemories: vi.fn().mockResolvedValue([]),
+      listContextMessages: vi.fn().mockResolvedValue([userMessage]),
+      completeAssistantMessage: vi.fn().mockResolvedValue(completedAssistant),
+      touchSession: vi.fn().mockResolvedValue(undefined),
+      failAssistantMessage: vi.fn(),
+    };
+    const service = makeService(repository, {
+      streamReply: vi.fn().mockImplementation(async () =>
+        (async function* () {
+          yield completedAssistant.content;
+        })()
+      ),
+    });
+
+    const stream = await service.streamMessage(SESSION_ID, {
+      clientMessageId: "retry-client",
+      content: userMessage.content,
+      retryParentMessageId: USER_MESSAGE_ID,
+      retryAssistantMessageId: ASSISTANT_MESSAGE_ID,
+    });
+    const events: ConversationStreamEvent[] = [];
+    await consumeConversationEventStream(new Response(stream), (event) =>
+      events.push(event)
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "assistant_created",
+      "text_delta",
+      "completed",
+    ]);
+    expect(
+      events.find((event) => event.type === "assistant_created")
+    ).toMatchObject({
+      assistantMessage: { id: ASSISTANT_MESSAGE_ID, status: "streaming" },
+    });
+    expect(restartAssistantMessage).toHaveBeenCalledWith({
+      messageId: ASSISTANT_MESSAGE_ID,
+      userId: USER_ID,
+      mode: "zh_to_ja",
+      modelName: expect.any(String),
+    });
+    expect(repository.insertAssistantMessage).not.toHaveBeenCalled();
+  });
+
   it("marks an aborted generation as cancelled without starting analysis", async () => {
     const cancelledAssistant = {
       ...streamingAssistant,
@@ -349,6 +414,22 @@ describe("ConversationService", () => {
     );
     expect(repository.findSession).toHaveBeenCalledWith(SESSION_ID, USER_ID);
     expect(repository.listMessages).not.toHaveBeenCalled();
+  });
+
+  it("passes only supplied preference fields to an atomic repository update", async () => {
+    const repository = {
+      updatePreferences: vi.fn().mockResolvedValue({
+        ...preferences,
+        defaultMode: "ja_to_zh",
+      }),
+    };
+    const service = makeService(repository, {});
+
+    await service.updatePreferences({ defaultMode: "ja_to_zh" });
+
+    expect(repository.updatePreferences).toHaveBeenCalledWith(USER_ID, {
+      defaultMode: "ja_to_zh",
+    });
   });
 
   it("rejects malformed message cursors before querying paginated rows", async () => {
@@ -459,6 +540,13 @@ describe("ConversationService", () => {
             canonicalForm: "〜ていただけますか",
             senseKey: "request_te_itadakemasu_ka",
             coreMeaning: "礼貌请求对方做某事",
+          },
+          {
+            id: "66666666-6666-4666-8666-666666666666",
+            grammarPoint: "〜ていただけないでしょうか",
+            canonicalForm: "〜ていただけないでしょうか",
+            senseKey: "request_te_itadakenai_deshou_ka",
+            coreMeaning: "更郑重地请求对方做某事",
           },
         ],
       }),

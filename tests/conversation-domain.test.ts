@@ -4,6 +4,7 @@ import {
   MAX_CONTEXT_CHARACTERS,
   MAX_CONTEXT_MESSAGES,
   parseConversationAnalysisOutput,
+  selectConversationGrammarCandidates,
   trimConversationContextMessages,
   validateConversationAnalysisReferences,
 } from "@/features/conversation/domain/conversation";
@@ -164,5 +165,39 @@ describe("conversation domain", () => {
     expect(validated.learningItems.map((item) => item.surfaceForm)).toEqual([
       "日程を変更する",
     ]);
+  });
+
+  it("prefers exact grammar forms while retaining true exact polysemy", () => {
+    const candidates = [
+      {
+        grammarPointId: "exact-1",
+        grammarPoint: "〜ていただけますか",
+        canonicalForm: "〜ていただけますか",
+        senseKey: "polite_request",
+        coreMeaning: "礼貌请求",
+      },
+      {
+        grammarPointId: "fuzzy",
+        grammarPoint: "〜ていただけないでしょうか",
+        canonicalForm: "〜ていただけないでしょうか",
+        senseKey: "deferential_request",
+        coreMeaning: "郑重请求",
+      },
+    ];
+
+    expect(
+      selectConversationGrammarCandidates("～ていただけますか", candidates)
+    ).toEqual([candidates[0]]);
+
+    const polysemous = [
+      { ...candidates[0], grammarPointId: "hearsay", canonicalForm: "〜そうだ" },
+      { ...candidates[0], grammarPointId: "appearance", canonicalForm: "〜そうだ" },
+      { ...candidates[1], grammarPointId: "fuzzy-sou" },
+    ];
+    expect(
+      selectConversationGrammarCandidates("〜そうだ", polysemous).map(
+        (candidate) => candidate.grammarPointId
+      )
+    ).toEqual(["hearsay", "appearance"]);
   });
 });
