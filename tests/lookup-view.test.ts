@@ -74,7 +74,7 @@ describe("lookup view helpers", () => {
 
     expect(getLookupEntryCollectionState(entry, result)).toEqual({
       canAddToCollection: false,
-      addDisabledReason: "当前语境结果尚未保存，暂不能加入 collection。",
+      addDisabledReason: "当前语境结果尚未保存，暂不能加入单词本。",
     });
   });
 
@@ -83,7 +83,7 @@ describe("lookup view helpers", () => {
 
     expect(getLookupEntryCollectionState(entry, createLookupResponse({ entry }))).toEqual({
       canAddToCollection: true,
-      addDisabledReason: "请先保存或生成完整词条后再加入 collection。",
+      addDisabledReason: "请先保存或生成完整词条后再加入单词本。",
     });
   });
 });

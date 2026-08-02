@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { CollectionIcon, SearchIcon } from "@/app/components/icons";
 import { getErrorMessage } from "@/app/lib/api-client";
 import type { CollectionSummary, DictionaryEntry } from "@/shared/types/api";
@@ -30,16 +30,20 @@ export function DictionaryEntryActions({
   onEnsureCollectionsLoaded,
   onAddEntryToCollection,
 }: DictionaryEntryActionsProps) {
+  const noticeId = useId();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isPreparingCollections, setIsPreparingCollections] = useState(false);
   const [busyCollectionId, setBusyCollectionId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const unavailableReason = !canAddToCollection
+    ? addDisabledReason ?? "当前结果还不能加入单词本。"
+    : null;
+  const displayedNotice = unavailableReason ?? notice;
 
   async function onTogglePicker() {
     setNotice(null);
 
     if (!canAddToCollection) {
-      setNotice(addDisabledReason ?? "当前结果还不能加入 collection。");
       return;
     }
 
@@ -53,7 +57,7 @@ export function DictionaryEntryActions({
       try {
         await onEnsureCollectionsLoaded();
       } catch (loadError) {
-        setNotice(getErrorMessage(loadError, "加载 collection 失败，请稍后再试。"));
+        setNotice(getErrorMessage(loadError, "加载单词本失败，请稍后再试。"));
         return;
       } finally {
         setIsPreparingCollections(false);
@@ -75,8 +79,8 @@ export function DictionaryEntryActions({
       );
       setNotice(
         status === "added"
-          ? "已加入所选 collection。"
-          : "这个词条已经在所选 collection 中。"
+          ? "已加入所选单词本。"
+          : "这个词条已经在所选单词本中。"
       );
       setIsPickerOpen(false);
     } catch (actionError) {
@@ -92,10 +96,11 @@ export function DictionaryEntryActions({
         <button
           type="button"
           onClick={() => void onTogglePicker()}
-          disabled={isPreparingCollections || isCollectionsLoading}
+          disabled={Boolean(unavailableReason) || isPreparingCollections || isCollectionsLoading}
           aria-expanded={isPickerOpen}
-          aria-label={`${isPickerOpen ? "收起 collection" : "加入 collection"} ${entry.word} ${entry.pronunciation}`}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-45"
+          aria-describedby={displayedNotice ? noticeId : undefined}
+          aria-label={`${isPickerOpen ? "收起单词本" : "加入单词本"} ${entry.word} ${entry.pronunciation}`}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-accent px-4 text-sm font-semibold text-background transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-strong disabled:text-muted disabled:opacity-100"
         >
           <CollectionIcon className="size-4" />
           {isPickerOpen ? "收起单词本" : "加入单词本"}
@@ -139,7 +144,11 @@ export function DictionaryEntryActions({
         </div>
       ) : null}
 
-      {notice ? <p className="text-sm leading-6 text-muted">{notice}</p> : null}
+      {displayedNotice ? (
+        <p id={noticeId} className="text-sm leading-6 text-muted">
+          {displayedNotice}
+        </p>
+      ) : null}
     </div>
   );
 }
