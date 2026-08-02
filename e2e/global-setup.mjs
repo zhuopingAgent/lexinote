@@ -578,6 +578,7 @@ export default async function globalSetup() {
         practice_attempts,
         exercise_instances,
         practice_sessions,
+        learner_objective_states,
         learner_skill_states,
         auto_filter_jobs,
         collection_words,

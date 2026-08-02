@@ -551,38 +551,53 @@ export class GrammarLearningService {
       this.repository.getReviewAggregations(normalizedUserId),
       this.repository.listObjectiveRecommendations(normalizedUserId),
     ]);
+    const recommendationsByGrammarPoint = new Map(
+      objectiveRecommendations.map((recommendation) => [
+        recommendation.grammarPointId,
+        recommendation,
+      ])
+    );
+    const consolidatedItems = items.map((item) => {
+      const recommendation = recommendationsByGrammarPoint.get(
+        item.grammarPoint.id
+      );
+
+      return {
+        ...item,
+        objectiveProgress: recommendation?.objectives ?? [],
+        overallEstimate: recommendation?.overallEstimate ?? null,
+      };
+    });
+    const reviewGrammarPointIds = new Set(
+      consolidatedItems.map((item) => item.grammarPoint.id)
+    );
+    const pendingRecommendations = objectiveRecommendations.filter(
+      (recommendation) =>
+        !reviewGrammarPointIds.has(recommendation.grammarPointId)
+    );
 
     return {
-      items,
+      items: consolidatedItems,
       aggregations,
-      objectiveRecommendations,
+      objectiveRecommendations: pendingRecommendations,
+      pendingCompletionCount:
+        consolidatedItems.filter((item) => item.status !== "mastered").length +
+        pendingRecommendations.length,
+      dueReviewCount: consolidatedItems.filter(
+        (item) => item.status === "mastered"
+      ).length,
     };
   }
 
   async getProgress(userId?: string): Promise<GrammarProgressResponse> {
-    const groupProgress = await this.repository.getProgress(normalizeUserId(userId));
+    const normalizedUserId = normalizeUserId(userId);
+    const [groupProgress, progressTotals] = await Promise.all([
+      this.repository.getProgress(normalizedUserId),
+      this.repository.getProgressTotals(normalizedUserId),
+    ]);
 
     return {
-      totalGrammarPoints: groupProgress.reduce(
-        (total, group) => total + group.totalCount,
-        0
-      ),
-      startedCount: groupProgress.reduce(
-        (total, group) => total + group.startedCount,
-        0
-      ),
-      masteredCount: groupProgress.reduce(
-        (total, group) => total + group.masteredCount,
-        0
-      ),
-      reviewCount: groupProgress.reduce(
-        (total, group) => total + group.reviewCount,
-        0
-      ),
-      favoriteCount: groupProgress.reduce(
-        (total, group) => total + group.favoriteCount,
-        0
-      ),
+      ...progressTotals,
       groupProgress,
     };
   }

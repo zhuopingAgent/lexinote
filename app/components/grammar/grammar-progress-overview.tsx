@@ -28,7 +28,8 @@ export function GrammarProgressOverview({
   const totalCount = progress?.totalGrammarPoints ?? 0;
   const startedCount = progress?.startedCount ?? 0;
   const masteredCount = progress?.masteredCount ?? 0;
-  const reviewCount = progress?.reviewCount ?? 0;
+  const pendingCompletionCount = progress?.pendingCompletionCount ?? 0;
+  const dueReviewCount = progress?.dueReviewCount ?? 0;
   const favoriteCount = progress?.favoriteCount ?? 0;
   const masteredPercent = formatPercent(masteredCount, totalCount);
 
@@ -56,23 +57,38 @@ export function GrammarProgressOverview({
               <span className="tabular-nums text-foreground">{favoriteCount}</span>
             ) : null}
           </Link>
-          <Link
-            href="/review"
-            aria-label={reviewCount > 0 ? `待完成 ${reviewCount}` : "复习"}
-            className={
-              reviewCount > 0
-                ? "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong"
-                : "inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
-            }
-          >
-            <BookOpenIcon className="size-4" />
-            <span className="hidden min-[360px]:inline">
-              {reviewCount > 0 ? "待完成" : "复习"}
-            </span>
-            {reviewCount > 0 ? (
-              <span className="tabular-nums">{reviewCount}</span>
-            ) : null}
-          </Link>
+          {pendingCompletionCount > 0 ? (
+            <Link
+              href="/review#pending"
+              aria-label={`待完成 ${pendingCompletionCount}`}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong"
+            >
+              <BookOpenIcon className="size-4" />
+              <span className="hidden min-[360px]:inline">待完成</span>
+              <span className="tabular-nums">{pendingCompletionCount}</span>
+            </Link>
+          ) : null}
+          {dueReviewCount > 0 ? (
+            <Link
+              href="/review#due-review"
+              aria-label={`待复习 ${dueReviewCount}`}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-accent/40 bg-surface px-3 text-sm font-semibold text-foreground transition hover:border-accent"
+            >
+              <BookOpenIcon className="size-4" />
+              <span className="hidden min-[360px]:inline">待复习</span>
+              <span className="tabular-nums">{dueReviewCount}</span>
+            </Link>
+          ) : null}
+          {pendingCompletionCount === 0 && dueReviewCount === 0 ? (
+            <Link
+              href="/review"
+              aria-label="复习"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-muted transition hover:border-foreground/30 hover:text-foreground"
+            >
+              <BookOpenIcon className="size-4" />
+              <span className="hidden min-[360px]:inline">复习</span>
+            </Link>
+          ) : null}
         </div>
       </div>
 

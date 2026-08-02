@@ -4,13 +4,15 @@ import { describe, expect, it } from "vitest";
 import { GrammarProgressOverview } from "@/app/components/grammar/grammar-progress-overview";
 
 describe("grammar progress overview", () => {
-  it("labels due review work as pending completion", () => {
+  it("separates incomplete work from completed grammar due for review", () => {
     const markup = renderToStaticMarkup(
       createElement(GrammarProgressOverview, {
         progress: {
           totalGrammarPoints: 339,
           startedCount: 12,
           masteredCount: 4,
+          pendingCompletionCount: 2,
+          dueReviewCount: 1,
           reviewCount: 3,
           favoriteCount: 2,
           groupProgress: [],
@@ -19,8 +21,9 @@ describe("grammar progress overview", () => {
       })
     );
 
-    expect(markup).toContain('aria-label="待完成 3"');
+    expect(markup).toContain('aria-label="待完成 2"');
+    expect(markup).toContain('aria-label="待复习 1"');
     expect(markup).toContain("待完成");
-    expect(markup).not.toContain("待复习");
+    expect(markup).toContain("待复习");
   });
 });

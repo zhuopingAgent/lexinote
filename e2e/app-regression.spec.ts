@@ -59,6 +59,14 @@ test("dictionary lookup, retry selection, and history recovery work end-to-end",
   await page.getByLabel("重新查询补充说明").fill("不安を抱く");
   await page.getByRole("button", { name: "按补充说明重新查询" }).click();
   await expect(page.getByText("已参考语境「不安を抱く」")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("查询会参考「不安を抱く」")).toBeVisible();
+  await page.getByRole("button", { name: "清除语境" }).click();
+  await expect(page.getByText("查询会参考「不安を抱く」")).toHaveCount(0);
+
+  await searchWord(page, "食べました。");
+  await expect(page.getByText("已按原形「食べる」查询")).toBeVisible();
+  await expect(page.getByText(/已参考语境/)).toHaveCount(0);
+  await expect(page.getByText("毎朝パンを食べる。", { exact: true })).toBeVisible();
 
   await gotoHistory(page);
   await expect(page.getByRole("button").filter({ hasText: "食べる" }).first()).toBeVisible();
@@ -84,13 +92,13 @@ test("dictionary result actions can add a word into a collection and prevent dup
   await expect(page.getByText("食べる", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("本地词库")).toBeVisible();
 
-  await page.getByRole("button", { name: "加入 collection 食べる たべる" }).click();
+  await page.getByRole("button", { name: "加入单词本 食べる たべる" }).click();
   await page.getByRole("button", { name: collectionName }).click();
-  await expect(page.getByText("已加入所选 collection。")).toBeVisible();
+  await expect(page.getByText("已加入所选单词本。")).toBeVisible();
 
-  await page.getByRole("button", { name: "加入 collection 食べる たべる" }).click();
+  await page.getByRole("button", { name: "加入单词本 食べる たべる" }).click();
   await page.getByRole("button", { name: collectionName }).click();
-  await expect(page.getByText("这个词条已经在所选 collection 中。")).toBeVisible();
+  await expect(page.getByText("这个词条已经在所选单词本中。")).toBeVisible();
 
   await gotoCollections(page);
   await openCollectionDetail(page, collectionName);
@@ -115,6 +123,8 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByRole("button", { name: "形态、活用与时间体" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("expression_function");
   await expect(page.getByText("已显示 36 个", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "待完成 2", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "待复习 1", exact: true })).toBeVisible();
   const masteredCard = page.locator("article").filter({
     has: page.getByRole("link", { name: "AはBです", exact: true }),
   });
@@ -171,6 +181,55 @@ test("grammar taxonomy defaults to expression function and opens another dimensi
   await expect(page.getByText("这处遗迹被认为建于一千多年前。")).toBeVisible();
 
   expectNoBrowserErrors(browserErrors);
+});
+
+test("review consolidates objective progress into one record per grammar point", async ({
+  page,
+}) => {
+  const reviewResponse = await page.request.get("/api/review/today");
+  expect(reviewResponse.ok()).toBe(true);
+  const review = (await reviewResponse.json()) as {
+    items: Array<{ grammarPoint: { id: string; grammarPoint: string } }>;
+    objectiveRecommendations: Array<{
+      grammarPointId: string;
+      grammarPoint: string;
+      overallEstimate: number;
+      objectives: Array<{ learningObjective: string }>;
+    }>;
+  };
+  const availabilityRecommendations = review.objectiveRecommendations.filter(
+    (recommendation) => recommendation.grammarPoint === "Aがあります"
+  );
+
+  expect(availabilityRecommendations).toHaveLength(1);
+  expect(availabilityRecommendations[0]?.objectives).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ learningObjective: "meaning" }),
+      expect.objectContaining({ learningObjective: "form_connection" }),
+    ])
+  );
+  expect(availabilityRecommendations[0]?.overallEstimate).toBeCloseTo(0.2585);
+
+  const visibleGrammarPointIds = [
+    ...review.items.map((item) => item.grammarPoint.id),
+    ...review.objectiveRecommendations.map(
+      (recommendation) => recommendation.grammarPointId
+    ),
+  ];
+  expect(new Set(visibleGrammarPointIds).size).toBe(visibleGrammarPointIds.length);
+
+  await page.goto("/review");
+  await expect(
+    page.getByRole("link", { name: "Aがあります", exact: true })
+  ).toHaveCount(1);
+  await expect(page.getByText("综合掌握 26%", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "待复习", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "待复习", exact: true }).locator("..").getByRole(
+      "link",
+      { name: "AはBです", exact: true }
+    )
+  ).toBeVisible();
 });
 
 test("practice sessions hide prompts, support retry, and return direct recorded feedback", async ({
@@ -333,18 +392,22 @@ test("practice sessions hide prompts, support retry, and return direct recorded 
     items: Array<{
       grammarPoint: { id: string };
       mistakeCount: number;
+      objectiveProgress: Array<{ learningObjective: string }>;
     }>;
     objectiveRecommendations?: Array<{ grammarPointId: string; reasonZh: string }>;
   };
-  const mistakeCountBeforeReveal = reviewBeforeReveal.items.find(
+  const targetReviewItems = reviewBeforeReveal.items.filter(
     (item) => item.grammarPoint.id === grammarPoint?.id
-  )?.mistakeCount;
-  expect(mistakeCountBeforeReveal).toBeGreaterThanOrEqual(1);
-  expect(reviewBeforeReveal.objectiveRecommendations).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ grammarPointId: grammarPoint?.id }),
-    ])
   );
+  const mistakeCountBeforeReveal = targetReviewItems[0]?.mistakeCount;
+  expect(targetReviewItems).toHaveLength(1);
+  expect(targetReviewItems[0]?.objectiveProgress.length).toBeGreaterThanOrEqual(1);
+  expect(
+    reviewBeforeReveal.objectiveRecommendations?.filter(
+      (recommendation) => recommendation.grammarPointId === grammarPoint?.id
+    )
+  ).toHaveLength(0);
+  expect(mistakeCountBeforeReveal).toBeGreaterThanOrEqual(1);
 
   const revealResponse = await page.request.post(
     `/api/practice/exercises/${second.exercise.id}/reveal`,

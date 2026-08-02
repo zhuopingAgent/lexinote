@@ -224,6 +224,9 @@ export type ObjectiveRecommendationRow = {
   exposure_count: number | string;
   recent_error_codes: unknown;
   next_review_at: string | Date | null;
+  overall_estimate: number | string;
+  overall_confidence: number | string;
+  objective_progress: unknown;
 };
 
 export type ProgressGroupRow = {
@@ -236,6 +239,18 @@ export type ProgressGroupRow = {
   total_count: number | string;
   started_count: number | string;
   mastered_count: number | string;
+  pending_completion_count: number | string;
+  due_review_count: number | string;
+  review_count: number | string;
+  favorite_count: number | string;
+};
+
+export type ProgressTotalsRow = {
+  total_count: number | string;
+  started_count: number | string;
+  mastered_count: number | string;
+  pending_completion_count: number | string;
+  due_review_count: number | string;
   review_count: number | string;
   favorite_count: number | string;
 };

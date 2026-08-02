@@ -34,6 +34,8 @@ export function ReviewClient() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [conversationInboxCount, setConversationInboxCount] = useState(0);
+  const [pendingCompletionCount, setPendingCompletionCount] = useState(0);
+  const [dueReviewCount, setDueReviewCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,6 +50,15 @@ export function ReviewClient() {
         }).then((response) => readJson<GrammarReviewResponse>(response));
         setItems(result.items);
         setObjectiveRecommendations(result.objectiveRecommendations ?? []);
+        setPendingCompletionCount(
+          result.pendingCompletionCount ??
+            result.items.filter((item) => item.status !== "mastered").length +
+              (result.objectiveRecommendations?.length ?? 0)
+        );
+        setDueReviewCount(
+          result.dueReviewCount ??
+            result.items.filter((item) => item.status === "mastered").length
+        );
         setAggregations(
           result.aggregations ?? {
             grammarPoints: [],
@@ -84,6 +95,9 @@ export function ReviewClient() {
     ...items.map((item) => item.grammarPoint.id),
     ...objectiveRecommendations.map((item) => item.grammarPointId),
   ]).size;
+  const pendingItems = items.filter((item) => item.status !== "mastered");
+  const dueReviewItems = items.filter((item) => item.status === "mastered");
+  const orderedItems = [...pendingItems, ...dueReviewItems];
 
   return (
     <div className="mx-auto w-full max-w-[1120px]">
@@ -92,7 +106,7 @@ export function ReviewClient() {
           <div>
             <p className="text-2xl leading-tight font-semibold text-white/78">复习</p>
             <p className="mt-1 text-sm leading-6 text-white/42">
-              当前 {reviewGrammarPointCount} 个具体用法需要回看。
+              共 {reviewGrammarPointCount} 个具体用法：待完成 {pendingCompletionCount}，待复习 {dueReviewCount}。
             </p>
           </div>
           <Link
@@ -137,21 +151,21 @@ export function ReviewClient() {
       <ConversationReviewInbox onCountChange={setConversationInboxCount} />
 
       {!isLoading && !error && objectiveRecommendations.length > 0 ? (
-        <section className="mt-6 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
+        <section id="pending" className="mt-6 scroll-mt-20 border-y border-white/8 py-5" aria-labelledby="objective-review-heading">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 id="objective-review-heading" className="text-lg font-semibold text-white/76">
-                建议先复习
+                待完成建议
               </h2>
               <p className="mt-1 text-sm leading-6 text-white/42">
-                按具体用法和学习目标排序，不会因为分类标签重复计算。
+                每个尚未完成的语法点只显示一条记录，学习目标合并展示。
               </p>
             </div>
           </div>
           <div className="mt-4 divide-y divide-white/8">
             {objectiveRecommendations.slice(0, 4).map((recommendation) => (
               <div
-                key={`${recommendation.grammarPointId}:${recommendation.learningObjective}`}
+                key={recommendation.grammarPointId}
                 className="grid gap-4 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
               >
                 <div className="min-w-0">
@@ -162,11 +176,14 @@ export function ReviewClient() {
                     >
                       {recommendation.grammarPoint}
                     </Link>
-                    <TagBadge
-                      tag={PRACTICE_OBJECTIVE_LABELS[recommendation.learningObjective]}
-                    />
+                    {recommendation.objectives.map((objective) => (
+                      <TagBadge
+                        key={objective.learningObjective}
+                        tag={PRACTICE_OBJECTIVE_LABELS[objective.learningObjective]}
+                      />
+                    ))}
                     <span className="text-xs text-white/34">
-                      掌握估计 {Math.round(recommendation.estimate * 100)}%
+                      综合掌握 {Math.round(recommendation.overallEstimate * 100)}%
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-white/52">
@@ -212,13 +229,24 @@ export function ReviewClient() {
         </div>
       ) : null}
 
-      {!isLoading && items.length > 0 ? (
+      {!isLoading && orderedItems.length > 0 ? (
         <div className="mt-6 space-y-4">
-          {items.map((item) => (
-            <article
-              key={item.reviewRecordId}
-              className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5"
-            >
+          {orderedItems.map((item, index) => (
+            <div key={item.reviewRecordId}>
+              {index === 0 && pendingItems.length > 0 ? (
+                <h2
+                  id={objectiveRecommendations.length === 0 ? "pending" : undefined}
+                  className="mb-3 scroll-mt-20 text-lg font-semibold text-white/76"
+                >
+                  待完成
+                </h2>
+              ) : null}
+              {index === pendingItems.length && dueReviewItems.length > 0 ? (
+                <h2 id="due-review" className="mb-3 scroll-mt-20 text-lg font-semibold text-white/76">
+                  待复习
+                </h2>
+              ) : null}
+              <article className="rounded-[18px] border border-white/10 bg-[#1e1e1ecc] p-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -239,6 +267,21 @@ export function ReviewClient() {
                   <p className="mt-2 text-sm leading-6 text-white/52">
                     {item.grammarPoint.coreMeaning}
                   </p>
+                  {item.objectiveProgress && item.objectiveProgress.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {item.objectiveProgress.map((objective) => (
+                        <TagBadge
+                          key={objective.learningObjective}
+                          tag={PRACTICE_OBJECTIVE_LABELS[objective.learningObjective]}
+                        />
+                      ))}
+                      {item.overallEstimate !== null && item.overallEstimate !== undefined ? (
+                        <span className="text-xs text-white/34">
+                          综合掌握 {Math.round(item.overallEstimate * 100)}%
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="shrink-0 text-sm leading-6 text-white/38">
                   下次：{formatShortDateTime(item.nextReviewAt, "待安排")}
@@ -309,7 +352,8 @@ export function ReviewClient() {
                   再练一次
                 </Link>
               </div>
-            </article>
+              </article>
+            </div>
           ))}
         </div>
       ) : null}

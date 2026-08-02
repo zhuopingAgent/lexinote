@@ -1143,7 +1143,68 @@ describe("WordLookupService", () => {
     expect(dictionaryService.saveEntry).not.toHaveBeenCalled();
   });
 
-  it("uses the selected pronunciation when retrying a word with multiple local entries", async () => {
+  it("keeps selected local examples when context only disambiguates pronunciation", async () => {
+    const physicalEntry: DictionaryEntry = {
+      word: "抱く",
+      pronunciation: "だく",
+      meaningZh: "抱；拥抱",
+      partOfSpeech: "动词",
+      examples: [
+        {
+          japanese: "子どもを抱く。",
+          reading: "こども を だく。",
+          translationZh: "抱起孩子。",
+        },
+      ],
+    };
+    const abstractEntry: DictionaryEntry = {
+      word: "抱く",
+      pronunciation: "いだく",
+      meaningZh: "怀有；心存",
+      partOfSpeech: "动词",
+      examples: [
+        {
+          japanese: "不安を抱く。",
+          reading: "ふあん を いだく。",
+          translationZh: "怀有不安。",
+        },
+      ],
+    };
+
+    const dictionaryService = {
+      findEntries: vi.fn().mockResolvedValue([physicalEntry, abstractEntry]),
+      saveEntry: vi.fn(),
+    };
+    const aiWordLookupService = {
+      resolveLookupWord: vi.fn(),
+      completeEntry: vi.fn(),
+      reconcileEntries: vi.fn(),
+    };
+
+    const service = new WordLookupService(
+      dictionaryService as never,
+      aiWordLookupService as never
+    );
+
+    await expect(
+      service.lookupWord("抱く", "赤ちゃんを抱く", "だく")
+    ).resolves.toMatchObject({
+      word: "抱く",
+      lookupWord: "抱く",
+      source: "dictionary",
+      entry: physicalEntry,
+      entries: [physicalEntry, abstractEntry],
+      metadata: {
+        isContextual: true,
+        persistenceStatus: "saved",
+        exampleStatus: "ready",
+      },
+    });
+    expect(aiWordLookupService.completeEntry).not.toHaveBeenCalled();
+    expect(dictionaryService.saveEntry).not.toHaveBeenCalled();
+  });
+
+  it("uses the selected pronunciation for instructional retry context", async () => {
     const physicalEntry: DictionaryEntry = {
       word: "抱く",
       pronunciation: "だく",
@@ -1230,7 +1291,7 @@ describe("WordLookupService", () => {
     );
 
     await expect(
-      service.lookupWord("抱く", "不安を抱く", "いだく")
+      service.lookupWord("抱く", "不安を抱くの例句を簡単にして", "いだく")
     ).resolves.toMatchObject({
       word: "抱く",
       lookupWord: "抱く",
@@ -1241,7 +1302,7 @@ describe("WordLookupService", () => {
     expect(aiWordLookupService.completeEntry).toHaveBeenCalledWith(
       "抱く",
       abstractEntry,
-      "不安を抱く"
+      "不安を抱くの例句を簡単にして"
     );
   });
 

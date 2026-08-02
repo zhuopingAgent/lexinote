@@ -12,6 +12,7 @@ import {
   SELECT_EXAMPLES_FOR_GRAMMAR_POINT_SQL,
   SELECT_FAVORITES_SQL,
   SELECT_GRAMMAR_CATEGORIES_SQL,
+  SELECT_GRAMMAR_PROGRESS_TOTALS_SQL,
   SELECT_GRAMMAR_PROGRESS_SQL,
   SELECT_GRAMMAR_POINT_DETAIL_SQL,
   SELECT_KNOWLEDGE_DIMENSIONS_SQL,
@@ -39,6 +40,8 @@ import type {
   GrammarExample,
   GrammarPointDetail,
   GrammarPointSummary,
+  GrammarLearningObjective,
+  GrammarObjectiveProgress,
   GrammarProgressGroup,
   GrammarReviewAggregations,
   GrammarObjectiveRecommendation,
@@ -79,6 +82,7 @@ import type {
   LearningModuleRow,
   LearningStageRow,
   ProgressGroupRow,
+  ProgressTotalsRow,
   ReviewAggregationsRow,
   ObjectiveRecommendationRow,
   ReviewRow,
@@ -88,7 +92,83 @@ import type {
   TaxonomyNodeRow,
 } from "@/features/grammar-learning/infrastructure/GrammarRepositoryRows";
 
+const GRAMMAR_LEARNING_OBJECTIVES = new Set<GrammarLearningObjective>([
+  "meaning",
+  "form_connection",
+  "grammar_selection",
+  "register_control",
+  "collocation_naturalness",
+  "discourse_function",
+]);
+
+type GrammarProgressTotals = {
+  totalGrammarPoints: number;
+  startedCount: number;
+  masteredCount: number;
+  pendingCompletionCount: number;
+  dueReviewCount: number;
+  reviewCount: number;
+  favoriteCount: number;
+};
+
+function parseObjectiveProgress(value: unknown): GrammarObjectiveProgress[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+
+    const record = item as Record<string, unknown>;
+    const learningObjective = record.learningObjective;
+    if (
+      typeof learningObjective !== "string" ||
+      !GRAMMAR_LEARNING_OBJECTIVES.has(
+        learningObjective as GrammarLearningObjective
+      )
+    ) {
+      return [];
+    }
+
+    return [{
+      learningObjective: learningObjective as GrammarLearningObjective,
+      estimate: Number(record.estimate) || 0,
+      confidence: Number(record.confidence) || 0,
+      attempts: toInteger(record.attempts as number | string | null),
+      assistedAttempts: toInteger(
+        record.assistedAttempts as number | string | null
+      ),
+      exposureCount: toInteger(record.exposureCount as number | string | null),
+      recentErrorCodes: parseStringArray(record.recentErrorCodes),
+      nextReviewAt:
+        typeof record.nextReviewAt === "string"
+          ? toIsoString(record.nextReviewAt)
+          : null,
+    }];
+  });
+}
+
 export class GrammarRepository {
+  async getProgressTotals(userId: string): Promise<GrammarProgressTotals> {
+    const rows = await query<ProgressTotalsRow>(
+      SELECT_GRAMMAR_PROGRESS_TOTALS_SQL,
+      [userId]
+    );
+    const row = rows[0];
+
+    return {
+      totalGrammarPoints: toInteger(row?.total_count ?? 0),
+      startedCount: toInteger(row?.started_count ?? 0),
+      masteredCount: toInteger(row?.mastered_count ?? 0),
+      pendingCompletionCount: toInteger(row?.pending_completion_count ?? 0),
+      dueReviewCount: toInteger(row?.due_review_count ?? 0),
+      reviewCount: toInteger(row?.review_count ?? 0),
+      favoriteCount: toInteger(row?.favorite_count ?? 0),
+    };
+  }
+
   async listKnowledgeDimensions(): Promise<KnowledgeDimension[]> {
     const rows = await query<KnowledgeDimensionRow>(
       SELECT_KNOWLEDGE_DIMENSIONS_SQL
@@ -539,15 +619,8 @@ export class GrammarRepository {
       const exposureCount = toInteger(row.exposure_count);
       const estimate = Number(row.estimate);
       const recentErrorCodes = parseStringArray(row.recent_error_codes);
-      const reasonZh = exposureCount > 0
-        ? "看过参考答案后还没有形成独立证据，建议先做一次无答案复现。"
-        : attempts > 0 && assistedAttempts / attempts >= 0.5
-          ? "最近较依赖提示，建议保留少量支架后重新作答。"
-          : recentErrorCodes.length > 0
-            ? "最近仍有结构化错误记录，建议针对同一学习目标复练。"
-            : estimate < 0.55
-              ? "当前掌握估计较低，建议先完成一组聚焦练习。"
-              : "已到建议复习时间，用延迟回忆确认是否真正掌握。";
+      const objectives = parseObjectiveProgress(row.objective_progress);
+      const reasonZh = "尚未完成，建议完成一次练习并确认掌握。";
       return {
         grammarPointId: row.grammar_point_id,
         grammarPoint: row.grammar_point,
@@ -561,6 +634,9 @@ export class GrammarRepository {
         exposureCount,
         recentErrorCodes,
         nextReviewAt: toIsoString(row.next_review_at),
+        overallEstimate: Number(row.overall_estimate),
+        overallConfidence: Number(row.overall_confidence),
+        objectives,
         reasonZh,
       };
     });
@@ -581,6 +657,8 @@ export class GrammarRepository {
       totalCount: toInteger(row.total_count),
       startedCount: toInteger(row.started_count),
       masteredCount: toInteger(row.mastered_count),
+      pendingCompletionCount: toInteger(row.pending_completion_count),
+      dueReviewCount: toInteger(row.due_review_count),
       reviewCount: toInteger(row.review_count),
       favoriteCount: toInteger(row.favorite_count),
     }));
