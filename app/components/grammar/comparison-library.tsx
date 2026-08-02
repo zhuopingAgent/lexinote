@@ -31,6 +31,22 @@ export function ComparisonLibrary() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (items.length === 0) return;
+    const prefix = "#comparison-";
+    if (!window.location.hash.startsWith(prefix)) return;
+    const requestedSlug = decodeURIComponent(window.location.hash.slice(prefix.length));
+    if (!items.some((item) => item.slug === requestedSlug)) return;
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(
+        `comparison-${requestedSlug}`
+      ) as HTMLDetailsElement | null;
+      if (!target) return;
+      target.open = true;
+      target.scrollIntoView({ block: "start" });
+    });
+  }, [items]);
+
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     if (!normalized) return items;
@@ -73,8 +89,12 @@ export function ComparisonLibrary() {
 
       <div className="mt-6 space-y-3">
         {filteredItems.map((item) => (
-          <details key={item.id} id={`comparison-${item.id}`} className="group rounded-lg border border-border bg-surface p-5 open:border-foreground/20">
-            <summary className="cursor-pointer list-none pr-8 marker:hidden">
+          <details
+            key={item.id}
+            id={`comparison-${item.slug}`}
+            className="group scroll-mt-24 rounded-lg border border-border bg-surface p-5 open:border-foreground/20"
+          >
+            <summary className="cursor-pointer list-none rounded-md pr-8 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground">{item.nameZh}</h2>

@@ -758,7 +758,14 @@ export class PracticeSessionService {
         },
       }),
     ]);
-    return result;
+    const correctOptionId = exercise.expectedFeatures.correctOptionId;
+    return {
+      ...result,
+      correctOptionId:
+        exercise.responseMode === "choice" && typeof correctOptionId === "string"
+          ? correctOptionId
+          : null,
+    };
   }
 
   private async requireSession(sessionId: string, userId: string) {

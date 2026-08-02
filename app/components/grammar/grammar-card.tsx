@@ -6,6 +6,8 @@ type GrammarCardProps = {
   grammarPoint: GrammarPointSummary;
   curriculumOrder?: number | null;
   contextualCategory?: string | null;
+  onRemoveFavorite?: (grammarPointId: string) => Promise<void>;
+  isRemovingFavorite?: boolean;
 };
 
 const LEARNING_STATUS_STYLES = {
@@ -31,6 +33,8 @@ export function GrammarCard({
   grammarPoint,
   curriculumOrder,
   contextualCategory,
+  onRemoveFavorite,
+  isRemovingFavorite = false,
 }: GrammarCardProps) {
   const titleId = `grammar-card-title-${grammarPoint.id}`;
   const learningStatus = grammarPoint.learningStatus
@@ -99,19 +103,41 @@ export function GrammarCard({
       ) : null}
 
       <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+        {onRemoveFavorite ? (
+          <button
+            type="button"
+            onClick={() => void onRemoveFavorite(grammarPoint.id)}
+            disabled={isRemovingFavorite}
+            aria-label={`取消收藏 ${grammarPoint.grammarPoint}`}
+            className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-muted transition hover:border-foreground/30 hover:bg-surface-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isRemovingFavorite ? "正在移除" : "取消收藏"}
+          </button>
+        ) : (
+          <Link
+            href={`/grammar/${grammarPoint.id}`}
+            aria-describedby={titleId}
+            className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-muted transition hover:border-foreground/30 hover:bg-surface-strong hover:text-foreground"
+          >
+            查看说明
+          </Link>
+        )}
         <Link
-          href={`/grammar/${grammarPoint.id}`}
-          aria-describedby={titleId}
-          className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-muted transition hover:border-foreground/30 hover:bg-surface-strong hover:text-foreground"
-        >
-          查看说明
-        </Link>
-        <Link
-          href={`/practice?grammarId=${grammarPoint.id}`}
+          href={
+            grammarPoint.migrationTarget?.kind === "comparison_set"
+              ? `/grammar/comparisons#comparison-${grammarPoint.migrationTarget.slug}`
+              : grammarPoint.migrationTarget?.kind === "error_type"
+                ? "/review"
+                : `/practice?grammarId=${grammarPoint.id}`
+          }
           aria-describedby={titleId}
           className="inline-flex h-9 items-center justify-center rounded-md bg-accent px-3 text-sm font-semibold text-background transition hover:bg-accent-strong"
         >
-          开始练习
+          {grammarPoint.migrationTarget?.kind === "comparison_set"
+            ? "查看对比"
+            : grammarPoint.migrationTarget?.kind === "error_type"
+              ? "查看复习"
+              : "开始练习"}
         </Link>
       </div>
     </article>
