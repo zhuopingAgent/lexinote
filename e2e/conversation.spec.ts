@@ -604,15 +604,16 @@ test("conversation serializes rapid partial preference updates", async ({
   expectNoBrowserErrors(browserErrors);
 });
 
-test("conversation surfaces SSE quota errors in an accessible modal", async ({
+test("conversation surfaces Gateway budget errors in an accessible modal", async ({
   page,
 }) => {
   const browserErrors = createBrowserErrorCollector(page);
   await mockBootstrap(page);
   const failedAssistant = {
     ...message(ASSISTANT_MESSAGE, "assistant", "", "failed"),
-    errorCode: "AI_QUOTA_EXHAUSTED",
-    errorMessage: "AI API 账户余额或额度已用完，请充值或更新账单后再试。",
+    errorCode: "AI_GATEWAY_BUDGET_EXCEEDED",
+    errorMessage:
+      "Vercel AI Gateway 余额或预算额度已用完，请在 Vercel 中充值或调整预算后再试。",
   };
   await page.route("**/api/conversations", async (route) => {
     await route.fulfill({
@@ -630,7 +631,7 @@ test("conversation surfaces SSE quota errors in an accessible modal", async ({
       },
       {
         type: "error",
-        code: "AI_QUOTA_EXHAUSTED",
+        code: "AI_GATEWAY_BUDGET_EXCEEDED",
         message: failedAssistant.errorMessage,
         retryable: true,
         assistantMessage: failedAssistant,
@@ -648,7 +649,9 @@ test("conversation surfaces SSE quota errors in an accessible modal", async ({
   await page.goto("/conversation");
   await page.getByLabel("对话消息").fill("额度测试");
   await page.getByLabel("对话消息").press("Enter");
-  const dialog = page.getByRole("dialog", { name: "AI API 额度不足" });
+  const dialog = page.getByRole("dialog", {
+    name: "Vercel AI Gateway 额度不足",
+  });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "我知道了" })).toBeFocused();
   await page.keyboard.press("Escape");

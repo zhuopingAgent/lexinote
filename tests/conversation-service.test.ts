@@ -8,7 +8,7 @@ import type {
   ConversationStreamEvent,
 } from "@/shared/types/conversation";
 import {
-  AiQuotaExhaustedError,
+  AiGatewayBudgetExceededError,
   DependencyError,
   NotFoundError,
   ValidationError,
@@ -332,11 +332,11 @@ describe("ConversationService", () => {
     expect(streamReply).not.toHaveBeenCalled();
   });
 
-  it("persists an upstream quota failure and emits a retryable SSE error", async () => {
+  it("persists a Gateway budget failure and emits a retryable SSE error", async () => {
     const failedAssistant = {
       ...streamingAssistant,
       status: "failed" as const,
-      errorCode: "AI_QUOTA_EXHAUSTED",
+      errorCode: "AI_GATEWAY_BUDGET_EXCEEDED",
       errorMessage: "额度不足",
     };
     const repository = {
@@ -350,11 +350,13 @@ describe("ConversationService", () => {
       failAssistantMessage: vi.fn().mockResolvedValue(failedAssistant),
     };
     const service = makeService(repository, {
-      streamReply: vi.fn().mockRejectedValue(new AiQuotaExhaustedError("额度不足")),
+      streamReply: vi
+        .fn()
+        .mockRejectedValue(new AiGatewayBudgetExceededError("额度不足")),
     });
 
     const stream = await service.streamMessage(SESSION_ID, {
-      clientMessageId: "quota-client",
+      clientMessageId: "budget-client",
       content: userMessage.content,
     });
     const events: ConversationStreamEvent[] = [];
@@ -368,11 +370,14 @@ describe("ConversationService", () => {
     ]);
     expect(events.at(-1)).toMatchObject({
       type: "error",
-      code: "AI_QUOTA_EXHAUSTED",
+      code: "AI_GATEWAY_BUDGET_EXCEEDED",
       retryable: true,
     });
     expect(repository.failAssistantMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed", errorCode: "AI_QUOTA_EXHAUSTED" })
+      expect.objectContaining({
+        status: "failed",
+        errorCode: "AI_GATEWAY_BUDGET_EXCEEDED",
+      })
     );
   });
 

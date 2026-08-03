@@ -1,8 +1,9 @@
 import {
-  rethrowAiQuotaError,
-  throwIfOpenAiQuotaExhausted,
-} from "@/shared/utils/ai-api-errors";
+  rethrowAiGatewayBudgetError,
+  throwIfAiGatewayBudgetExceeded,
+} from "@/shared/utils/ai-gateway-errors";
 
+// These creator/model IDs route through AI Gateway, not direct provider endpoints.
 export const AI_MODELS = {
   cheap: "openai/gpt-5-nano",
   defaultTeacher: "openai/gpt-4.1-mini",
@@ -167,7 +168,7 @@ export async function requestAiGatewayText(
       }),
     });
 
-    await throwIfOpenAiQuotaExhausted(response);
+    throwIfAiGatewayBudgetExceeded(response);
 
     if (!response.ok) {
       return null;
@@ -176,7 +177,7 @@ export async function requestAiGatewayText(
     const data = (await response.json()) as AiGatewayResponse;
     return extractAiGatewayResponseText(data);
   } catch (error) {
-    rethrowAiQuotaError(error);
+    rethrowAiGatewayBudgetError(error);
     return null;
   }
 }
@@ -205,7 +206,7 @@ export async function requestAiGatewayTextStream(
       }),
     });
 
-    await throwIfOpenAiQuotaExhausted(response);
+    throwIfAiGatewayBudgetExceeded(response);
 
     if (!response.ok || !response.body) {
       return null;
@@ -213,7 +214,7 @@ export async function requestAiGatewayTextStream(
 
     return parseAiGatewayTextStream(response.body);
   } catch (error) {
-    rethrowAiQuotaError(error);
+    rethrowAiGatewayBudgetError(error);
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
@@ -244,7 +245,7 @@ export async function requestAiGatewayStructuredText(
       }),
     });
 
-    await throwIfOpenAiQuotaExhausted(response);
+    throwIfAiGatewayBudgetExceeded(response);
 
     if (!response.ok) {
       return null;
@@ -252,7 +253,7 @@ export async function requestAiGatewayStructuredText(
 
     return extractAiGatewayResponseText((await response.json()) as AiGatewayResponse);
   } catch (error) {
-    rethrowAiQuotaError(error);
+    rethrowAiGatewayBudgetError(error);
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }

@@ -1,6 +1,6 @@
 import {
-  AI_QUOTA_EXHAUSTED_CODE,
-  AI_QUOTA_EXHAUSTED_MESSAGE,
+  AI_GATEWAY_BUDGET_EXCEEDED_CODE,
+  AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE,
 } from "@/shared/utils/errors";
 
 export { getErrorMessage } from "@/shared/utils/errors";
@@ -39,15 +39,22 @@ function readError(data: unknown) {
   };
 }
 
-export function isAiQuotaExhaustedError(error: unknown): error is ApiClientError {
-  return error instanceof ApiClientError && error.code === AI_QUOTA_EXHAUSTED_CODE;
+export function isAiGatewayBudgetExceededError(
+  error: unknown
+): error is ApiClientError {
+  return (
+    error instanceof ApiClientError &&
+    error.code === AI_GATEWAY_BUDGET_EXCEEDED_CODE
+  );
 }
 
-export function isAiQuotaErrorMessage(message: string | null | undefined) {
+export function isAiGatewayBudgetErrorMessage(
+  message: string | null | undefined
+) {
   return Boolean(
     message &&
-      (message.includes(AI_QUOTA_EXHAUSTED_CODE) ||
-        message.includes(AI_QUOTA_EXHAUSTED_MESSAGE))
+      (message.includes(AI_GATEWAY_BUDGET_EXCEEDED_CODE) ||
+        message.includes(AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE))
   );
 }
 

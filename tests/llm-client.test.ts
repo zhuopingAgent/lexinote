@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LlmClient } from "@/features/ai-lookup/infrastructure/LlmClient";
-import { AI_QUOTA_EXHAUSTED_CODE } from "@/shared/utils/errors";
+import { AI_GATEWAY_BUDGET_EXCEEDED_CODE } from "@/shared/utils/errors";
 
 describe("LlmClient", () => {
   const originalApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -68,22 +68,22 @@ describe("LlmClient", () => {
     });
   });
 
-  it("returns null when base-form resolution hits an AI quota error", async () => {
+  it("returns null when base-form resolution hits an AI Gateway budget error", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const quotaResponse = {
+    const budgetResponse = {
       ok: false,
-      status: 429,
+      status: 402,
       clone() {
-        return quotaResponse;
+        return budgetResponse;
       },
       json: async () => ({
         error: {
-          code: "insufficient_quota",
-          message: "You exceeded your current quota, please check billing.",
+          type: "insufficient_funds",
+          message: "AI Gateway budget exceeded.",
         },
       }),
     };
-    global.fetch = vi.fn().mockResolvedValue(quotaResponse) as typeof fetch;
+    global.fetch = vi.fn().mockResolvedValue(budgetResponse) as typeof fetch;
 
     const client = new LlmClient();
 
@@ -804,27 +804,51 @@ describe("LlmClient", () => {
     });
   });
 
-  it("throws a quota error when AI Gateway reports insufficient quota", async () => {
+  it("throws a budget error when AI Gateway returns 402", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const quotaResponse = {
+    const budgetResponse = {
       ok: false,
-      status: 429,
+      status: 402,
       clone() {
-        return quotaResponse;
+        return budgetResponse;
       },
       json: async () => ({
         error: {
-          code: "insufficient_quota",
-          message: "You exceeded your current quota, please check billing.",
+          type: "insufficient_funds",
+          message: "AI Gateway budget exceeded.",
         },
       }),
     };
-    global.fetch = vi.fn().mockResolvedValue(quotaResponse) as typeof fetch;
+    global.fetch = vi.fn().mockResolvedValue(budgetResponse) as typeof fetch;
 
     const client = new LlmClient();
 
     await expect(client.completeWordEntry("未知词")).rejects.toMatchObject({
-      code: AI_QUOTA_EXHAUSTED_CODE,
+      code: AI_GATEWAY_BUDGET_EXCEEDED_CODE,
+    });
+  });
+
+  it("does not report a Gateway budget error for upstream quota-shaped 429s", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({
+        error: {
+          code: "insufficient_quota",
+          message: "Please check billing or credit limits.",
+        },
+      }),
+    }) as typeof fetch;
+
+    const client = new LlmClient();
+
+    await expect(client.completeWordEntry("未知词")).resolves.toEqual({
+      word: "未知词",
+      pronunciation: "需结合上下文确认",
+      partOfSpeech: "需结合上下文确认",
+      meaningZh: "需结合上下文确认",
+      examples: [],
     });
   });
 

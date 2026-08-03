@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import { GrammarAiClient } from "@/features/grammar-learning/infrastructure/GrammarAiClient";
 import type { GrammarPointDetail } from "@/shared/types/grammar";
-import { AI_QUOTA_EXHAUSTED_CODE } from "@/shared/utils/errors";
+import { AI_GATEWAY_BUDGET_EXCEEDED_CODE } from "@/shared/utils/errors";
 
 const GRAMMAR_POINT_ID = "11111111-1111-4111-8111-111111111111";
 const DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -780,22 +780,22 @@ describe("GrammarLearningService", () => {
     expect(advancedResult.prompt).not.toBe(result.prompt);
   });
 
-  it("propagates OpenAI quota errors during practice generation", async () => {
+  it("propagates AI Gateway budget errors during practice generation", async () => {
     vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
-    const quotaResponse = {
+    const budgetResponse = {
       ok: false,
-      status: 429,
+      status: 402,
       clone() {
-        return quotaResponse;
+        return budgetResponse;
       },
       json: async () => ({
         error: {
-          code: "insufficient_quota",
-          message: "You exceeded your current quota, please check billing.",
+          type: "insufficient_funds",
+          message: "AI Gateway budget exceeded.",
         },
       }),
     };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(quotaResponse));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(budgetResponse));
 
     const repository = createRepositoryMock(genericGrammarPoint);
     const service = new GrammarLearningService(
@@ -811,7 +811,7 @@ describe("GrammarLearningService", () => {
         level: 3,
       })
     ).rejects.toMatchObject({
-      code: AI_QUOTA_EXHAUSTED_CODE,
+      code: AI_GATEWAY_BUDGET_EXCEEDED_CODE,
     });
   });
 

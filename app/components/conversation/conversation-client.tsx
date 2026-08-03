@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
+import { AiGatewayBudgetModal } from "@/app/components/ai-gateway-budget-modal";
 import {
   ChatIcon,
   MenuIcon,
@@ -40,7 +40,7 @@ import { consumeConversationEventStream } from "@/app/lib/conversation-stream";
 import {
   getErrorMessage,
   isAbortError,
-  isAiQuotaExhaustedError,
+  isAiGatewayBudgetExceededError,
 } from "@/app/lib/api-client";
 import type { CollectionSummary } from "@/shared/types/collections";
 import type {
@@ -100,7 +100,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   const [canStopGeneration, setCanStopGeneration] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
+  const [aiGatewayBudgetErrorMessage, setAiGatewayBudgetErrorMessage] = useState<
+    string | null
+  >(null);
   const activeSessionIdRef = useRef(activeSessionId);
   const abortControllerRef = useRef<AbortController | null>(null);
   const analysisInFlightRef = useRef(new Set<string>());
@@ -377,8 +379,10 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
             : message
         )
       );
-      if (isAiQuotaExhaustedError(analysisError)) {
-        setAiApiErrorMessage(getErrorMessage(analysisError, "AI 分析额度不足。"));
+      if (isAiGatewayBudgetExceededError(analysisError)) {
+        setAiGatewayBudgetErrorMessage(
+          getErrorMessage(analysisError, "Vercel AI Gateway 分析额度不足。")
+        );
       }
     } finally {
       analysisInFlightRef.current.delete(messageId);
@@ -451,8 +455,8 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
           );
           return;
         }
-        if (event.code === "AI_QUOTA_EXHAUSTED") {
-          setAiApiErrorMessage(event.message);
+        if (event.code === "AI_GATEWAY_BUDGET_EXCEEDED") {
+          setAiGatewayBudgetErrorMessage(event.message);
         }
         if (event.assistantMessage) {
           setMessages((current) =>
@@ -473,7 +477,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
       if (!isAbortError(sendError)) {
         const message = getErrorMessage(sendError, "发送失败，请稍后再试。");
         setError(message);
-        if (isAiQuotaExhaustedError(sendError)) setAiApiErrorMessage(message);
+        if (isAiGatewayBudgetExceededError(sendError)) {
+          setAiGatewayBudgetErrorMessage(message);
+        }
       } else {
         setMessages((current) =>
           current.map((message) =>
@@ -613,7 +619,10 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-background text-foreground">
-      <AiApiErrorModal message={aiApiErrorMessage} onClose={() => setAiApiErrorMessage(null)} />
+      <AiGatewayBudgetModal
+        message={aiGatewayBudgetErrorMessage}
+        onClose={() => setAiGatewayBudgetErrorMessage(null)}
+      />
       <ConversationSidebar
         activeSessionId={activeSessionId}
         isOpen={isSidebarOpen}

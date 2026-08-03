@@ -17,18 +17,19 @@ export class AppError extends Error {
   }
 }
 
-export const AI_QUOTA_EXHAUSTED_CODE = "AI_QUOTA_EXHAUSTED";
-export const AI_QUOTA_EXHAUSTED_MESSAGE =
-  "AI API 账户余额或额度已用完，请充值或更新账单后再试。";
+export const AI_GATEWAY_BUDGET_EXCEEDED_CODE =
+  "AI_GATEWAY_BUDGET_EXCEEDED";
+export const AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE =
+  "Vercel AI Gateway 余额或预算额度已用完，请在 Vercel 中充值或调整预算后再试。";
 
 export function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export class AiQuotaExhaustedError extends AppError {
-  constructor(message = AI_QUOTA_EXHAUSTED_MESSAGE) {
-    super(message, 402, AI_QUOTA_EXHAUSTED_CODE, true);
-    this.name = "AiQuotaExhaustedError";
+export class AiGatewayBudgetExceededError extends AppError {
+  constructor(message = AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE) {
+    super(message, 402, AI_GATEWAY_BUDGET_EXCEEDED_CODE, true);
+    this.name = "AiGatewayBudgetExceededError";
   }
 }
 

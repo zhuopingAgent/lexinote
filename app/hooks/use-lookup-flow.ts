@@ -21,7 +21,7 @@ import {
 import {
   getErrorMessage,
   isAbortError,
-  isAiQuotaExhaustedError,
+  isAiGatewayBudgetExceededError,
 } from "@/app/lib/api-client";
 import { lookupDictionaryWord } from "@/app/lib/dictionary-api";
 import type {
@@ -59,7 +59,9 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
   const [result, setResult] = useState<WordLookupResponse | null>(null);
   const [historyItems, setHistoryItems] = useState<SearchHistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
+  const [aiGatewayBudgetErrorMessage, setAiGatewayBudgetErrorMessage] = useState<
+    string | null
+  >(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeContext, setActiveContext] = useState("");
   const [loadingContext, setLoadingContext] = useState("");
@@ -128,7 +130,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     setRetryContext("");
     setActiveContext(item.context);
     setError(null);
-    setAiApiErrorMessage(null);
+    setAiGatewayBudgetErrorMessage(null);
     setResult(item.result);
     setIsLoading(false);
     setLoadingContext("");
@@ -185,7 +187,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
         cachedResult
       );
       setError(null);
-      setAiApiErrorMessage(null);
+      setAiGatewayBudgetErrorMessage(null);
       setResult(cachedResult);
       setActiveContext(normalizedContext);
       setSearchContextDraft(normalizedContext);
@@ -242,15 +244,15 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
       setIsRetryPanelOpen(false);
       setRetryContext("");
       setSelectedRetryPronunciation(payload.entry.pronunciation);
-      setAiApiErrorMessage(null);
+      setAiGatewayBudgetErrorMessage(null);
     } catch (lookupError) {
       if (isAbortError(lookupError) || !isCurrentLookup()) {
         return;
       }
 
       const message = getErrorMessage(lookupError, "发生了意外错误");
-      if (isAiQuotaExhaustedError(lookupError)) {
-        setAiApiErrorMessage(message);
+      if (isAiGatewayBudgetExceededError(lookupError)) {
+        setAiGatewayBudgetErrorMessage(message);
       }
       setError(
         options?.preserveResult
@@ -364,8 +366,8 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     }
   }
 
-  function onDismissAiApiError() {
-    setAiApiErrorMessage(null);
+  function onDismissAiGatewayBudgetError() {
+    setAiGatewayBudgetErrorMessage(null);
   }
 
   return {
@@ -380,7 +382,7 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     result,
     historyItems,
     error,
-    aiApiErrorMessage,
+    aiGatewayBudgetErrorMessage,
     isLoading,
     activeContext,
     loadingContext,
@@ -405,6 +407,6 @@ export function useLookupFlow(onViewChange: (view: AppView) => void) {
     onCancelRetry,
     onSelectResultEntry,
     onStartRetryWithEntry,
-    onDismissAiApiError,
+    onDismissAiGatewayBudgetError,
   };
 }

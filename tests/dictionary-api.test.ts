@@ -59,8 +59,13 @@ describe("dictionary API client", () => {
       .mockResolvedValueOnce(jsonResponse({ word: "食べる" }))
       .mockResolvedValueOnce(
         jsonResponse(
-          { error: { code: "AI_QUOTA_EXHAUSTED", message: "配额已用尽" } },
-          429
+          {
+            error: {
+              code: "AI_GATEWAY_BUDGET_EXCEEDED",
+              message: "Gateway 额度已用尽",
+            },
+          },
+          402
         )
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -76,9 +81,9 @@ describe("dictionary API client", () => {
     const error = await lookupDictionaryWord(input).catch((caught) => caught);
     expect(error).toBeInstanceOf(ApiClientError);
     expect(error).toMatchObject({
-      code: "AI_QUOTA_EXHAUSTED",
-      message: "配额已用尽",
-      statusCode: 429,
+      code: "AI_GATEWAY_BUDGET_EXCEEDED",
+      message: "Gateway 额度已用尽",
+      statusCode: 402,
     });
   });
 });

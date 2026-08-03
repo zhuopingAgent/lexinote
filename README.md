@@ -55,6 +55,10 @@ AI requests go through Vercel AI Gateway at `AI_GATEWAY_BASE_URL`, which default
 - `longContext`: `alibaba/qwen3.7-plus`
 - `speech`: `openai/whisper-1`
 
+These are Vercel AI Gateway `creator/model` identifiers. The application does
+not call provider API endpoints directly; all model requests use the configured
+AI Gateway base URL.
+
 Current text workflows use `cheap` for normalization, incremental collection
 classification, and conversation analysis; `defaultTeacher` for entry/practice
 generation, collection backfills, and conversation replies; and `premiumTeacher`

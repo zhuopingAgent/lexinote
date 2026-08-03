@@ -5,8 +5,8 @@ import type { AppView } from "@/app/lib/app-view";
 import {
   getErrorMessage,
   isAbortError,
-  isAiQuotaErrorMessage,
-  isAiQuotaExhaustedError,
+  isAiGatewayBudgetErrorMessage,
+  isAiGatewayBudgetExceededError,
 } from "@/app/lib/api-client";
 import {
   addCollectionWord,
@@ -37,8 +37,10 @@ export function useCollections(activeView: AppView) {
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [busyCollectionId, setBusyCollectionId] = useState<number | null>(null);
   const [hasLoadedCollections, setHasLoadedCollections] = useState(false);
-  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
-  const notifiedAiQuotaCollectionIdsRef = useRef(new Set<number>());
+  const [aiGatewayBudgetErrorMessage, setAiGatewayBudgetErrorMessage] = useState<
+    string | null
+  >(null);
+  const notifiedBudgetErrorCollectionIdsRef = useRef(new Set<number>());
   const activeCollectionsLoadAbortControllerRef = useRef<AbortController | null>(null);
   const collectionsLoadGenerationRef = useRef(0);
 
@@ -49,21 +51,21 @@ export function useCollections(activeView: AppView) {
     setIsCollectionsLoading(false);
   }, []);
 
-  const notifyAiQuotaAutoFilterFailures = useCallback(
+  const notifyAiGatewayBudgetAutoFilterFailures = useCallback(
     (nextCollections: CollectionSummary[]) => {
       const failedCollection = nextCollections.find(
         (collection) =>
           isAutoFilterSyncFailed(collection.autoFilterSyncStatus) &&
-          isAiQuotaErrorMessage(collection.autoFilterLastError) &&
-          !notifiedAiQuotaCollectionIdsRef.current.has(collection.collectionId)
+          isAiGatewayBudgetErrorMessage(collection.autoFilterLastError) &&
+          !notifiedBudgetErrorCollectionIdsRef.current.has(collection.collectionId)
       );
 
       if (!failedCollection) {
         return;
       }
 
-      notifiedAiQuotaCollectionIdsRef.current.add(failedCollection.collectionId);
-      setAiApiErrorMessage(failedCollection.autoFilterLastError);
+      notifiedBudgetErrorCollectionIdsRef.current.add(failedCollection.collectionId);
+      setAiGatewayBudgetErrorMessage(failedCollection.autoFilterLastError);
     },
     []
   );
@@ -93,15 +95,15 @@ export function useCollections(activeView: AppView) {
 
         setCollections(payload.collections);
         setHasLoadedCollections(true);
-        notifyAiQuotaAutoFilterFailures(payload.collections);
+        notifyAiGatewayBudgetAutoFilterFailures(payload.collections);
       } catch (collectionLoadError) {
         if (isAbortError(collectionLoadError) || !isCurrentLoad()) {
           return;
         }
 
         const message = getErrorMessage(collectionLoadError, "发生了意外错误");
-        if (isAiQuotaExhaustedError(collectionLoadError)) {
-          setAiApiErrorMessage(message);
+        if (isAiGatewayBudgetExceededError(collectionLoadError)) {
+          setAiGatewayBudgetErrorMessage(message);
         }
         if (!silent) {
           setCollectionError(message);
@@ -113,7 +115,7 @@ export function useCollections(activeView: AppView) {
         }
       }
     },
-    [notifyAiQuotaAutoFilterFailures]
+    [notifyAiGatewayBudgetAutoFilterFailures]
   );
 
   useEffect(() => {
@@ -244,8 +246,8 @@ export function useCollections(activeView: AppView) {
       setHasLoadedCollections(true);
     } catch (collectionCreateError) {
       const message = getErrorMessage(collectionCreateError, "发生了意外错误");
-      if (isAiQuotaExhaustedError(collectionCreateError)) {
-        setAiApiErrorMessage(message);
+      if (isAiGatewayBudgetExceededError(collectionCreateError)) {
+        setAiGatewayBudgetErrorMessage(message);
       }
       setCollectionError(message);
     } finally {
@@ -305,8 +307,8 @@ export function useCollections(activeView: AppView) {
       onCancelEditingCollection();
     } catch (collectionUpdateError) {
       const message = getErrorMessage(collectionUpdateError, "发生了意外错误");
-      if (isAiQuotaExhaustedError(collectionUpdateError)) {
-        setAiApiErrorMessage(message);
+      if (isAiGatewayBudgetExceededError(collectionUpdateError)) {
+        setAiGatewayBudgetErrorMessage(message);
       }
       setCollectionError(message);
     } finally {
@@ -336,8 +338,8 @@ export function useCollections(activeView: AppView) {
       }
     } catch (collectionDeleteError) {
       const message = getErrorMessage(collectionDeleteError, "发生了意外错误");
-      if (isAiQuotaExhaustedError(collectionDeleteError)) {
-        setAiApiErrorMessage(message);
+      if (isAiGatewayBudgetExceededError(collectionDeleteError)) {
+        setAiGatewayBudgetErrorMessage(message);
       }
       setCollectionError(message);
     } finally {
@@ -361,8 +363,8 @@ export function useCollections(activeView: AppView) {
       );
     } catch (collectionResyncError) {
       const message = getErrorMessage(collectionResyncError, "发生了意外错误");
-      if (isAiQuotaExhaustedError(collectionResyncError)) {
-        setAiApiErrorMessage(message);
+      if (isAiGatewayBudgetExceededError(collectionResyncError)) {
+        setAiGatewayBudgetErrorMessage(message);
       }
       setCollectionError(message);
     } finally {
@@ -370,8 +372,8 @@ export function useCollections(activeView: AppView) {
     }
   }
 
-  function onDismissAiApiError() {
-    setAiApiErrorMessage(null);
+  function onDismissAiGatewayBudgetError() {
+    setAiGatewayBudgetErrorMessage(null);
   }
 
   return {
@@ -379,7 +381,7 @@ export function useCollections(activeView: AppView) {
     collectionName,
     setCollectionName,
     collectionError,
-    aiApiErrorMessage,
+    aiGatewayBudgetErrorMessage,
     editingCollectionId,
     editingCollectionName,
     setEditingCollectionName,
@@ -400,6 +402,6 @@ export function useCollections(activeView: AppView) {
     onSaveCollectionUpdate,
     onDeleteCollection,
     onResyncCollection,
-    onDismissAiApiError,
+    onDismissAiGatewayBudgetError,
   };
 }
