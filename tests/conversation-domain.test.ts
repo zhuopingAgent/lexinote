@@ -137,6 +137,22 @@ describe("conversation domain", () => {
           sourceExcerpt: "試してみますね",
         },
         {
+          kind: "vocabulary" as const,
+          surfaceForm: "試してみます",
+          reading: "ためしてみます",
+          meaningZh: "尝试并实践",
+          explanationZh: "错误地把活用短语标成词汇",
+          sourceExcerpt: "試してみます",
+        },
+        {
+          kind: "vocabulary" as const,
+          surfaceForm: "試す",
+          reading: "ためす",
+          meaningZh: "尝试",
+          explanationZh: "可以独立查词的词典原形",
+          sourceExcerpt: "試し",
+        },
+        {
           kind: "expression" as const,
           surfaceForm: "お疲れさまです",
           reading: "おつかれさまです",
@@ -162,6 +178,10 @@ describe("conversation domain", () => {
         sourceExcerpt: "てみます",
       },
       expect.objectContaining({
+        kind: "vocabulary",
+        surfaceForm: "試す",
+      }),
+      expect.objectContaining({
         kind: "expression",
         surfaceForm: "お疲れさまです",
       }),
@@ -171,7 +191,7 @@ describe("conversation domain", () => {
       reconciled,
       [message(0, "試してみます")]
     );
-    expect(notDuplicated.learningItems).toHaveLength(2);
+    expect(notDuplicated.learningItems).toHaveLength(3);
   });
 
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {

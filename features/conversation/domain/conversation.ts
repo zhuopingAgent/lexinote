@@ -274,7 +274,7 @@ export function reconcileConversationGrammarLearningItems(
       ) {
         return false;
       }
-      if (item.kind !== "expression") {
+      if (item.kind !== "expression" && item.kind !== "vocabulary") {
         return true;
       }
       return ![item.surfaceForm, item.sourceExcerpt].some((value) =>
