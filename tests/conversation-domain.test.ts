@@ -78,6 +78,21 @@ describe("conversation domain", () => {
     expect(prompt).toContain("对方是客户");
     expect(prompt).toContain("正在准备预约变更邮件");
     expect(prompt).toContain("不声称已经保存");
+    expect(prompt).toContain("不在结尾追问");
+
+    const autoPrompt = buildConversationSystemPrompt({
+      mode: "auto",
+      preferences: {
+        defaultMode: "auto",
+        translationStyle: "natural_first",
+        defaultRegister: "business",
+        defaultCollectionId: null,
+      },
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "",
+    });
+    expect(autoPrompt).toContain("完整日语句子按日译中处理");
   });
 
   it("limits structured learning extraction to the current turn", () => {
@@ -95,6 +110,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("〜てみる");
     expect(prompt).toContain("同一个语言现象只选一个 kind");
     expect(prompt).toContain("不要收集助手给出的普通改写");
+    expect(prompt).toContain("memories 不是对话摘要");
   });
 
   it("canonicalizes te-miru and removes ordinary expressions covered by it", () => {
@@ -295,6 +311,42 @@ describe("conversation domain", () => {
 
     expect(validated.learningItems.map((item) => item.surfaceForm)).toEqual([
       "日程を変更する",
+    ]);
+  });
+
+  it("drops meta summaries masquerading as memory suggestions", () => {
+    const analysis = {
+      title: null,
+      summary: "用户表示会尝试。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [
+        {
+          scope: "session" as const,
+          kind: "context" as const,
+          content:
+            "当前轮对话：用户说试してみます，助手给出释义。规则涉及 grammar、vocabulary、expression。",
+        },
+        {
+          scope: "session" as const,
+          kind: "context" as const,
+          content: "这次对话对象是医院前台",
+        },
+        {
+          scope: "global" as const,
+          kind: "preference" as const,
+          content: "偏好简洁的商务日语",
+        },
+      ],
+      learningItems: [],
+    };
+
+    const validated = validateConversationAnalysisReferences(analysis, [
+      { content: "試してみます" },
+    ]);
+
+    expect(validated.memories.map((memory) => memory.content)).toEqual([
+      "这次对话对象是医院前台",
+      "偏好简洁的商务日语",
     ]);
   });
 
