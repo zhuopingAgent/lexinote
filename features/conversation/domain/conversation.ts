@@ -60,6 +60,7 @@ const CONVERSATION_META_SUMMARY_PATTERNS = [
   /^(?:规则回顾|规则说明|提取规则|分析规则|学习项规则|系统规则|提示词(?:要求)?)[：:]/,
   /^(?:根据|按照)(?:上述|当前|本次)?(?:规则|提示词)[，,:：]?/,
   /(?:学习项|候选).*(?:最多|不超过)\s*\d+\s*(?:项|个)/,
+  /\b(?:grammar|vocabulary|expression)\b/i,
 ] as const;
 
 function readString(value: unknown, maxLength: number) {
