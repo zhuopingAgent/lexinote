@@ -45,6 +45,15 @@ export type ConversationAnalysisOutput = {
   learningItems: ConversationAnalysisLearningItem[];
 };
 
+const CONVERSATION_META_MEMORY_PATTERNS = [
+  /(?:当前|本|这)(?:一)?轮对话/,
+  /用户(?:说|输入|询问)/,
+  /助手(?:给出|回答|解释)/,
+  /规则(?:涉及|要求)/,
+  /(?:学习项|候选).*(?:提取|分析)/,
+  /\b(?:grammar|vocabulary|expression)\b/i,
+] as const;
+
 function readString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -232,6 +241,12 @@ export function validateConversationAnalysisReferences(
   const sourceTexts = messages.map((message) => message.content);
   return {
     ...analysis,
+    memories: analysis.memories.filter(
+      (memory) =>
+        !CONVERSATION_META_MEMORY_PATTERNS.some((pattern) =>
+          pattern.test(memory.content)
+        )
+    ),
     learningItems: analysis.learningItems.filter(
       (item) =>
         Boolean(item.sourceExcerpt) &&
