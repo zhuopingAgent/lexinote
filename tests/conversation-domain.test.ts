@@ -406,6 +406,27 @@ describe("conversation domain", () => {
     expect(parseConversationAnalysisOutput("not-json")).toBeNull();
   });
 
+  it("removes internal extraction instructions from session summaries", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary:
+          "用户将「楽しいでした」改为「楽しかったです」。规则回顾：学习项聚焦高价值语法，且不超过5项。此次核心学习点是い形容词过去形。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [],
+      })
+    );
+
+    expect(parsed?.summary).toBe(
+      "用户将「楽しいでした」改为「楽しかったです」。此次核心学习点是い形容词过去形。"
+    );
+  });
+
   it("deduplicates equivalent forms without collapsing distinct meanings", () => {
     expect(
       conversationLearningItemKey("grammar", "てみる", "试着……")

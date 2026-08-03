@@ -56,6 +56,12 @@ const CONVERSATION_META_MEMORY_PATTERNS = [
   /\b(?:grammar|vocabulary|expression)\b/i,
 ] as const;
 
+const CONVERSATION_META_SUMMARY_PATTERNS = [
+  /^(?:规则回顾|规则说明|提取规则|分析规则|学习项规则|系统规则|提示词(?:要求)?)[：:]/,
+  /^(?:根据|按照)(?:上述|当前|本次)?(?:规则|提示词)[，,:：]?/,
+  /(?:学习项|候选).*(?:最多|不超过)\s*\d+\s*(?:项|个)/,
+] as const;
+
 function readString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -69,6 +75,22 @@ function readStringArray(value: unknown, limit: number, maxLength: number) {
     .map((item) => readString(item, maxLength))
     .filter(Boolean)
     .slice(0, limit);
+}
+
+function sanitizeConversationSummary(value: unknown) {
+  const summary = readString(value, MAX_SUMMARY_LENGTH);
+  const sentences = summary.match(/[^。！？\n]+[。！？]?/g) ?? [];
+  return sentences
+    .map((sentence) => sentence.trim())
+    .filter(
+      (sentence) =>
+        sentence &&
+        !CONVERSATION_META_SUMMARY_PATTERNS.some((pattern) =>
+          pattern.test(sentence)
+        )
+    )
+    .join("")
+    .slice(0, MAX_SUMMARY_LENGTH);
 }
 
 export function isConversationMode(value: unknown): value is ConversationMode {
@@ -240,7 +262,7 @@ export function parseConversationAnalysisOutput(
 
   return {
     title: readString(record.title, 80) || null,
-    summary: readString(record.summary, MAX_SUMMARY_LENGTH),
+    summary: sanitizeConversationSummary(record.summary),
     details: {
       literalTranslation: literalTranslation || null,
       nuanceNotes: readStringArray(detailsRecord.nuance_notes, 5, 500),
