@@ -411,7 +411,7 @@ describe("conversation domain", () => {
       JSON.stringify({
         title: null,
         summary:
-          "用户将「楽しいでした」改为「楽しかったです」。规则回顾：学习项聚焦高价值语法，且不超过5项。此次核心学习点是い形容词过去形。",
+          "用户将「楽しいでした」改为「楽しかったです」。规则回顾：学习项聚焦高价值语法，且不超过5项。当前轮对话中涉及的核心语法需作为 grammar 提取。未产生明确的词汇学习需求，故不列 vocabulary。此次核心学习点是い形容词过去形。",
         details: {
           literal_translation: null,
           nuance_notes: [],
