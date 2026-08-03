@@ -114,6 +114,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("memories 不是对话摘要");
     expect(prompt).toContain("通常只选 1–3 个");
     expect(prompt).toContain("不能输出「〜かもしれませんので」");
+    expect(prompt).toContain("不要把「楽しいです/楽しかったです」");
   });
 
   it("canonicalizes te-miru and removes ordinary expressions covered by it", () => {
@@ -211,6 +212,116 @@ describe("conversation domain", () => {
       [message(0, "試してみます")]
     );
     expect(notDuplicated.learningItems).toHaveLength(3);
+  });
+
+  it("reconciles an i-adjective correction to the grammar library form", () => {
+    const analysis = {
+      title: null,
+      summary: "纠正了过去时。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "楽しいです/楽しかったです",
+          reading: "たのしいです/たのしかったです",
+          meaningZh: "过去时",
+          explanationZh: "将楽しい改为楽しかったです",
+          sourceExcerpt: "とても楽しかったです",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "昨日はとても楽しいでした。"),
+      message(1, "昨日はとても楽しかったです。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "い形容词过去形",
+        reading: null,
+        meaningZh: "表示い形容词的过去状态",
+        explanationZh: "将词尾「い」变为「かった」，礼貌表达再接「です」。",
+        sourceExcerpt: "昨日はとても楽しいでした",
+      },
+    ]);
+  });
+
+  it("adds grammar explicitly requested in Japanese quotation marks", () => {
+    const analysis = {
+      title: null,
+      summary: "解释了目标语法。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "「〜わけではない」の使い方を説明してください。"),
+      message(1, "并不是完全如此。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      expect.objectContaining({
+        kind: "grammar",
+        surfaceForm: "〜わけではない",
+        sourceExcerpt: "〜わけではない",
+      }),
+    ]);
+  });
+
+  it("does not treat a correct na-adjective ending in い as an i-adjective error", () => {
+    const analysis = {
+      title: null,
+      summary: "说明了句子。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "昨日の景色はきれいでした。"),
+      message(1, "昨天的景色很漂亮。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([]);
+  });
+
+  it("normalizes a tentative recommendation to the existing advice grammar", () => {
+    const analysis = {
+      title: null,
+      summary: "建议继续观察。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "ほうがよさそうです",
+          reading: null,
+          meaningZh: "看起来最好",
+          explanationZh: "模型拼接的语法名称",
+          sourceExcerpt: "見たほうがよさそうです",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "もう少し様子を見たほうがよさそうです。"),
+      message(1, "还是再观察一段时间比较好。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜たほうがいい",
+        reading: null,
+        meaningZh: "最好……",
+        explanationZh: "用过去形接「ほうがいい」，表示建议采取某个做法。",
+        sourceExcerpt: "たほうがよさそうです",
+      },
+    ]);
   });
 
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {
