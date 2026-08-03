@@ -70,6 +70,7 @@ function normalizeGrammarForm(value: string) {
     .normalize("NFKC")
     .replace(/[~～]/g, "〜")
     .replace(/\s+/g, "")
+    .replace(/^〜+/, "")
     .trim();
 }
 
@@ -249,33 +250,38 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
   },
 ] as const;
 
-export function supplementConversationGrammarLearningItems(
+export function reconcileConversationGrammarLearningItems(
   analysis: ConversationAnalysisOutput,
   messages: ConversationMessage[]
 ): ConversationAnalysisOutput {
   const userTexts = messages
     .filter((message) => message.role === "user")
     .map((message) => message.content);
-  const supplements: ConversationAnalysisLearningItem[] = [];
+  let learningItems = [...analysis.learningItems];
+  let changed = false;
 
   for (const grammar of HIGH_CONFIDENCE_GRAMMAR_PATTERNS) {
-    if (
-      analysis.learningItems.some(
-        (item) =>
-          item.kind === "grammar" &&
-          normalizeGrammarForm(item.surfaceForm) ===
-            normalizeGrammarForm(grammar.surfaceForm)
-      )
-    ) {
-      continue;
-    }
-
     const sourceExcerpt = userTexts
       .map((content) => content.match(grammar.pattern)?.[0] ?? "")
       .find(Boolean);
     if (!sourceExcerpt) continue;
 
-    supplements.push({
+    const normalizedGrammar = normalizeGrammarForm(grammar.surfaceForm);
+    learningItems = learningItems.filter((item) => {
+      if (
+        item.kind === "grammar" &&
+        normalizeGrammarForm(item.surfaceForm) === normalizedGrammar
+      ) {
+        return false;
+      }
+      if (item.kind !== "expression") {
+        return true;
+      }
+      return ![item.surfaceForm, item.sourceExcerpt].some((value) =>
+        grammar.pattern.test(value)
+      );
+    });
+    learningItems.unshift({
       kind: "grammar",
       surfaceForm: grammar.surfaceForm,
       reading: null,
@@ -283,17 +289,15 @@ export function supplementConversationGrammarLearningItems(
       explanationZh: grammar.explanationZh,
       sourceExcerpt,
     });
+    changed = true;
   }
 
-  if (supplements.length === 0) {
+  if (!changed) {
     return analysis;
   }
 
   return {
     ...analysis,
-    learningItems: [...supplements, ...analysis.learningItems].slice(
-      0,
-      MAX_ANALYSIS_ITEMS
-    ),
+    learningItems: learningItems.slice(0, MAX_ANALYSIS_ITEMS),
   };
 }

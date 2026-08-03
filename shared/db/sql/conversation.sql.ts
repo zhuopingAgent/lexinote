@@ -62,10 +62,14 @@ const LEARNING_ITEM_SURFACE_KEY = `
   CASE
     WHEN kind = 'grammar' THEN LOWER(
       REGEXP_REPLACE(
-        REPLACE(REPLACE(BTRIM(surface_form), '～', '〜'), '~', '〜'),
-        '\\s+',
-        '',
-        'g'
+        REGEXP_REPLACE(
+          REPLACE(REPLACE(BTRIM(surface_form), '～', '〜'), '~', '〜'),
+          '\\s+',
+          '',
+          'g'
+        ),
+        '^〜+',
+        ''
       )
     )
     ELSE LOWER(REGEXP_REPLACE(BTRIM(surface_form), '\\s+', ' ', 'g'))

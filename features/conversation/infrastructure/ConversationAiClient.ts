@@ -10,7 +10,7 @@ import {
 } from "@/features/conversation/prompts/conversation";
 import {
   parseConversationAnalysisOutput,
-  supplementConversationGrammarLearningItems,
+  reconcileConversationGrammarLearningItems,
   validateConversationAnalysisReferences,
 } from "@/features/conversation/domain/conversation";
 import type {
@@ -87,6 +87,6 @@ export class ConversationAiClient {
       parsed,
       input.messages
     );
-    return supplementConversationGrammarLearningItems(validated, input.messages);
+    return reconcileConversationGrammarLearningItems(validated, input.messages);
   }
 }
