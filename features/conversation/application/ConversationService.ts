@@ -1,6 +1,7 @@
 import {
   MAX_CONTEXT_MESSAGES,
   MAX_CONVERSATION_INPUT_LENGTH,
+  conversationLearningItemKey,
   isConversationMode,
   selectConversationGrammarCandidates,
   trimConversationContextMessages,
@@ -660,28 +661,36 @@ export class ConversationService {
     }
 
     try {
-      const contextMessages = trimConversationContextMessages(
-        await this.repository.listContextMessages(
-          sessionId,
-          userId,
-          MAX_CONTEXT_MESSAGES
-        )
-      );
+      const parentMessage = existingMessage.parentMessageId
+        ? await this.repository.findMessage(existingMessage.parentMessageId, userId)
+        : null;
+      const turnMessages =
+        parentMessage?.sessionId === sessionId && parentMessage.role === "user"
+          ? [parentMessage, existingMessage]
+          : [existingMessage];
       const analysis = await this.aiClient.analyze({
         session,
-        messages: contextMessages,
+        messages: turnMessages,
       });
       if (!analysis) {
         throw new DependencyError("conversation analysis failed");
       }
 
       await this.repository.clearAnalysisSuggestions(messageId, userId);
-      const existingMemories = [
-        ...(await this.repository.listMemories(userId, null)),
-        ...(await this.repository.listMemories(userId, sessionId)),
-      ];
+      const [globalMemories, sessionMemories, existingLearningItems] =
+        await Promise.all([
+          this.repository.listMemories(userId, null),
+          this.repository.listMemories(userId, sessionId),
+          this.repository.listLearningItems(sessionId, userId),
+        ]);
+      const existingMemories = [...globalMemories, ...sessionMemories];
       const memoryKeys = new Set(
         existingMemories.map((memory) => memory.content.trim().toLowerCase())
+      );
+      const learningItemKeys = new Set(
+        existingLearningItems.map((item) =>
+          conversationLearningItemKey(item.kind, item.surfaceForm, item.meaningZh)
+        )
       );
       const memories = [];
       for (const memory of analysis.memories) {
@@ -703,6 +712,13 @@ export class ConversationService {
 
       const learningItems = [];
       for (const item of analysis.learningItems) {
+        const learningItemKey = conversationLearningItemKey(
+          item.kind,
+          item.surfaceForm,
+          item.meaningZh
+        );
+        if (learningItemKeys.has(learningItemKey)) continue;
+        learningItemKeys.add(learningItemKey);
         let grammarCandidates: ConversationGrammarCandidate[] = [];
         if (item.kind === "grammar") {
           const search = await this.grammarLearningService.searchGrammarPoints({

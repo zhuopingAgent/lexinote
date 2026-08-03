@@ -58,6 +58,24 @@ const LEARNING_ITEM_COLUMNS = `
   updated_at
 `;
 
+const LEARNING_ITEM_SURFACE_KEY = `
+  CASE
+    WHEN kind = 'grammar' THEN LOWER(
+      REGEXP_REPLACE(
+        REPLACE(REPLACE(BTRIM(surface_form), '～', '〜'), '~', '〜'),
+        '\\s+',
+        '',
+        'g'
+      )
+    )
+    ELSE LOWER(REGEXP_REPLACE(BTRIM(surface_form), '\\s+', ' ', 'g'))
+  END
+`;
+
+const LEARNING_ITEM_MEANING_KEY = `
+  LOWER(REGEXP_REPLACE(BTRIM(meaning_zh), '\\s+', ' ', 'g'))
+`;
+
 export const LIST_CONVERSATION_SESSIONS_SQL = `
   SELECT ${SESSION_COLUMNS}
   FROM conversation_sessions
@@ -500,19 +518,45 @@ export const INSERT_CONVERSATION_LEARNING_ITEM_SQL = `
 `;
 
 export const LIST_CONVERSATION_LEARNING_ITEMS_SQL = `
+  WITH ranked_learning_items AS (
+    SELECT
+      ${LEARNING_ITEM_COLUMNS},
+      ROW_NUMBER() OVER (
+        PARTITION BY
+          kind,
+          ${LEARNING_ITEM_SURFACE_KEY},
+          ${LEARNING_ITEM_MEANING_KEY}
+        ORDER BY created_at ASC, id ASC
+      ) AS duplicate_rank
+    FROM conversation_learning_items
+    WHERE session_id = $1::uuid
+      AND user_id = $2::uuid
+  )
   SELECT ${LEARNING_ITEM_COLUMNS}
-  FROM conversation_learning_items
-  WHERE session_id = $1::uuid
-    AND user_id = $2::uuid
-    AND status <> 'dismissed'
+  FROM ranked_learning_items
+  WHERE duplicate_rank = 1
   ORDER BY created_at ASC, id ASC;
 `;
 
 export const LIST_CONVERSATION_REVIEW_INBOX_SQL = `
+  WITH ranked_learning_items AS (
+    SELECT
+      ${LEARNING_ITEM_COLUMNS},
+      ROW_NUMBER() OVER (
+        PARTITION BY
+          session_id,
+          kind,
+          ${LEARNING_ITEM_SURFACE_KEY},
+          ${LEARNING_ITEM_MEANING_KEY}
+        ORDER BY created_at ASC, id ASC
+      ) AS duplicate_rank
+    FROM conversation_learning_items
+    WHERE user_id = $1::uuid
+      AND kind = 'grammar'
+  )
   SELECT ${LEARNING_ITEM_COLUMNS}
-  FROM conversation_learning_items
-  WHERE user_id = $1::uuid
-    AND kind = 'grammar'
+  FROM ranked_learning_items
+  WHERE duplicate_rank = 1
     AND status IN ('needs_review', 'failed')
   ORDER BY created_at DESC, id DESC
   LIMIT 100;

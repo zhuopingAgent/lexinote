@@ -180,7 +180,7 @@
 1. `/conversation` starts as an unpersisted draft. The first send creates a session and replaces the browser URL with `/conversation/[sessionId]`; the left sidebar loads, searches, renames, deletes, and paginates sessions.
 2. A send request persists the completed user message and a streaming assistant placeholder under a client idempotency key. The route emits `assistant_created`, zero or more `text_delta` events, then `completed` or `error`.
 3. `ConversationService` builds context from deterministic preferences, active global memory, active current-session memory, the session summary, and the newest bounded message window. Session summaries never enter another session.
-4. `ConversationAiClient` streams the main `defaultTeacher` answer. On completion, the client independently requests `cheap` JSON Schema analysis for details, up to five learning items, memory suggestions, summary, and the first automatic title.
+4. `ConversationAiClient` streams the main `defaultTeacher` answer. On completion, the client independently requests `cheap` JSON Schema analysis for details, up to five learning items, memory suggestions, summary, and the first automatic title. Analysis receives only the completed answer and its parent user message; the previous summary carries older context without making historical learning candidates eligible for extraction again.
 5. Structured analysis is length/type/reference validated. Suggested memories and learning items remain inert until explicit confirmation; failed analysis can be reclaimed, including stale five-minute `running` leases.
 6. Vocabulary and fixed-expression promotion resolves local dictionary candidates through `VocabularyCoreService`, falls back through `WordLookupService`, requires a reading choice when ambiguous, and then uses `CollectionWordService` for duplicate-safe membership.
 7. Grammar promotion searches only the existing active grammar library, binds a concrete sense, and creates an immediately due review record without mistake or mastery evidence. Ambiguous/unmatched candidates remain in the `/review` conversation inbox.
@@ -191,6 +191,7 @@
 - Never inject suggested/dismissed memories, model-produced database IDs, or automatic summaries from another session into generation context.
 - Keep main generation and structured analysis independent. Preserve a completed answer if analysis fails, and do not analyze cancelled or failed output.
 - Re-resolve collection, dictionary reading, and grammar sense on the server during promotion. Model output is only a candidate.
+- Deduplicate persisted learning candidates within a session by kind, normalized surface form, and meaning so repeated analysis cannot keep presenting the same undecided item; distinct meanings remain separate.
 - Keep output plain text and structured UI fields; do not render model HTML or Markdown as HTML.
 - Without Gateway credentials, keep read/manage flows available and disable sending. Conversation must not fabricate a local translation fallback.
 - Session deletion removes unconfirmed output and session memory but preserves promoted learning records and active global memories.

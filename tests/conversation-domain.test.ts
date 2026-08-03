@@ -3,12 +3,16 @@ import {
   MAX_ANALYSIS_ITEMS,
   MAX_CONTEXT_CHARACTERS,
   MAX_CONTEXT_MESSAGES,
+  conversationLearningItemKey,
   parseConversationAnalysisOutput,
   selectConversationGrammarCandidates,
   trimConversationContextMessages,
   validateConversationAnalysisReferences,
 } from "@/features/conversation/domain/conversation";
-import { buildConversationSystemPrompt } from "@/features/conversation/prompts/conversation";
+import {
+  buildConversationAnalysisPrompt,
+  buildConversationSystemPrompt,
+} from "@/features/conversation/prompts/conversation";
 import type {
   ConversationMemory,
   ConversationMessage,
@@ -75,6 +79,19 @@ describe("conversation domain", () => {
     expect(prompt).toContain("不声称已经保存");
   });
 
+  it("limits structured learning extraction to the current turn", () => {
+    const prompt = buildConversationAnalysisPrompt({
+      sessionTitle: "预约表达",
+      titleIsManual: false,
+      previousSummary: "此前学习过変更する。",
+      messages: [message(0, "这次请翻译辛苦了"), message(1, "お疲れさまでした。")],
+    });
+
+    expect(prompt).toContain("当前一轮：");
+    expect(prompt).toContain("学习项只从“当前一轮”提取");
+    expect(prompt).toContain("不要从此前摘要重新提取");
+  });
+
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {
     const messages = Array.from({ length: 24 }, (_, index) =>
       message(index, `${index}:` + "あ".repeat(1_200))
@@ -123,6 +140,15 @@ describe("conversation domain", () => {
       { scope: "global", kind: "preference", content: "偏好商务语体" },
     ]);
     expect(parseConversationAnalysisOutput("not-json")).toBeNull();
+  });
+
+  it("deduplicates equivalent forms without collapsing distinct meanings", () => {
+    expect(
+      conversationLearningItemKey("grammar", "～そうだ", "听说……")
+    ).toBe(conversationLearningItemKey("grammar", "〜 そうだ", "听说……"));
+    expect(
+      conversationLearningItemKey("grammar", "〜そうだ", "看起来……")
+    ).not.toBe(conversationLearningItemKey("grammar", "〜そうだ", "听说……"));
   });
 
   it("drops model candidates whose quoted source is absent from the conversation", () => {
