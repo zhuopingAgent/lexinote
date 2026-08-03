@@ -32,6 +32,7 @@ type AiGatewayMessagesPrompt = {
   role: AiTextModelRole;
   maxOutputTokens: number;
   messages: AiGatewayInputMessage[];
+  fallbackModels?: string[];
   signal?: AbortSignal;
 };
 
@@ -190,6 +191,22 @@ function buildGatewayInput(messages: AiGatewayInputMessage[]) {
   }));
 }
 
+function buildGatewayProviderOptions(
+  role: AiTextModelRole,
+  fallbackModels?: string[]
+) {
+  const models = [resolveAiTextModel(role), ...(fallbackModels ?? [])].filter(
+    (model, index, values) => values.indexOf(model) === index
+  );
+  return models.length > 1
+    ? {
+        gateway: {
+          models,
+        },
+      }
+    : undefined;
+}
+
 export async function requestAiGatewayTextStream(
   request: NonNullable<ReturnType<typeof resolveAiGatewayRequest>>,
   prompt: AiGatewayMessagesPrompt
@@ -202,6 +219,10 @@ export async function requestAiGatewayTextStream(
       body: JSON.stringify({
         ...buildAiGatewayTextRequestConfig(prompt.role, prompt.maxOutputTokens),
         input: buildGatewayInput(prompt.messages),
+        providerOptions: buildGatewayProviderOptions(
+          prompt.role,
+          prompt.fallbackModels
+        ),
         stream: true,
       }),
     });
@@ -234,6 +255,10 @@ export async function requestAiGatewayStructuredText(
       body: JSON.stringify({
         ...buildAiGatewayTextRequestConfig(prompt.role, prompt.maxOutputTokens),
         input: buildGatewayInput(prompt.messages),
+        providerOptions: buildGatewayProviderOptions(
+          prompt.role,
+          prompt.fallbackModels
+        ),
         text: {
           format: {
             type: "json_schema",

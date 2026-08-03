@@ -117,6 +117,20 @@ describe("conversation domain", () => {
     expect(explanationPrompt).toContain("当前是用法讲解模式");
     expect(explanationPrompt).toContain("禁止使用「意味」「接続」「ポイント」");
 
+    const polishPrompt = buildConversationSystemPrompt({
+      mode: "polish_ja",
+      preferences: {
+        defaultMode: "auto",
+        translationStyle: "natural_first",
+        defaultRegister: "polite",
+        defaultCollectionId: null,
+      },
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "",
+    });
+    expect(polishPrompt).toContain("「お水」的「お」是美化语");
+
     const autoPrompt = buildConversationSystemPrompt({
       mode: "auto",
       preferences: {
@@ -702,6 +716,14 @@ describe("conversation domain", () => {
             explanation_zh: "付款凭证",
             source_excerpt: "領収書",
           },
+          {
+            kind: "grammar",
+            surface_form: "〜てみる",
+            reading: "てみる",
+            meaning_zh: "试着……",
+            explanation_zh: "表示尝试做某事",
+            source_excerpt: "試してみます",
+          },
         ],
       })
     );
@@ -709,6 +731,130 @@ describe("conversation domain", () => {
     expect(parsed?.learningItems.map((item) => item.reading)).toEqual([
       null,
       "りょうしゅうしょ",
+      null,
+    ]);
+  });
+
+  it("rejects Korean-contaminated and meta-only learning candidates", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "摘要",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "〜をいただけますか",
+            reading: null,
+            meaning_zh: "可以请 받다 的礼貌表达",
+            explanation_zh: "表示请求",
+            source_excerpt: "お水をいただけますか",
+          },
+          {
+            kind: "grammar",
+            surface_form: "〜ことになっている",
+            reading: null,
+            meaning_zh: "接续：动词辞书形 + ことになっている",
+            explanation_zh: "用于构成该语法点的接续形式",
+            source_excerpt: "ことになっている",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems).toEqual([]);
+  });
+
+  it("canonicalizes and collapses repeated explicitly requested grammar", () => {
+    const analysis = {
+      title: null,
+      summary: "解释了规则与个人习惯。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "ことになっている",
+          reading: "ことになっている",
+          meaningZh: "外部规则或安排",
+          explanationZh: "强调外部决定",
+          sourceExcerpt: "ことになっている",
+        },
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜ことになっている",
+          reading: null,
+          meaningZh: "接续说明",
+          explanationZh: "重复候选",
+          sourceExcerpt: "ことになっている",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "请解释「〜ことになっている」，并和「〜ことにしている」比较。"),
+      message(1, "「〜ことになっている」表示外部规则。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜ことにしている",
+        reading: null,
+        meaningZh: "本轮明确询问的语法",
+        explanationZh:
+          "用户明确询问了该语法的用法，可绑定现有语法义项继续复习。",
+        sourceExcerpt: "〜ことにしている",
+      },
+      {
+        kind: "grammar",
+        surfaceForm: "〜ことになっている",
+        reading: null,
+        meaningZh: "外部规则或安排",
+        explanationZh: "强调外部决定",
+        sourceExcerpt: "〜ことになっている",
+      },
+    ]);
+  });
+
+  it("recovers 〜ないことには as one canonical grammar point", () => {
+    const analysis = {
+      title: null,
+      summary: "翻译了治疗条件。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜ている/ていない类表达的否定前提",
+          reading: null,
+          meaningZh: "错误的抽象名称",
+          explanationZh: "错误拆分",
+          sourceExcerpt: "検査結果が出ないことには",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "検査結果が出ないことには、治療方針を決めることができません。"),
+      message(1, "如果检查结果不出来，就无法确定治疗方案。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜ないことには",
+        reading: null,
+        meaningZh: "如果不……就不能……",
+        explanationZh:
+          "表示前项是后项成立的必要条件，后项通常是否定、困难或无法判断的内容。",
+        sourceExcerpt: "ないことには",
+      },
     ]);
   });
 
@@ -841,5 +987,14 @@ describe("conversation domain", () => {
         (candidate) => candidate.grammarPointId
       )
     ).toEqual(["hearsay", "appearance"]);
+    expect(
+      selectConversationGrammarCandidates("〜ことにしている", [
+        {
+          ...candidates[0],
+          grammarPointId: "wrong-fuzzy-match",
+          canonicalForm: "〜ことになっている",
+        },
+      ])
+    ).toEqual([]);
   });
 });
