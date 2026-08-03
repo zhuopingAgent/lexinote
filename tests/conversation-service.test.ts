@@ -179,6 +179,90 @@ describe("ConversationService", () => {
     );
   });
 
+  it("grounds explicit grammar explanations with the existing grammar detail", async () => {
+    const explicitUser = {
+      ...userMessage,
+      content: "「〜わけではない」の使い方を説明してください。",
+      mode: "explain_ja" as const,
+    };
+    const repository = {
+      findSession: vi.fn().mockResolvedValue({
+        ...session,
+        mode: "explain_ja" as const,
+      }),
+      findMessageByClientId: vi.fn().mockResolvedValue(null),
+      insertUserMessage: vi.fn().mockResolvedValue(explicitUser),
+      insertAssistantMessage: vi.fn().mockResolvedValue({
+        ...streamingAssistant,
+        mode: "explain_ja" as const,
+      }),
+      getPreferences: vi.fn().mockResolvedValue(preferences),
+      listActiveMemories: vi.fn().mockResolvedValue([]),
+      listContextMessages: vi.fn().mockResolvedValue([explicitUser]),
+      completeAssistantMessage: vi.fn().mockResolvedValue(completedAssistant),
+      touchSession: vi.fn().mockResolvedValue(undefined),
+      failAssistantMessage: vi.fn(),
+    };
+    const streamReply = vi.fn().mockImplementation(async () =>
+      (async function* () {
+        yield "并不是完全如此。";
+      })()
+    );
+    const grammarLearningService = {
+      searchGrammarPoints: vi.fn().mockResolvedValue({
+        items: [
+          {
+            id: "55555555-5555-4555-8555-555555555555",
+            grammarPoint: "〜わけではない",
+            canonicalForm: "〜わけではない",
+            senseKey: "wake_dewa_nai_partial_negation",
+            coreMeaning: "并非完全如此",
+          },
+        ],
+      }),
+      getGrammarPointDetail: vi.fn().mockResolvedValue({
+        grammarPoint: {
+          grammarPoint: "〜わけではない",
+          canonicalForm: "〜わけではない",
+          coreMeaning: "并非完全如此",
+          naturalTranslation: "并不是……",
+          structure: "普通形 + わけではない",
+          usage: "否定过度结论",
+          examples: [
+            {
+              jp: "甘いものが嫌いなわけではありません。",
+              zh: "并不是讨厌甜食。",
+            },
+          ],
+        },
+      }),
+    };
+    const service = new ConversationService(
+      repository as never,
+      { streamReply } as never,
+      {} as never,
+      grammarLearningService as never
+    );
+
+    const stream = await service.streamMessage(SESSION_ID, {
+      clientMessageId: "grammar-grounding",
+      content: explicitUser.content,
+      mode: "explain_ja",
+    });
+    await consumeConversationEventStream(new Response(stream), () => undefined);
+
+    expect(grammarLearningService.searchGrammarPoints).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "〜わけではない" })
+    );
+    expect(grammarLearningService.getGrammarPointDetail).toHaveBeenCalledWith(
+      "55555555-5555-4555-8555-555555555555",
+      USER_ID
+    );
+    expect(streamReply.mock.calls[0][0][0].content).toContain(
+      "甘いものが嫌いなわけではありません。"
+    );
+  });
+
   it("replays a completed idempotent request without calling AI again", async () => {
     const repository = {
       findSession: vi.fn().mockResolvedValue(session),

@@ -5,6 +5,16 @@ import type {
   ConversationPreferences,
 } from "@/shared/types/conversation";
 
+export type ConversationGrammarPromptReference = {
+  grammarPoint: string;
+  canonicalForm: string;
+  coreMeaning: string;
+  naturalTranslation: string | null;
+  structure: string | null;
+  usage: string | null;
+  examples: Array<{ jp: string; zh: string | null }>;
+};
+
 const MODE_GUIDANCE: Record<ConversationMode, string> = {
   auto: "根据输入自动判断任务。没有明确指令的完整中文句子按中译日处理，完整日语句子按日译中处理；只有用户明确要求时才润色、纠错或讲解。主要内容不是日语学习时，简短说明本助手专注于中日语言学习。",
   zh_to_ja: "把用户的中文翻译成自然、可直接使用的日语。自然译文放在最前面。",
@@ -19,12 +29,39 @@ function formatMemories(memories: ConversationMemory[]) {
     : "- 无";
 }
 
+function formatGrammarReferences(
+  references: ConversationGrammarPromptReference[]
+) {
+  if (references.length === 0) {
+    return "- 无";
+  }
+  return references
+    .map((reference) => {
+      const examples = reference.examples
+        .slice(0, 3)
+        .map(
+          (example) =>
+            `  - ${example.jp}${example.zh ? `（${example.zh}）` : ""}`
+        )
+        .join("\n");
+      return `- ${reference.grammarPoint}（规范形式：${reference.canonicalForm}）
+  核心含义：${reference.coreMeaning}
+  自然译法：${reference.naturalTranslation || "无"}
+  接续：${reference.structure || "无"}
+  用法：${reference.usage || "无"}
+  例句：
+${examples || "  - 无"}`;
+    })
+    .join("\n");
+}
+
 export function buildConversationSystemPrompt(input: {
   mode: ConversationMode;
   preferences: ConversationPreferences;
   globalMemories: ConversationMemory[];
   sessionMemories: ConversationMemory[];
   summary: string;
+  grammarReferences?: ConversationGrammarPromptReference[];
 }) {
   return `你是 LexiNote 的中日语言学习助手，服务对象是中文母语的日语学习者。
 
@@ -42,13 +79,17 @@ ${formatMemories(input.sessionMemories)}
 当前会话摘要：
 ${input.summary || "无"}
 
+语法库参考（可信数据；讲解相关语法时必须遵守）：
+${formatGrammarReferences(input.grammarReferences ?? [])}
+
 回答要求：
 1. 先给用户可直接使用的核心结果，不写寒暄或冗长前言。
 2. 默认使用中文解释；日语译文保持自然，并根据场景选择合适语体。
 3. 不输出词汇候选、记忆建议或数据库操作，这些由后续分析完成。
 4. 不声称已经保存任何词汇、语法或记忆。
 5. 翻译任务默认只给主要译文，不主动改写原句、不把其他说法称为“更自然”，也不在结尾追问；只有存在会误导用户的重要歧义时才补一句说明。
-6. 使用纯文本，不输出 HTML；可以使用简短换行，但避免复杂 Markdown。`;
+6. 使用纯文本，不输出 HTML 或 Markdown；禁止输出 **、__、反引号等格式标记，可以使用简短换行。
+7. 有语法库参考时，含义、接续和例句必须以参考为准，不得生成与参考冲突的形式；不确定时少举例，不要编造。`;
 }
 
 export const CONVERSATION_ANALYSIS_SCHEMA: Record<string, unknown> = {

@@ -307,17 +307,22 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
   },
 ] as const;
 
-function extractExplicitGrammarRequests(userTexts: string[]) {
+export function extractExplicitConversationGrammarForms(content: string) {
   const requests: Array<{ surfaceForm: string; sourceExcerpt: string }> = [];
-  for (const content of userTexts) {
-    for (const match of content.matchAll(/[「『]([~～〜][^」』\r\n]{1,60})[」』]/g)) {
-      const sourceExcerpt = match[1]?.trim() ?? "";
-      const surfaceForm = canonicalizeGrammarSurface(sourceExcerpt);
-      if (!surfaceForm) continue;
-      requests.push({ surfaceForm, sourceExcerpt });
-    }
+  const seen = new Set<string>();
+  for (const match of content.matchAll(/[「『]([~～〜][^」』\r\n]{1,60})[」』]/g)) {
+    const sourceExcerpt = match[1]?.trim() ?? "";
+    const surfaceForm = canonicalizeGrammarSurface(sourceExcerpt);
+    const key = normalizeGrammarForm(surfaceForm);
+    if (!surfaceForm || seen.has(key)) continue;
+    seen.add(key);
+    requests.push({ surfaceForm, sourceExcerpt });
   }
   return requests;
+}
+
+function extractExplicitGrammarRequests(userTexts: string[]) {
+  return userTexts.flatMap(extractExplicitConversationGrammarForms);
 }
 
 export function reconcileConversationGrammarLearningItems(

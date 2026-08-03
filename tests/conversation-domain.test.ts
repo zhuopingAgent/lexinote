@@ -71,6 +71,22 @@ describe("conversation domain", () => {
       globalMemories: [memory("global", "global", "优先给自然商务表达")],
       sessionMemories: [memory("session", "session", "对方是客户")],
       summary: "正在准备预约变更邮件。",
+      grammarReferences: [
+        {
+          grammarPoint: "〜わけではない",
+          canonicalForm: "〜わけではない",
+          coreMeaning: "并非完全如此",
+          naturalTranslation: "并不是……",
+          structure: "普通形 + わけではない",
+          usage: "否定过度结论",
+          examples: [
+            {
+              jp: "甘いものが嫌いなわけではありません。",
+              zh: "并不是讨厌甜食。",
+            },
+          ],
+        },
+      ],
     });
 
     expect(prompt).toContain("把用户的中文翻译成自然、可直接使用的日语");
@@ -80,6 +96,8 @@ describe("conversation domain", () => {
     expect(prompt).toContain("正在准备预约变更邮件");
     expect(prompt).toContain("不声称已经保存");
     expect(prompt).toContain("不在结尾追问");
+    expect(prompt).toContain("甘いものが嫌いなわけではありません");
+    expect(prompt).toContain("禁止输出 **");
 
     const autoPrompt = buildConversationSystemPrompt({
       mode: "auto",

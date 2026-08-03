@@ -3,6 +3,7 @@ import {
   MAX_CONVERSATION_INPUT_LENGTH,
   buildConversationFallbackTitle,
   conversationLearningItemKey,
+  extractExplicitConversationGrammarForms,
   isConversationMode,
   selectConversationGrammarCandidates,
   trimConversationContextMessages,
@@ -10,7 +11,10 @@ import {
 import { assertUuid, isUuid } from "@/features/conversation/domain/validation";
 import type { ConversationAiClient } from "@/features/conversation/infrastructure/ConversationAiClient";
 import type { ConversationRepository } from "@/features/conversation/infrastructure/ConversationRepository";
-import { buildConversationSystemPrompt } from "@/features/conversation/prompts/conversation";
+import {
+  buildConversationSystemPrompt,
+  type ConversationGrammarPromptReference,
+} from "@/features/conversation/prompts/conversation";
 import {
   hasAiGatewayCredentials,
   resolveAiTextModel,
@@ -140,6 +144,65 @@ function replayMessageStream(
       controller.close();
     },
   });
+}
+
+async function loadConversationGrammarReferences(
+  grammarLearningService: GrammarLearningService,
+  content: string,
+  mode: ConversationMode,
+  userId: string
+): Promise<ConversationGrammarPromptReference[]> {
+  if (mode !== "explain_ja") {
+    return [];
+  }
+  const requests = extractExplicitConversationGrammarForms(content).slice(0, 2);
+  const references = await Promise.all(
+    requests.map(async (request) => {
+      try {
+        const search = await grammarLearningService.searchGrammarPoints({
+          query: request.surfaceForm,
+          limit: 5,
+          userId,
+        });
+        const candidates = selectConversationGrammarCandidates(
+          request.surfaceForm,
+          search.items.map((candidate) => ({
+            grammarPointId: candidate.id,
+            grammarPoint: candidate.grammarPoint,
+            canonicalForm: candidate.canonicalForm,
+            senseKey: candidate.senseKey,
+            coreMeaning: candidate.coreMeaning,
+          }))
+        );
+        if (candidates.length !== 1) {
+          return null;
+        }
+        const { grammarPoint } =
+          await grammarLearningService.getGrammarPointDetail(
+            candidates[0].grammarPointId,
+            userId
+          );
+        return {
+          grammarPoint: grammarPoint.grammarPoint,
+          canonicalForm: grammarPoint.canonicalForm,
+          coreMeaning: grammarPoint.coreMeaning,
+          naturalTranslation: grammarPoint.naturalTranslation ?? null,
+          structure: grammarPoint.structure ?? null,
+          usage: grammarPoint.usage ?? null,
+          examples: grammarPoint.examples.slice(0, 3).map((example) => ({
+            jp: example.jp,
+            zh: example.zh ?? null,
+          })),
+        } satisfies ConversationGrammarPromptReference;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return references.filter(
+    (reference): reference is ConversationGrammarPromptReference =>
+      reference !== null
+  );
 }
 
 export class ConversationService {
@@ -509,11 +572,22 @@ export class ConversationService {
       }
       return replayMessageStream(userMessage, concurrentAssistant);
     }
-    const [preferences, memories, contextMessages] = await Promise.all([
-      this.repository.getPreferences(userId),
-      this.repository.listActiveMemories(userId, sessionId),
-      this.repository.listContextMessages(sessionId, userId, MAX_CONTEXT_MESSAGES),
-    ]);
+    const [preferences, memories, contextMessages, grammarReferences] =
+      await Promise.all([
+        this.repository.getPreferences(userId),
+        this.repository.listActiveMemories(userId, sessionId),
+        this.repository.listContextMessages(
+          sessionId,
+          userId,
+          MAX_CONTEXT_MESSAGES
+        ),
+        loadConversationGrammarReferences(
+          this.grammarLearningService,
+          content,
+          mode,
+          userId
+        ),
+      ]);
     const globalMemories = memories.filter((memory) => memory.scope === "global");
     const sessionMemories = memories.filter((memory) => memory.scope === "session");
     const gatewayMessages: AiGatewayInputMessage[] = [
@@ -525,6 +599,7 @@ export class ConversationService {
           globalMemories,
           sessionMemories,
           summary: session.summary,
+          grammarReferences,
         }),
       },
       ...trimConversationContextMessages(contextMessages).map((message) => ({
