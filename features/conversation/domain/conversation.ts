@@ -47,6 +47,7 @@ export type ConversationAnalysisOutput = {
 
 const CONVERSATION_META_MEMORY_PATTERNS = [
   /(?:当前|本|这)(?:一)?轮对话/,
+  /(?:当前|本次|这次)?对话主题(?:是|为)/,
   /用户(?:说|输入|询问|请求|要求)/,
   /帮助用户/,
   /包含.*(?:例文|例句|接续|接続|含义|意味)/,
@@ -114,11 +115,25 @@ export function isConversationMode(value: unknown): value is ConversationMode {
 }
 
 function canonicalizeGrammarSurface(value: string) {
-  return value
+  const normalized = value
     .normalize("NFKC")
     .replace(/[~～]/g, "〜")
     .replace(/\s+/g, "")
     .trim();
+  const withoutPrefix = normalized.replace(/^〜+/, "");
+  if (/^[てで]もら(?:いました|います|いますか|った|っている)$/u.test(withoutPrefix)) {
+    return "〜てもらう";
+  }
+  if (/^ことになってい(?:ます|ました)$/u.test(withoutPrefix)) {
+    return "〜ことになっている";
+  }
+  if (/^ことにしてい(?:ます|ました)$/u.test(withoutPrefix)) {
+    return "〜ことにしている";
+  }
+  if (/^わけでは(?:ありません|なかった)$/u.test(withoutPrefix)) {
+    return "〜わけではない";
+  }
+  return normalized;
 }
 
 function normalizeGrammarForm(value: string) {

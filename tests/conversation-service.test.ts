@@ -9,6 +9,7 @@ import type {
 } from "@/shared/types/conversation";
 import {
   AiGatewayBudgetExceededError,
+  AiGatewayRateLimitedError,
   DependencyError,
   NotFoundError,
   ValidationError,
@@ -379,6 +380,44 @@ describe("ConversationService", () => {
         errorCode: "AI_GATEWAY_BUDGET_EXCEEDED",
       })
     );
+  });
+
+  it("surfaces a Gateway rate limit as a retryable SSE error", async () => {
+    const failedAssistant = {
+      ...streamingAssistant,
+      status: "failed" as const,
+      errorCode: "AI_GATEWAY_RATE_LIMITED",
+      errorMessage: "AI 服务请求过于频繁，请稍后重试。",
+    };
+    const repository = {
+      findSession: vi.fn().mockResolvedValue(session),
+      findMessageByClientId: vi.fn().mockResolvedValue(null),
+      insertUserMessage: vi.fn().mockResolvedValue(userMessage),
+      insertAssistantMessage: vi.fn().mockResolvedValue(streamingAssistant),
+      getPreferences: vi.fn().mockResolvedValue(preferences),
+      listActiveMemories: vi.fn().mockResolvedValue([]),
+      listContextMessages: vi.fn().mockResolvedValue([userMessage]),
+      failAssistantMessage: vi.fn().mockResolvedValue(failedAssistant),
+    };
+    const service = makeService(repository, {
+      streamReply: vi.fn().mockRejectedValue(new AiGatewayRateLimitedError()),
+    });
+
+    const stream = await service.streamMessage(SESSION_ID, {
+      clientMessageId: "rate-limit-client",
+      content: userMessage.content,
+    });
+    const events: ConversationStreamEvent[] = [];
+    await consumeConversationEventStream(new Response(stream), (event) =>
+      events.push(event)
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      code: "AI_GATEWAY_RATE_LIMITED",
+      message: "AI 服务请求过于频繁，请稍后重试。",
+      retryable: true,
+    });
   });
 
   it("restarts a failed assistant message in place", async () => {

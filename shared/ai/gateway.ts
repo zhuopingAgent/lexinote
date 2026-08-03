@@ -1,6 +1,7 @@
 import {
   rethrowAiGatewayBudgetError,
   throwIfAiGatewayBudgetExceeded,
+  throwIfAiGatewayRateLimited,
 } from "@/shared/utils/ai-gateway-errors";
 
 // These creator/model IDs route through AI Gateway, not direct provider endpoints.
@@ -62,6 +63,34 @@ export type AiGatewayResponse = {
 };
 
 const DEFAULT_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
+
+async function logAiGatewayFailure(
+  requestType: "text" | "stream" | "structured",
+  role: AiTextModelRole,
+  response: Response
+) {
+  let upstreamCode = "";
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { code?: unknown; type?: unknown };
+    };
+    upstreamCode =
+      typeof body.error?.code === "string"
+        ? body.error.code
+        : typeof body.error?.type === "string"
+          ? body.error.type
+          : "";
+  } catch {
+    // Some providers return an empty or non-JSON error response.
+  }
+  console.warn("AI Gateway request failed", {
+    requestType,
+    role,
+    status: response.status,
+    upstreamCode,
+    retryAfter: response.headers.get("retry-after") ?? "",
+  });
+}
 
 export function resolveAiModel(role: AiModelRole) {
   return AI_MODELS[role];
@@ -172,6 +201,7 @@ export async function requestAiGatewayText(
     throwIfAiGatewayBudgetExceeded(response);
 
     if (!response.ok) {
+      await logAiGatewayFailure("text", prompt.role, response);
       return null;
     }
 
@@ -228,8 +258,10 @@ export async function requestAiGatewayTextStream(
     });
 
     throwIfAiGatewayBudgetExceeded(response);
+    throwIfAiGatewayRateLimited(response);
 
     if (!response.ok || !response.body) {
+      await logAiGatewayFailure("stream", prompt.role, response);
       return null;
     }
 
@@ -271,8 +303,10 @@ export async function requestAiGatewayStructuredText(
     });
 
     throwIfAiGatewayBudgetExceeded(response);
+    throwIfAiGatewayRateLimited(response);
 
     if (!response.ok) {
+      await logAiGatewayFailure("structured", prompt.role, response);
       return null;
     }
 

@@ -770,6 +770,44 @@ describe("conversation domain", () => {
     expect(parsed?.learningItems).toEqual([]);
   });
 
+  it("normalizes inflected grammar candidates to dictionary forms", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "润色了过去式。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "〜てもらいました",
+            reading: null,
+            meaning_zh: "请别人做了某事",
+            explanation_zh: "表示接受他人的帮助",
+            source_excerpt: "見せてもらいました",
+          },
+          {
+            kind: "grammar",
+            surface_form: "〜ことになっています",
+            reading: null,
+            meaning_zh: "既定规则",
+            explanation_zh: "表示外部规则或安排",
+            source_excerpt: "ことになっています",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems.map((item) => item.surfaceForm)).toEqual([
+      "〜てもらう",
+      "〜ことになっている",
+    ]);
+  });
+
   it("canonicalizes and collapses repeated explicitly requested grammar", () => {
     const analysis = {
       title: null,
@@ -940,6 +978,11 @@ describe("conversation domain", () => {
           scope: "session" as const,
           kind: "goal" as const,
           content: "帮助用户清晰掌握目标语法并举出常见例句。",
+        },
+        {
+          scope: "session" as const,
+          kind: "context" as const,
+          content: "当前对话主题是日语到中文的对照学习，关注因果表达。",
         },
       ],
       learningItems: [],

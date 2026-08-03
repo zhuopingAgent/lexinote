@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { throwIfAiGatewayBudgetExceeded } from "@/shared/utils/ai-gateway-errors";
+import {
+  throwIfAiGatewayBudgetExceeded,
+  throwIfAiGatewayRateLimited,
+} from "@/shared/utils/ai-gateway-errors";
 import {
   AI_GATEWAY_BUDGET_EXCEEDED_CODE,
+  AI_GATEWAY_RATE_LIMITED_CODE,
   AiGatewayBudgetExceededError,
+  AiGatewayRateLimitedError,
 } from "@/shared/utils/errors";
 
 describe("AI Gateway error classification", () => {
@@ -19,6 +24,24 @@ describe("AI Gateway error classification", () => {
       expect(error).toMatchObject({
         code: AI_GATEWAY_BUDGET_EXCEEDED_CODE,
         statusCode: 402,
+      });
+    }
+  });
+
+  it("classifies Gateway 429 responses as retryable rate limits", () => {
+    const response = new Response(null, { status: 429 });
+
+    expect(() => throwIfAiGatewayRateLimited(response)).toThrowError(
+      AiGatewayRateLimitedError
+    );
+
+    try {
+      throwIfAiGatewayRateLimited(response);
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: AI_GATEWAY_RATE_LIMITED_CODE,
+        statusCode: 429,
+        exposeMessage: true,
       });
     }
   });

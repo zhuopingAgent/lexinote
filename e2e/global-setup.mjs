@@ -556,7 +556,7 @@ export default async function globalSetup() {
     const integrity = grammarIntegrity.rows[0];
     if (
       Number(integrity?.active_dimensions) !== 7 ||
-      Number(integrity?.active_learning_units) !== 340 ||
+      Number(integrity?.active_learning_units) !== 346 ||
       Number(integrity?.migrated_legacy_points) !== 11 ||
       Number(integrity?.active_comparison_sets) !== 27 ||
       Number(integrity?.active_error_types) !== 10 ||

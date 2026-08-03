@@ -21,6 +21,9 @@ export const AI_GATEWAY_BUDGET_EXCEEDED_CODE =
   "AI_GATEWAY_BUDGET_EXCEEDED";
 export const AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE =
   "Vercel AI Gateway 余额或预算额度已用完，请在 Vercel 中充值或调整预算后再试。";
+export const AI_GATEWAY_RATE_LIMITED_CODE = "AI_GATEWAY_RATE_LIMITED";
+export const AI_GATEWAY_RATE_LIMITED_MESSAGE =
+  "AI 服务请求过于频繁，请稍后重试。";
 
 export function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -30,6 +33,13 @@ export class AiGatewayBudgetExceededError extends AppError {
   constructor(message = AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE) {
     super(message, 402, AI_GATEWAY_BUDGET_EXCEEDED_CODE, true);
     this.name = "AiGatewayBudgetExceededError";
+  }
+}
+
+export class AiGatewayRateLimitedError extends AppError {
+  constructor(message = AI_GATEWAY_RATE_LIMITED_MESSAGE) {
+    super(message, 429, AI_GATEWAY_RATE_LIMITED_CODE, true);
+    this.name = "AiGatewayRateLimitedError";
   }
 }
 

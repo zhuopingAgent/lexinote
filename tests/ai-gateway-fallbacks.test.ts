@@ -3,6 +3,7 @@ import {
   requestAiGatewayStructuredText,
   requestAiGatewayTextStream,
 } from "@/shared/ai/gateway";
+import { AiGatewayRateLimitedError } from "@/shared/utils/errors";
 
 const request = {
   url: "https://ai-gateway.example/v1/responses",
@@ -57,5 +58,23 @@ describe("AI Gateway model fallback serialization", () => {
       "openai/gpt-5-nano",
       "google/gemini-2.5-flash-lite",
     ]);
+  });
+
+  it("preserves Gateway 429 classification through the request wrapper", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 429 }))
+    );
+
+    await expect(
+      requestAiGatewayStructuredText(request, {
+        role: "cheap",
+        maxOutputTokens: 500,
+        fallbackModels: ["google/gemini-2.5-flash-lite"],
+        messages: [{ role: "user", content: "分析" }],
+        schemaName: "test",
+        schema: { type: "object" },
+      })
+    ).rejects.toBeInstanceOf(AiGatewayRateLimitedError);
   });
 });
