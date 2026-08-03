@@ -294,8 +294,8 @@ describe("grammar domain seed", () => {
     const records = readGrammarContentRecords();
     const seedKeys = records.map((record) => record.seed_key);
 
-    expect(records).toHaveLength(187);
-    expect(new Set(seedKeys)).toHaveLength(187);
+    expect(records).toHaveLength(193);
+    expect(new Set(seedKeys)).toHaveLength(193);
     expect(seedKeys).toEqual(
       expect.arrayContaining([
         "gp_ext_e_particle",
@@ -308,6 +308,11 @@ describe("grammar domain seed", () => {
         "gp_ext_ni_tsurete",
         "gp_ext_dokoroka",
         "gp_ext_te_miru",
+        "gp_ext_nai_koto_niwa",
+        "gp_ext_zaru_wo_enai",
+        "gp_ext_wake_niwa_ikanai",
+        "gp_ext_ni_koshita_koto_wa_nai",
+        "gp_ext_koto_ni_shiteiru",
       ])
     );
 

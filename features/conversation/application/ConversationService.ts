@@ -39,7 +39,6 @@ import type {
   UpdateConversationSessionRequest,
 } from "@/shared/types/conversation";
 import {
-  AiGatewayBudgetExceededError,
   AppError,
   ConfigurationError,
   DependencyError,
@@ -688,8 +687,8 @@ export class ConversationService {
             : appError?.code ?? "AI_RESPONSE_FAILED";
           const errorMessage = isCancelled
             ? "回答已停止。"
-            : error instanceof AiGatewayBudgetExceededError
-              ? error.message
+            : appError?.exposeMessage
+              ? appError.message
               : "回答生成失败，请重试。";
           const failed = await this.repository.failAssistantMessage({
             messageId: initialAssistantMessage.id,
