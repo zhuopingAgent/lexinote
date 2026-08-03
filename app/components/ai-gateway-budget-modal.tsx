@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AI_QUOTA_EXHAUSTED_MESSAGE } from "@/shared/utils/errors";
+import { AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE } from "@/shared/utils/errors";
 
-type AiApiErrorModalProps = {
+type AiGatewayBudgetModalProps = {
   message?: string | null;
   onClose: () => void;
 };
 
-export function AiApiErrorModal({ message, onClose }: AiApiErrorModalProps) {
+export function AiGatewayBudgetModal({
+  message,
+  onClose,
+}: AiGatewayBudgetModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const onCloseRef = useRef(onClose);
   const isOpen = Boolean(message);
@@ -46,18 +49,21 @@ export function AiApiErrorModal({ message, onClose }: AiApiErrorModalProps) {
       <section
         role="dialog"
         aria-modal="true"
-        aria-labelledby="ai-api-error-title"
-        aria-describedby="ai-api-error-description"
+        aria-labelledby="ai-gateway-budget-title"
+        aria-describedby="ai-gateway-budget-description"
         className="w-full max-w-[420px] rounded-lg border border-danger/30 bg-[#1e1e1ef2] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)]"
       >
         <h2
-          id="ai-api-error-title"
+          id="ai-gateway-budget-title"
           className="text-lg font-semibold leading-7 text-white/82"
         >
-          AI API 额度不足
+          Vercel AI Gateway 额度不足
         </h2>
-        <p id="ai-api-error-description" className="mt-3 text-sm leading-6 text-white/58">
-          {message || AI_QUOTA_EXHAUSTED_MESSAGE}
+        <p
+          id="ai-gateway-budget-description"
+          className="mt-3 text-sm leading-6 text-white/58"
+        >
+          {message || AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE}
         </p>
         <button
           ref={closeButtonRef}

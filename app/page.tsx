@@ -6,7 +6,7 @@ import { DictionaryEntryActions } from "@/app/components/dictionary-entry-action
 import { DictionaryResultSelector } from "@/app/components/dictionary-result-selector";
 import { HistoryList } from "@/app/components/history-list";
 import { OverviewList } from "@/app/components/overview-list";
-import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
+import { AiGatewayBudgetModal } from "@/app/components/ai-gateway-budget-modal";
 import { AppHeader } from "@/app/components/app-header";
 import {
   BookIcon,
@@ -77,7 +77,7 @@ export default function Home() {
     result,
     historyItems,
     error,
-    aiApiErrorMessage: lookupAiApiErrorMessage,
+    aiGatewayBudgetErrorMessage: lookupAiGatewayBudgetErrorMessage,
     isLoading,
     activeContext,
     loadingContext,
@@ -100,7 +100,7 @@ export default function Home() {
     onCancelRetry,
     onSelectResultEntry,
     onStartRetryWithEntry,
-    onDismissAiApiError: onDismissLookupAiApiError,
+    onDismissAiGatewayBudgetError: onDismissLookupAiGatewayBudgetError,
   } = useLookupFlow(setActiveView);
   const {
     overviewQuery,
@@ -118,7 +118,7 @@ export default function Home() {
     collectionName,
     setCollectionName,
     collectionError,
-    aiApiErrorMessage: collectionAiApiErrorMessage,
+    aiGatewayBudgetErrorMessage: collectionAiGatewayBudgetErrorMessage,
     editingCollectionId,
     editingCollectionName,
     setEditingCollectionName,
@@ -139,7 +139,7 @@ export default function Home() {
     onSaveCollectionUpdate,
     onDeleteCollection,
     onResyncCollection,
-    onDismissAiApiError: onDismissCollectionAiApiError,
+    onDismissAiGatewayBudgetError: onDismissCollectionAiGatewayBudgetError,
   } = useCollections(activeView);
   const lookupStatusBadges = buildLookupStatusBadges(result);
   const isIncompleteResult = isIncompleteLookupResult(result);
@@ -223,11 +223,14 @@ export default function Home() {
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-background text-foreground">
-      <AiApiErrorModal
-        message={lookupAiApiErrorMessage ?? collectionAiApiErrorMessage}
+      <AiGatewayBudgetModal
+        message={
+          lookupAiGatewayBudgetErrorMessage ??
+          collectionAiGatewayBudgetErrorMessage
+        }
         onClose={() => {
-          onDismissLookupAiApiError();
-          onDismissCollectionAiApiError();
+          onDismissLookupAiGatewayBudgetError();
+          onDismissCollectionAiGatewayBudgetError();
         }}
       />
       <AppHeader navItems={getTopNavigationItems("dictionary")} />

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AI_QUOTA_EXHAUSTED_CODE,
-  AI_QUOTA_EXHAUSTED_MESSAGE,
-  AiQuotaExhaustedError,
+  AI_GATEWAY_BUDGET_EXCEEDED_CODE,
+  AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE,
+  AiGatewayBudgetExceededError,
   AppError,
 } from "@/shared/utils/errors";
 
@@ -197,8 +197,8 @@ describe("POST /api/words/lookup", () => {
     expect(lookupWordMock).toHaveBeenCalledWith("食べる", undefined, undefined);
   });
 
-  it("returns a visible AI quota error when lookup exhausts API balance", async () => {
-    lookupWordMock.mockRejectedValue(new AiQuotaExhaustedError());
+  it("returns a visible Gateway budget error when lookup exhausts its balance", async () => {
+    lookupWordMock.mockRejectedValue(new AiGatewayBudgetExceededError());
 
     const { POST } = await import("@/app/api/words/lookup/route");
     const request = new Request("http://localhost/api/words/lookup", {
@@ -214,8 +214,8 @@ describe("POST /api/words/lookup", () => {
     expect(response.status).toBe(402);
     await expect(response.json()).resolves.toEqual({
       error: {
-        code: AI_QUOTA_EXHAUSTED_CODE,
-        message: AI_QUOTA_EXHAUSTED_MESSAGE,
+        code: AI_GATEWAY_BUDGET_EXCEEDED_CODE,
+        message: AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE,
       },
     });
   });

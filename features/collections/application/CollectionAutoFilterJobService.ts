@@ -4,7 +4,10 @@ import {
 } from "@/features/collections/application/CollectionAutoFilterService";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
 import { CollectionRepository } from "@/features/collections/infrastructure/CollectionRepository";
-import { AiQuotaExhaustedError, getErrorMessage } from "@/shared/utils/errors";
+import {
+  AiGatewayBudgetExceededError,
+  getErrorMessage,
+} from "@/shared/utils/errors";
 
 const MAX_ERROR_LENGTH = 280;
 
@@ -23,7 +26,7 @@ function hasRetryAttemptsRemaining(job: { attemptCount?: number; maxAttempts?: n
 }
 
 function shouldRetryJob(error: unknown, job: { attemptCount?: number; maxAttempts?: number }) {
-  if (error instanceof AiQuotaExhaustedError) {
+  if (error instanceof AiGatewayBudgetExceededError) {
     return false;
   }
 

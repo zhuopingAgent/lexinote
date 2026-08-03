@@ -42,7 +42,7 @@
   - `features/collections/`: collection CRUD, collection-word workflows, shared auto-filter rule matching, and job processing
   - `features/conversation/`: conversation services, shared identifier validation, AI client, prompts, output validation, and repository access
 - `shared/`: cross-cutting code
-  - `shared/ai/`: AI Gateway model roles, request construction, quota handling,
+  - `shared/ai/`: AI Gateway model roles, request construction, budget handling,
     and response text extraction shared by feature clients
   - `shared/auth/`: Basic Auth-adjacent two-factor helpers, TOTP verification, and signed 2FA session cookies
   - `shared/db/`: centralized PostgreSQL access, SQL, strict row-value mapping, and PostgreSQL error guards

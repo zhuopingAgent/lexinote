@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { AiApiErrorModal } from "@/app/components/ai-api-error-modal";
+import { AiGatewayBudgetModal } from "@/app/components/ai-gateway-budget-modal";
 import { FeedbackPanel } from "@/app/components/grammar/feedback-panel";
 import { PracticalityBadge } from "@/app/components/grammar/practicality-badge";
 import { TagBadge } from "@/app/components/grammar/tag-badge";
 import {
   getErrorMessage,
-  isAiQuotaExhaustedError,
+  isAiGatewayBudgetExceededError,
 } from "@/app/lib/api-client";
 import {
   advancePracticeSession,
@@ -134,7 +134,9 @@ export function PracticeClient({
   const [isLoading, setIsLoading] = useState(true);
   const [isActing, setIsActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aiApiErrorMessage, setAiApiErrorMessage] = useState<string | null>(null);
+  const [aiGatewayBudgetErrorMessage, setAiGatewayBudgetErrorMessage] = useState<
+    string | null
+  >(null);
 
   const exercise = sessionData?.exercise ?? null;
   const summary = sessionData?.summary ?? null;
@@ -148,7 +150,7 @@ export function PracticeClient({
     async function startSession() {
       setIsLoading(true);
       setError(null);
-      setAiApiErrorMessage(null);
+      setAiGatewayBudgetErrorMessage(null);
       try {
         const response = await createPracticeSession(
           {
@@ -161,13 +163,13 @@ export function PracticeClient({
           controller.signal
         );
         if (!controller.signal.aborted) {
-          setAiApiErrorMessage(null);
+          setAiGatewayBudgetErrorMessage(null);
           setSessionData(response);
         }
       } catch (requestError) {
         if (!controller.signal.aborted) {
-          if (isAiQuotaExhaustedError(requestError)) {
-            setAiApiErrorMessage(requestError.message);
+          if (isAiGatewayBudgetExceededError(requestError)) {
+            setAiGatewayBudgetErrorMessage(requestError.message);
           }
           setError(
             getErrorMessage(requestError, "练习准备失败，请稍后再试。")
@@ -193,7 +195,7 @@ export function PracticeClient({
     setRevealedCorrectOptionId(null);
     setIsRevealed(false);
     setError(null);
-    setAiApiErrorMessage(null);
+    setAiGatewayBudgetErrorMessage(null);
   }
 
   function restartSession() {
@@ -222,10 +224,10 @@ export function PracticeClient({
       });
       setAttempt(response);
       setReferenceAnswers(response.referenceAnswers);
-      setAiApiErrorMessage(null);
+      setAiGatewayBudgetErrorMessage(null);
     } catch (requestError) {
-      if (isAiQuotaExhaustedError(requestError)) {
-        setAiApiErrorMessage(requestError.message);
+      if (isAiGatewayBudgetExceededError(requestError)) {
+        setAiGatewayBudgetErrorMessage(requestError.message);
       }
       setError(getErrorMessage(requestError, "提交失败，请稍后再试。"));
     } finally {
@@ -290,11 +292,11 @@ export function PracticeClient({
     try {
       const response = await advancePracticeSession(sessionData.session.id);
       resetExerciseState();
-      setAiApiErrorMessage(null);
+      setAiGatewayBudgetErrorMessage(null);
       setSessionData(response);
     } catch (requestError) {
-      if (isAiQuotaExhaustedError(requestError)) {
-        setAiApiErrorMessage(requestError.message);
+      if (isAiGatewayBudgetExceededError(requestError)) {
+        setAiGatewayBudgetErrorMessage(requestError.message);
       }
       setError(getErrorMessage(requestError, "下一题加载失败，请稍后再试。"));
     } finally {
@@ -421,9 +423,9 @@ export function PracticeClient({
 
   return (
     <div className="mx-auto w-full max-w-[1040px]">
-      <AiApiErrorModal
-        message={aiApiErrorMessage}
-        onClose={() => setAiApiErrorMessage(null)}
+      <AiGatewayBudgetModal
+        message={aiGatewayBudgetErrorMessage}
+        onClose={() => setAiGatewayBudgetErrorMessage(null)}
       />
 
       <header className="mb-6">
