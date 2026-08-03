@@ -289,6 +289,41 @@ describe("conversation domain", () => {
     expect(reconciled.learningItems).toEqual([]);
   });
 
+  it("normalizes a tentative recommendation to the existing advice grammar", () => {
+    const analysis = {
+      title: null,
+      summary: "建议继续观察。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "ほうがよさそうです",
+          reading: null,
+          meaningZh: "看起来最好",
+          explanationZh: "模型拼接的语法名称",
+          sourceExcerpt: "見たほうがよさそうです",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "もう少し様子を見たほうがよさそうです。"),
+      message(1, "还是再观察一段时间比较好。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜たほうがいい",
+        reading: null,
+        meaningZh: "最好……",
+        explanationZh: "用过去形接「ほうがいい」，表示建议采取某个做法。",
+        sourceExcerpt: "たほうがよさそうです",
+      },
+    ]);
+  });
+
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {
     const messages = Array.from({ length: 24 }, (_, index) =>
       message(index, `${index}:` + "あ".repeat(1_200))

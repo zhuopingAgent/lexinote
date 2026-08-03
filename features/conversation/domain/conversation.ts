@@ -297,6 +297,14 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
     meaningZh: "并不是……/并非……",
     explanationZh: "否定从前文可能推导出的过度结论，表示并非完全如此。",
   },
+  {
+    pattern: /(?:た|だ)ほうがよさそう(?:です|だ)?/,
+    coveredPattern: /(?:た|だ)?ほうが(?:よさそう(?:です|だ)?|いい)/,
+    assistantPattern: null,
+    surfaceForm: "〜たほうがいい",
+    meaningZh: "最好……",
+    explanationZh: "用过去形接「ほうがいい」，表示建议采取某个做法。",
+  },
 ] as const;
 
 function extractExplicitGrammarRequests(userTexts: string[]) {
