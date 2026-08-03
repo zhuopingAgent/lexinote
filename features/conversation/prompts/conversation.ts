@@ -125,14 +125,14 @@ export function buildConversationAnalysisPrompt(input: {
 标题是否由用户手动设置：${input.titleIsManual ? "是" : "否"}
 此前摘要：${input.previousSummary || "无"}
 
-最近对话：
+当前一轮：
 ${transcript}
 
 规则：
 1. summary 用中文压缩稳定上下文和本轮结论，不超过 1000 字，不记录无关寒暄。
 2. 只有标题不是手动设置且此前摘要为空时才给简洁标题，否则 title 为 null。
 3. details 用于折叠说明；没有可靠直译时 literal_translation 为 null。
-4. 只提取对中文母语日语学习者真正有价值、可能不熟悉的词汇、固定表达或语法，总数最多 5 个。
+4. 学习项只从“当前一轮”提取，不要从此前摘要重新提取；只保留对中文母语日语学习者真正有价值、可能不熟悉的词汇、固定表达或语法，总数最多 5 个。
 5. vocabulary 使用词典原形；expression 用完整固定搭配；grammar 使用规范语法形式。
 6. source_excerpt 必须来自本轮对话，不得编造。
 7. 只有稳定、可能影响未来回答的信息才建议为 memory。跨会话稳定偏好用 global；仅本会话背景用 session。

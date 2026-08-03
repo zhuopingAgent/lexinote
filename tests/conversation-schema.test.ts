@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAIM_CONVERSATION_ANALYSIS_SQL,
   DELETE_CONVERSATION_SESSION_SQL,
+  LIST_CONVERSATION_LEARNING_ITEMS_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
   RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   UPDATE_CONVERSATION_PREFERENCES_SQL,
@@ -53,6 +54,19 @@ describe("conversation schema and persistence semantics", () => {
       "status IN ('needs_review', 'failed')"
     );
     expect(LIST_CONVERSATION_REVIEW_INBOX_SQL).not.toContain("'suggested'");
+  });
+
+  it("returns only the first persisted copy of an analyzed learning candidate", () => {
+    expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain("ROW_NUMBER() OVER");
+    expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain(
+      "REPLACE(REPLACE(BTRIM(surface_form), '～', '〜'), '~', '〜')"
+    );
+    expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain(
+      "REGEXP_REPLACE(BTRIM(meaning_zh)"
+    );
+    expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain(
+      "duplicate_rank = 1"
+    );
   });
 
   it("updates preferences as atomic partial mutations", () => {

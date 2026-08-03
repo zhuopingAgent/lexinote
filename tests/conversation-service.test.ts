@@ -478,15 +478,15 @@ describe("ConversationService", () => {
     };
     const repository = {
       findSession: vi.fn().mockResolvedValue(session),
-      findMessage: vi.fn().mockResolvedValue(completedAssistant),
+      findMessage: vi.fn().mockImplementation((messageId: string) =>
+        Promise.resolve(
+          messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
+        )
+      ),
       claimAnalysis: vi.fn().mockResolvedValue({
         ...completedAssistant,
         analysisStatus: "running",
       }),
-      listContextMessages: vi.fn().mockResolvedValue([
-        userMessage,
-        completedAssistant,
-      ]),
       clearAnalysisSuggestions: vi.fn(),
       listMemories: vi
         .fn()
@@ -494,6 +494,7 @@ describe("ConversationService", () => {
           activeMemory("existing", "global", "偏好礼貌表达"),
         ])
         .mockResolvedValueOnce([]),
+      listLearningItems: vi.fn().mockResolvedValue([]),
       insertMemory: vi.fn().mockResolvedValue(suggestedMemory),
       insertLearningItem: vi.fn().mockImplementation((input) =>
         Promise.resolve({ ...learningItem, grammarCandidates: input.grammarCandidates })
@@ -564,6 +565,10 @@ describe("ConversationService", () => {
     );
 
     expect(result.memories).toEqual([suggestedMemory]);
+    expect(aiClient.analyze).toHaveBeenCalledWith({
+      session,
+      messages: [userMessage, completedAssistant],
+    });
     expect(repository.insertMemory).toHaveBeenCalledTimes(1);
     expect(repository.insertLearningItem).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -581,6 +586,98 @@ describe("ConversationService", () => {
       })
     );
     expect(repository.failAnalysis).not.toHaveBeenCalled();
+  });
+
+  it("does not extract an unresolved learning item from an earlier turn again", async () => {
+    const historicalAssistant = message({
+      id: "77777777-7777-4777-8777-777777777777",
+      role: "assistant",
+      content: "予約時間を変更していただけますか。",
+      parentMessageId: "88888888-8888-4888-8888-888888888888",
+      analysisStatus: "completed",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const historicalItem = {
+      id: "99999999-9999-4999-8999-999999999999",
+      sessionId: SESSION_ID,
+      sourceMessageId: historicalAssistant.id,
+      kind: "grammar" as const,
+      surfaceForm: "〜ていただけますか",
+      reading: null,
+      meaningZh: "可以请您……吗",
+      explanationZh: "礼貌请求",
+      sourceExcerpt: "変更していただけますか",
+      status: "suggested" as const,
+      grammarCandidates: [],
+      wordId: null,
+      grammarPointId: null,
+      collectionId: null,
+      errorMessage: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const analyzedMessage = {
+      ...completedAssistant,
+      analysisStatus: "completed" as const,
+    };
+    const repository = {
+      findSession: vi.fn().mockResolvedValue(session),
+      findMessage: vi.fn().mockImplementation((messageId: string) =>
+        Promise.resolve(
+          messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
+        )
+      ),
+      claimAnalysis: vi.fn().mockResolvedValue({
+        ...completedAssistant,
+        analysisStatus: "running",
+      }),
+      clearAnalysisSuggestions: vi.fn(),
+      listMemories: vi.fn().mockResolvedValue([]),
+      listLearningItems: vi.fn().mockResolvedValue([historicalItem]),
+      insertMemory: vi.fn(),
+      insertLearningItem: vi.fn(),
+      updateSummary: vi.fn().mockResolvedValue(session),
+      completeAnalysis: vi.fn().mockResolvedValue(analyzedMessage),
+      failAnalysis: vi.fn(),
+    };
+    const aiClient = {
+      analyze: vi.fn().mockResolvedValue({
+        title: null,
+        summary: "继续练习预约表达。",
+        details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+        memories: [],
+        learningItems: [
+          {
+            kind: "grammar",
+            surfaceForm: "～ていただけますか",
+            reading: null,
+            meaningZh: "可以请您……吗",
+            explanationZh: "礼貌请求",
+            sourceExcerpt: "変更していただけますか",
+          },
+        ],
+      }),
+    };
+    const grammarLearningService = { searchGrammarPoints: vi.fn() };
+    const service = new ConversationService(
+      repository as never,
+      aiClient as never,
+      {} as never,
+      grammarLearningService as never
+    );
+
+    const result = await service.analyzeMessage(
+      SESSION_ID,
+      ASSISTANT_MESSAGE_ID
+    );
+
+    expect(result.learningItems).toEqual([]);
+    expect(repository.insertLearningItem).not.toHaveBeenCalled();
+    expect(grammarLearningService.searchGrammarPoints).not.toHaveBeenCalled();
+    expect(aiClient.analyze).toHaveBeenCalledWith({
+      session,
+      messages: [userMessage, completedAssistant],
+    });
   });
 
   it("replays completed analysis with both global and session suggestions", async () => {
@@ -631,10 +728,6 @@ describe("ConversationService", () => {
         ...completedAssistant,
         analysisStatus: "running",
       }),
-      listContextMessages: vi.fn().mockResolvedValue([
-        userMessage,
-        completedAssistant,
-      ]),
       failAnalysis: vi.fn().mockResolvedValue({
         ...completedAssistant,
         analysisStatus: "failed",

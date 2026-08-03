@@ -73,6 +73,23 @@ function normalizeGrammarForm(value: string) {
     .trim();
 }
 
+export function conversationLearningItemKey(
+  kind: ConversationLearningItemKind,
+  surfaceForm: string,
+  meaningZh: string
+) {
+  const normalizedSurface =
+    kind === "grammar"
+      ? normalizeGrammarForm(surfaceForm)
+      : surfaceForm.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+  const normalizedMeaning = meaningZh
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  return JSON.stringify([kind, normalizedSurface, normalizedMeaning]);
+}
+
 export function selectConversationGrammarCandidates(
   surfaceForm: string,
   candidates: ConversationGrammarCandidate[]
@@ -179,8 +196,16 @@ export function parseConversationAnalysisOutput(
           (item, index, items) =>
             items.findIndex(
               (candidate) =>
-                candidate.kind === item.kind &&
-                candidate.surfaceForm === item.surfaceForm
+                conversationLearningItemKey(
+                  candidate.kind,
+                  candidate.surfaceForm,
+                  candidate.meaningZh
+                ) ===
+                conversationLearningItemKey(
+                  item.kind,
+                  item.surfaceForm,
+                  item.meaningZh
+                )
             ) === index
         )
         .slice(0, MAX_ANALYSIS_ITEMS)
