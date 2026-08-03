@@ -482,6 +482,79 @@ describe("conversation domain", () => {
     expect(reconciled.learningItems).toEqual([]);
   });
 
+  it("filters low-value pseudo-grammar while retaining concrete vocabulary", () => {
+    const analysis = {
+      title: null,
+      summary: "翻译了申请材料。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "には",
+          reading: null,
+          meaningZh: "对于……",
+          explanationZh: "孤立助词组合",
+          sourceExcerpt: "には",
+        },
+        {
+          kind: "grammar" as const,
+          surfaceForm: "必要です",
+          reading: null,
+          meaningZh: "需要",
+          explanationZh: "普通礼貌表达",
+          sourceExcerpt: "必要です",
+        },
+        {
+          kind: "vocabulary" as const,
+          surfaceForm: "在職証明書",
+          reading: "ざいしょくしょうめいしょ",
+          meaningZh: "在职证明",
+          explanationZh: "办理手续时使用的证明文件",
+          sourceExcerpt: "在職証明書",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "この申請には在職証明書が必要です。"),
+      message(1, "这份申请需要在职证明。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      expect.objectContaining({
+        kind: "vocabulary",
+        surfaceForm: "在職証明書",
+      }),
+    ]);
+  });
+
+  it("recovers a vocabulary item explicitly requested for translation", () => {
+    const analysis = {
+      title: null,
+      summary: "解释了一个词。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "「在職証明書」は中国語で何と言いますか。"),
+      message(1, "「在職証明書」は中国語で「在职证明」と言います。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "vocabulary",
+        surfaceForm: "在職証明書",
+        reading: null,
+        meaningZh: "在职证明",
+        explanationZh: "用户在本轮明确询问了这个词的中文含义。",
+        sourceExcerpt: "在職証明書",
+      },
+    ]);
+  });
+
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {
     const messages = Array.from({ length: 24 }, (_, index) =>
       message(index, `${index}:` + "あ".repeat(1_200))

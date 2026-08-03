@@ -378,6 +378,53 @@ function extractExplicitGrammarRequests(userTexts: string[]) {
   return userTexts.flatMap(extractExplicitConversationGrammarForms);
 }
 
+function extractExplicitVocabularyRequests(
+  userTexts: string[],
+  assistantTexts: string[]
+) {
+  const meaningZh = assistantTexts
+    .map(
+      (content) =>
+        content.match(
+          /(?:中国語|中文)(?:で|是|叫)[「『“"]([^」』”"]{1,80})[」』”"]/
+        )?.[1] ?? ""
+    )
+    .find(Boolean);
+  const requests: Array<{
+    surfaceForm: string;
+    sourceExcerpt: string;
+    meaningZh: string;
+  }> = [];
+  const seen = new Set<string>();
+  for (const content of userTexts) {
+    if (
+      !/(?:中国語|中文|汉语).*(?:何と|怎么|如何|意思|意味)|(?:何と|怎么|如何).*(?:中国語|中文|汉语)/.test(
+        content
+      )
+    ) {
+      continue;
+    }
+    for (const match of content.matchAll(/[「『]([^」』\r\n]{1,60})[」』]/g)) {
+      const surfaceForm = match[1]?.trim() ?? "";
+      const key = surfaceForm.normalize("NFKC").toLowerCase();
+      if (!surfaceForm || /^[~～〜]/.test(surfaceForm) || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      requests.push({
+        surfaceForm,
+        sourceExcerpt: surfaceForm,
+        meaningZh: meaningZh || "本轮明确询问的词汇",
+      });
+    }
+  }
+  return requests;
+}
+
+function isLowValueStandaloneGrammar(surfaceForm: string) {
+  return new Set(["には", "必要です"]).has(normalizeGrammarForm(surfaceForm));
+}
+
 function findNaAdjectivePastCorrection(
   userTexts: string[],
   assistantTexts: string[]
@@ -414,6 +461,15 @@ export function reconcileConversationGrammarLearningItems(
     .map((message) => message.content);
   let learningItems = [...analysis.learningItems];
   let changed = false;
+
+  const filteredLearningItems = learningItems.filter(
+    (item) =>
+      item.kind !== "grammar" || !isLowValueStandaloneGrammar(item.surfaceForm)
+  );
+  if (filteredLearningItems.length !== learningItems.length) {
+    learningItems = filteredLearningItems;
+    changed = true;
+  }
 
   for (const grammar of HIGH_CONFIDENCE_GRAMMAR_PATTERNS) {
     const sourceTexts = grammar.includeAssistantSource
@@ -500,6 +556,33 @@ export function reconcileConversationGrammarLearningItems(
       reading: null,
       meaningZh: "本轮明确询问的语法",
       explanationZh: "用户明确询问了该语法的用法，可绑定现有语法义项继续复习。",
+      sourceExcerpt: request.sourceExcerpt,
+    });
+    changed = true;
+  }
+
+  for (const request of extractExplicitVocabularyRequests(
+    userTexts,
+    assistantTexts
+  )) {
+    const normalizedSurface = request.surfaceForm
+      .normalize("NFKC")
+      .toLowerCase();
+    if (
+      learningItems.some(
+        (item) =>
+          item.kind === "vocabulary" &&
+          item.surfaceForm.normalize("NFKC").toLowerCase() === normalizedSurface
+      )
+    ) {
+      continue;
+    }
+    learningItems.unshift({
+      kind: "vocabulary",
+      surfaceForm: request.surfaceForm,
+      reading: null,
+      meaningZh: request.meaningZh,
+      explanationZh: "用户在本轮明确询问了这个词的中文含义。",
       sourceExcerpt: request.sourceExcerpt,
     });
     changed = true;
