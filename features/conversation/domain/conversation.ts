@@ -349,6 +349,15 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS: readonly HighConfidenceGrammarPattern[] 
     explanationZh: "郑重询问自己或己方是否可以进行某个动作。",
     includeAssistantSource: true,
   },
+  {
+    pattern: /(?:て|で)いただけますか/,
+    coveredPattern: /(?:て|で)いただけますか/,
+    assistantPattern: null,
+    surfaceForm: "〜ていただけますか",
+    meaningZh: "能请您……吗",
+    explanationZh: "以谦让授受形式郑重请求对方做某事。",
+    includeAssistantSource: true,
+  },
 ] as const;
 
 export function extractExplicitConversationGrammarForms(content: string) {
@@ -367,6 +376,30 @@ export function extractExplicitConversationGrammarForms(content: string) {
 
 function extractExplicitGrammarRequests(userTexts: string[]) {
   return userTexts.flatMap(extractExplicitConversationGrammarForms);
+}
+
+function findNaAdjectivePastCorrection(
+  userTexts: string[],
+  assistantTexts: string[]
+) {
+  const incorrectEnding = "かったです";
+  for (const userText of userTexts) {
+    let searchFrom = 0;
+    while (searchFrom < userText.length) {
+      const index = userText.indexOf(incorrectEnding, searchFrom);
+      if (index < 0) break;
+      const correctedText = `${userText.slice(0, index)}でした${userText.slice(
+        index + incorrectEnding.length
+      )}`;
+      if (assistantTexts.some((content) => content.includes(correctedText))) {
+        return userText
+          .slice(Math.max(0, index - 80), index + incorrectEnding.length)
+          .trim();
+      }
+      searchFrom = index + incorrectEnding.length;
+    }
+  }
+  return null;
 }
 
 export function reconcileConversationGrammarLearningItems(
@@ -422,6 +455,30 @@ export function reconcileConversationGrammarLearningItems(
       meaningZh: grammar.meaningZh,
       explanationZh: grammar.explanationZh,
       sourceExcerpt,
+    });
+    changed = true;
+  }
+
+  const naAdjectivePastSource = findNaAdjectivePastCorrection(
+    userTexts,
+    assistantTexts
+  );
+  if (naAdjectivePastSource) {
+    learningItems = learningItems.filter((item) => {
+      const values = [item.surfaceForm, item.sourceExcerpt, item.explanationZh];
+      return !values.some(
+        (value) =>
+          /な形容[詞词].*过去/.test(value) ||
+          (value.includes("かった") && value.includes("でした"))
+      );
+    });
+    learningItems.unshift({
+      kind: "grammar",
+      surfaceForm: "な形容词过去形",
+      reading: null,
+      meaningZh: "表示な形容词的过去状态",
+      explanationZh: "词干后接「でした」；不能像い形容词一样变成「かったです」。",
+      sourceExcerpt: naAdjectivePastSource,
     });
     changed = true;
   }

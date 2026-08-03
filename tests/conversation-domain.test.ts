@@ -401,6 +401,85 @@ describe("conversation domain", () => {
     ]);
   });
 
+  it("normalizes request grammar found in a Chinese-to-Japanese answer", () => {
+    const analysis = {
+      title: null,
+      summary: "请求变更会议时间。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜に変更していただけますか",
+          reading: null,
+          meaningZh: "请改为……",
+          explanationZh: "模型把变更动作拼进了语法名称",
+          sourceExcerpt: "変更していただけますか",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "请问可以把会议改到下周二吗？"),
+      message(1, "会議を来週の火曜日に変更していただけますか。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜ていただけますか",
+        reading: null,
+        meaningZh: "能请您……吗",
+        explanationZh: "以谦让授受形式郑重请求对方做某事。",
+        sourceExcerpt: "ていただけますか",
+      },
+    ]);
+  });
+
+  it("recovers a corrected na-adjective past form", () => {
+    const analysis = {
+      title: null,
+      summary: "纠正了な形容词过去式。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "昨日のホテルはとても静かかったです。"),
+      message(1, "昨日のホテルはとても静かでした。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "な形容词过去形",
+        reading: null,
+        meaningZh: "表示な形容词的过去状态",
+        explanationZh:
+          "词干后接「でした」；不能像い形容词一样变成「かったです」。",
+        sourceExcerpt: "昨日のホテルはとても静かかったです",
+      },
+    ]);
+  });
+
+  it("does not misclassify a correct i-adjective past form", () => {
+    const analysis = {
+      title: null,
+      summary: "翻译了天气描述。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "昨日は暖かかったです。"),
+      message(1, "昨天很暖和。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([]);
+  });
+
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {
     const messages = Array.from({ length: 24 }, (_, index) =>
       message(index, `${index}:` + "あ".repeat(1_200))
