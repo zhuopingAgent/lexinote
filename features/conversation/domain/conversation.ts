@@ -78,6 +78,18 @@ function readStringArray(value: unknown, limit: number, maxLength: number) {
     .slice(0, limit);
 }
 
+function readJapaneseReading(value: unknown) {
+  const reading = readString(value, 200);
+  if (
+    !reading ||
+    !/[\u3040-\u30ff]/u.test(reading) ||
+    /[\u3400-\u9fff\uf900-\ufaff]/u.test(reading)
+  ) {
+    return null;
+  }
+  return reading;
+}
+
 function sanitizeConversationSummary(value: unknown) {
   const summary = readString(value, MAX_SUMMARY_LENGTH);
   const sentences = summary.match(/[^。！？\n]+[。！？]?/g) ?? [];
@@ -231,11 +243,10 @@ export function parseConversationAnalysisOutput(
             kind === "grammar"
               ? canonicalizeGrammarSurface(rawSurfaceForm)
               : rawSurfaceForm;
-          const reading = readString(next.reading, 200);
           return {
             kind,
             surfaceForm,
-            reading: reading || null,
+            reading: readJapaneseReading(next.reading),
             meaningZh: readString(next.meaning_zh, 500),
             explanationZh: readString(next.explanation_zh, 1_000),
             sourceExcerpt: readString(next.source_excerpt, 500),
