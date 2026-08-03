@@ -680,6 +680,54 @@ describe("ConversationService", () => {
     });
   });
 
+  it("uses the first user message when initial analysis omits a title", async () => {
+    const initialSession = { ...session, summary: "" };
+    const analyzedMessage = {
+      ...completedAssistant,
+      analysisStatus: "completed" as const,
+    };
+    const repository = {
+      findSession: vi.fn().mockResolvedValue(initialSession),
+      findMessage: vi.fn().mockImplementation((messageId: string) =>
+        Promise.resolve(
+          messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
+        )
+      ),
+      claimAnalysis: vi.fn().mockResolvedValue({
+        ...completedAssistant,
+        analysisStatus: "running",
+      }),
+      clearAnalysisSuggestions: vi.fn(),
+      listMemories: vi.fn().mockResolvedValue([]),
+      listLearningItems: vi.fn().mockResolvedValue([]),
+      insertMemory: vi.fn(),
+      insertLearningItem: vi.fn(),
+      updateSummary: vi.fn().mockResolvedValue({
+        ...initialSession,
+        title: userMessage.content,
+        summary: "已给出预约改期表达。",
+      }),
+      completeAnalysis: vi.fn().mockResolvedValue(analyzedMessage),
+      failAnalysis: vi.fn(),
+    };
+    const aiClient = {
+      analyze: vi.fn().mockResolvedValue({
+        title: null,
+        summary: "已给出预约改期表达。",
+        details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+        memories: [],
+        learningItems: [],
+      }),
+    };
+    const service = makeService(repository, aiClient);
+
+    await service.analyzeMessage(SESSION_ID, ASSISTANT_MESSAGE_ID);
+
+    expect(repository.updateSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ title: userMessage.content })
+    );
+  });
+
   it("replays completed analysis with both global and session suggestions", async () => {
     const analyzedMessage = {
       ...completedAssistant,

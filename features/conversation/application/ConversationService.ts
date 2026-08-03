@@ -1,6 +1,7 @@
 import {
   MAX_CONTEXT_MESSAGES,
   MAX_CONVERSATION_INPUT_LENGTH,
+  buildConversationFallbackTitle,
   conversationLearningItemKey,
   isConversationMode,
   selectConversationGrammarCandidates,
@@ -762,7 +763,11 @@ export class ConversationService {
           sessionId,
           userId,
           summary: analysis.summary,
-          title: analysis.title,
+          title:
+            analysis.title ??
+            (!session.titleIsManual && !session.summary.trim() && parentMessage
+              ? buildConversationFallbackTitle(parentMessage.content)
+              : null),
           throughAt: existingMessage.createdAt,
         }),
         this.repository.completeAnalysis(messageId, userId, analysis.details),
