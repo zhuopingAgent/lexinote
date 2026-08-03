@@ -205,6 +205,29 @@ async function loadConversationGrammarReferences(
   );
 }
 
+function resolveConversationAnalysisTitle(input: {
+  session: { title: string; summary: string; titleIsManual: boolean };
+  suggestedTitle: string | null;
+  firstUserMessage: string | null;
+}) {
+  if (
+    input.session.titleIsManual ||
+    input.session.summary.trim() ||
+    !input.firstUserMessage
+  ) {
+    return input.suggestedTitle;
+  }
+  const suggestedTitle = input.suggestedTitle?.trim() ?? "";
+  if (
+    !suggestedTitle ||
+    suggestedTitle === "新对话" ||
+    suggestedTitle === input.session.title
+  ) {
+    return buildConversationFallbackTitle(input.firstUserMessage);
+  }
+  return suggestedTitle;
+}
+
 export class ConversationService {
   constructor(
     private readonly repository: ConversationRepository,
@@ -838,11 +861,11 @@ export class ConversationService {
           sessionId,
           userId,
           summary: analysis.summary,
-          title:
-            analysis.title ??
-            (!session.titleIsManual && !session.summary.trim() && parentMessage
-              ? buildConversationFallbackTitle(parentMessage.content)
-              : null),
+          title: resolveConversationAnalysisTitle({
+            session,
+            suggestedTitle: analysis.title,
+            firstUserMessage: parentMessage?.content ?? null,
+          }),
           throughAt: existingMessage.createdAt,
         }),
         this.repository.completeAnalysis(messageId, userId, analysis.details),

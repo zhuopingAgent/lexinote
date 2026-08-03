@@ -99,6 +99,20 @@ describe("conversation domain", () => {
     expect(prompt).toContain("甘いものが嫌いなわけではありません");
     expect(prompt).toContain("禁止输出 **");
 
+    const explanationPrompt = buildConversationSystemPrompt({
+      mode: "explain_ja",
+      preferences: {
+        defaultMode: "auto",
+        translationStyle: "natural_first",
+        defaultRegister: "auto",
+        defaultCollectionId: null,
+      },
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "",
+    });
+    expect(explanationPrompt).toContain("必须用简洁中文解释");
+
     const autoPrompt = buildConversationSystemPrompt({
       mode: "auto",
       preferences: {
@@ -503,6 +517,16 @@ describe("conversation domain", () => {
           scope: "global" as const,
           kind: "preference" as const,
           content: "偏好简洁的商务日语",
+        },
+        {
+          scope: "session" as const,
+          kind: "context" as const,
+          content: "用户请求解释目标语法，包含接続、意味和例文。",
+        },
+        {
+          scope: "session" as const,
+          kind: "goal" as const,
+          content: "帮助用户清晰掌握目标语法并举出常见例句。",
         },
       ],
       learningItems: [],

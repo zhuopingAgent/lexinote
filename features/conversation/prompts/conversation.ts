@@ -20,7 +20,7 @@ const MODE_GUIDANCE: Record<ConversationMode, string> = {
   zh_to_ja: "把用户的中文翻译成自然、可直接使用的日语。自然译文放在最前面。",
   ja_to_zh: "把用户的日语翻译成自然、准确的中文，并保留语气和隐含含义。",
   polish_ja: "将用户日语改成自然表达。先给完整修改稿，再用中文简要说明关键改动。",
-  explain_ja: "用简洁中文解释用户询问的日语词汇、固定表达或语法，并给出自然例句。",
+  explain_ja: "必须用简洁中文解释用户询问的日语词汇、固定表达或语法；日语只用于目标形式和例句，不要用日语撰写讲解正文。",
 };
 
 function formatMemories(memories: ConversationMemory[]) {

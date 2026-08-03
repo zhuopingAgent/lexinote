@@ -764,7 +764,7 @@ describe("ConversationService", () => {
     });
   });
 
-  it("uses the first user message when initial analysis omits a title", async () => {
+  it("uses the first user message when initial analysis repeats the draft title", async () => {
     const initialSession = { ...session, summary: "" };
     const analyzedMessage = {
       ...completedAssistant,
@@ -796,7 +796,7 @@ describe("ConversationService", () => {
     };
     const aiClient = {
       analyze: vi.fn().mockResolvedValue({
-        title: null,
+        title: "新对话",
         summary: "已给出预约改期表达。",
         details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
         memories: [],
