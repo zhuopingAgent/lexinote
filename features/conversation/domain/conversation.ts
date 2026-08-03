@@ -63,6 +63,8 @@ const CONVERSATION_META_SUMMARY_PATTERNS = [
   /\b(?:grammar|vocabulary|expression)\b/i,
 ] as const;
 
+const HANGUL_PATTERN = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u;
+
 function readString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -158,7 +160,7 @@ export function selectConversationGrammarCandidates(
       normalizeGrammarForm(candidate.canonicalForm) === normalizedSurface ||
       normalizeGrammarForm(candidate.grammarPoint) === normalizedSurface
   );
-  return exact.length > 0 ? exact : candidates;
+  return exact;
 }
 
 export function trimConversationContextMessages(
@@ -243,12 +245,23 @@ export function parseConversationAnalysisOutput(
             kind === "grammar"
               ? canonicalizeGrammarSurface(rawSurfaceForm)
               : rawSurfaceForm;
+          const meaningZh = readString(next.meaning_zh, 500);
+          const explanationZh = readString(next.explanation_zh, 1_000);
+          if (
+            HANGUL_PATTERN.test(meaningZh) ||
+            HANGUL_PATTERN.test(explanationZh) ||
+            (kind === "grammar" &&
+              (/^(?:接续|接続)[：:]/u.test(meaningZh) ||
+                /用于构成.*接续/u.test(explanationZh)))
+          ) {
+            return null;
+          }
           return {
             kind,
             surfaceForm,
-            reading: readJapaneseReading(next.reading),
-            meaningZh: readString(next.meaning_zh, 500),
-            explanationZh: readString(next.explanation_zh, 1_000),
+            reading: kind === "grammar" ? null : readJapaneseReading(next.reading),
+            meaningZh,
+            explanationZh,
             sourceExcerpt: readString(next.source_excerpt, 500),
           };
         })
@@ -369,6 +382,14 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS: readonly HighConfidenceGrammarPattern[] 
     explanationZh: "以谦让授受形式郑重请求对方做某事。",
     includeAssistantSource: true,
   },
+  {
+    pattern: /ないことには/,
+    coveredPattern: /ないことには/,
+    assistantPattern: null,
+    surfaceForm: "〜ないことには",
+    meaningZh: "如果不……就不能……",
+    explanationZh: "表示前项是后项成立的必要条件，后项通常是否定、困难或无法判断的内容。",
+  },
 ] as const;
 
 export function extractExplicitConversationGrammarForms(content: string) {
@@ -433,7 +454,9 @@ function extractExplicitVocabularyRequests(
 }
 
 function isLowValueStandaloneGrammar(surfaceForm: string) {
-  return new Set(["には", "必要です"]).has(normalizeGrammarForm(surfaceForm));
+  return new Set(["には", "必要です", "をいただけますか"]).has(
+    normalizeGrammarForm(surfaceForm)
+  );
 }
 
 function findNaAdjectivePastCorrection(
@@ -552,13 +575,30 @@ export function reconcileConversationGrammarLearningItems(
 
   for (const request of extractExplicitGrammarRequests(userTexts)) {
     const normalizedGrammar = normalizeGrammarForm(request.surfaceForm);
-    if (
-      learningItems.some(
+    const matchingItems = learningItems.filter(
+      (item) =>
+        item.kind === "grammar" &&
+        normalizeGrammarForm(item.surfaceForm) === normalizedGrammar
+    );
+    if (matchingItems.length > 0) {
+      const preferred = matchingItems[0];
+      learningItems = learningItems.filter(
         (item) =>
-          item.kind === "grammar" &&
-          normalizeGrammarForm(item.surfaceForm) === normalizedGrammar
-      )
-    ) {
+          item.kind !== "grammar" ||
+          normalizeGrammarForm(item.surfaceForm) !== normalizedGrammar
+      );
+      learningItems.unshift({
+        ...preferred,
+        surfaceForm: request.surfaceForm,
+        reading: null,
+        sourceExcerpt: request.sourceExcerpt,
+      });
+      changed =
+        changed ||
+        matchingItems.length > 1 ||
+        preferred.surfaceForm !== request.surfaceForm ||
+        preferred.reading !== null ||
+        preferred.sourceExcerpt !== request.sourceExcerpt;
       continue;
     }
     learningItems.unshift({

@@ -24,6 +24,11 @@ import type {
 type StreamRequester = typeof requestAiGatewayTextStream;
 type StructuredRequester = typeof requestAiGatewayStructuredText;
 
+export const CONVERSATION_AI_MODEL_FALLBACKS = {
+  reply: ["google/gemini-2.5-flash", "anthropic/claude-haiku-4.5"],
+  analysis: ["google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
+} as const;
+
 export class ConversationAiClient {
   constructor(
     private readonly streamRequester: StreamRequester = requestAiGatewayTextStream,
@@ -39,6 +44,7 @@ export class ConversationAiClient {
     return this.streamRequester(request, {
       role: "defaultTeacher",
       maxOutputTokens: 1_800,
+      fallbackModels: [...CONVERSATION_AI_MODEL_FALLBACKS.reply],
       messages,
       signal,
     });
@@ -57,6 +63,7 @@ export class ConversationAiClient {
     const text = await this.structuredRequester(request, {
       role: "cheap",
       maxOutputTokens: 1_500,
+      fallbackModels: [...CONVERSATION_AI_MODEL_FALLBACKS.analysis],
       messages: [
         {
           role: "system",
