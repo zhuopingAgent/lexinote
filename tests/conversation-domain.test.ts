@@ -6,7 +6,7 @@ import {
   conversationLearningItemKey,
   parseConversationAnalysisOutput,
   selectConversationGrammarCandidates,
-  supplementConversationGrammarLearningItems,
+  reconcileConversationGrammarLearningItems,
   trimConversationContextMessages,
   validateConversationAnalysisReferences,
 } from "@/features/conversation/domain/conversation";
@@ -93,23 +93,66 @@ describe("conversation domain", () => {
     expect(prompt).toContain("不要从此前摘要重新提取");
     expect(prompt).toContain("試してみます");
     expect(prompt).toContain("〜てみる");
+    expect(prompt).toContain("同一个语言现象只选一个 kind");
+    expect(prompt).toContain("不要收集助手给出的普通改写");
   });
 
-  it("supplements the te-miru grammar pattern when structured analysis misses it", () => {
+  it("canonicalizes te-miru and removes ordinary expressions covered by it", () => {
     const analysis = {
       title: null,
       summary: "用户表示会尝试。",
       details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
       memories: [],
-      learningItems: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "てみる",
+          reading: null,
+          meaningZh: "试着做某事",
+          explanationZh: "模型生成的语法说明",
+          sourceExcerpt: "試してみます",
+        },
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜てみる",
+          reading: null,
+          meaningZh: "试着……",
+          explanationZh: "服务端补充的语法说明",
+          sourceExcerpt: "てみます",
+        },
+        {
+          kind: "expression" as const,
+          surfaceForm: "やってみます",
+          reading: "やってみます",
+          meaningZh: "我来试试看",
+          explanationZh: "普通改写",
+          sourceExcerpt: "やってみます",
+        },
+        {
+          kind: "expression" as const,
+          surfaceForm: "試してみますね",
+          reading: "ためしてみますね",
+          meaningZh: "我试试看哦",
+          explanationZh: "礼貌变体",
+          sourceExcerpt: "試してみますね",
+        },
+        {
+          kind: "expression" as const,
+          surfaceForm: "お疲れさまです",
+          reading: "おつかれさまです",
+          meaningZh: "辛苦了",
+          explanationZh: "固定表达",
+          sourceExcerpt: "お疲れさまです",
+        },
+      ],
     };
 
-    const supplemented = supplementConversationGrammarLearningItems(analysis, [
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
       message(0, "試してみます"),
-      message(1, "意思是我来试试看。"),
+      message(1, "やってみます。試してみますね。お疲れさまです。"),
     ]);
 
-    expect(supplemented.learningItems).toEqual([
+    expect(reconciled.learningItems).toEqual([
       {
         kind: "grammar",
         surfaceForm: "〜てみる",
@@ -118,13 +161,17 @@ describe("conversation domain", () => {
         explanationZh: "接在动词て形后，表示尝试做某事并观察结果。",
         sourceExcerpt: "てみます",
       },
+      expect.objectContaining({
+        kind: "expression",
+        surfaceForm: "お疲れさまです",
+      }),
     ]);
 
-    const notDuplicated = supplementConversationGrammarLearningItems(
-      supplemented,
+    const notDuplicated = reconcileConversationGrammarLearningItems(
+      reconciled,
       [message(0, "試してみます")]
     );
-    expect(notDuplicated.learningItems).toHaveLength(1);
+    expect(notDuplicated.learningItems).toHaveLength(2);
   });
 
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {
@@ -178,6 +225,9 @@ describe("conversation domain", () => {
   });
 
   it("deduplicates equivalent forms without collapsing distinct meanings", () => {
+    expect(
+      conversationLearningItemKey("grammar", "てみる", "试着……")
+    ).toBe(conversationLearningItemKey("grammar", "〜てみる", "试着……"));
     expect(
       conversationLearningItemKey("grammar", "～そうだ", "听说……")
     ).toBe(conversationLearningItemKey("grammar", "〜 そうだ", "听说……"));
