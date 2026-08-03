@@ -274,11 +274,43 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
   {
     pattern:
       /(?:て|で)み(?:ませんでした|ました|ません|ます|なかった|ない|よう|たい|る|た|て)(?:よ|ね)?/,
+    coveredPattern:
+      /(?:て|で)み(?:ませんでした|ました|ません|ます|なかった|ない|よう|たい|る|た|て)(?:よ|ね)?/,
+    assistantPattern: null,
     surfaceForm: "〜てみる",
     meaningZh: "试着……",
     explanationZh: "接在动词て形后，表示尝试做某事并观察结果。",
   },
+  {
+    pattern: /[^\s。、！？「」]{1,20}いでした/,
+    coveredPattern: /(?:いでした|かったです|い形容[詞词].*过去)/,
+    assistantPattern: /かったです/,
+    surfaceForm: "い形容词过去形",
+    meaningZh: "表示い形容词的过去状态",
+    explanationZh: "将词尾「い」变为「かった」，礼貌表达再接「です」。",
+  },
+  {
+    pattern: /[~～〜]わけではない/,
+    coveredPattern: /[~～〜]?わけではない/,
+    assistantPattern: null,
+    surfaceForm: "〜わけではない",
+    meaningZh: "并不是……/并非……",
+    explanationZh: "否定从前文可能推导出的过度结论，表示并非完全如此。",
+  },
 ] as const;
+
+function extractExplicitGrammarRequests(userTexts: string[]) {
+  const requests: Array<{ surfaceForm: string; sourceExcerpt: string }> = [];
+  for (const content of userTexts) {
+    for (const match of content.matchAll(/[「『]([~～〜][^」』\r\n]{1,60})[」』]/g)) {
+      const sourceExcerpt = match[1]?.trim() ?? "";
+      const surfaceForm = canonicalizeGrammarSurface(sourceExcerpt);
+      if (!surfaceForm) continue;
+      requests.push({ surfaceForm, sourceExcerpt });
+    }
+  }
+  return requests;
+}
 
 export function reconcileConversationGrammarLearningItems(
   analysis: ConversationAnalysisOutput,
@@ -286,6 +318,9 @@ export function reconcileConversationGrammarLearningItems(
 ): ConversationAnalysisOutput {
   const userTexts = messages
     .filter((message) => message.role === "user")
+    .map((message) => message.content);
+  const assistantTexts = messages
+    .filter((message) => message.role === "assistant")
     .map((message) => message.content);
   let learningItems = [...analysis.learningItems];
   let changed = false;
@@ -295,12 +330,21 @@ export function reconcileConversationGrammarLearningItems(
       .map((content) => content.match(grammar.pattern)?.[0] ?? "")
       .find(Boolean);
     if (!sourceExcerpt) continue;
+    if (
+      grammar.assistantPattern &&
+      !assistantTexts.some((content) => grammar.assistantPattern?.test(content))
+    ) {
+      continue;
+    }
 
     const normalizedGrammar = normalizeGrammarForm(grammar.surfaceForm);
     learningItems = learningItems.filter((item) => {
       if (
         item.kind === "grammar" &&
-        normalizeGrammarForm(item.surfaceForm) === normalizedGrammar
+        (normalizeGrammarForm(item.surfaceForm) === normalizedGrammar ||
+          [item.surfaceForm, item.sourceExcerpt, item.explanationZh].some(
+            (value) => grammar.coveredPattern.test(value)
+          ))
       ) {
         return false;
       }
@@ -308,7 +352,7 @@ export function reconcileConversationGrammarLearningItems(
         return true;
       }
       return ![item.surfaceForm, item.sourceExcerpt].some((value) =>
-        grammar.pattern.test(value)
+        grammar.coveredPattern.test(value)
       );
     });
     learningItems.unshift({
@@ -318,6 +362,28 @@ export function reconcileConversationGrammarLearningItems(
       meaningZh: grammar.meaningZh,
       explanationZh: grammar.explanationZh,
       sourceExcerpt,
+    });
+    changed = true;
+  }
+
+  for (const request of extractExplicitGrammarRequests(userTexts)) {
+    const normalizedGrammar = normalizeGrammarForm(request.surfaceForm);
+    if (
+      learningItems.some(
+        (item) =>
+          item.kind === "grammar" &&
+          normalizeGrammarForm(item.surfaceForm) === normalizedGrammar
+      )
+    ) {
+      continue;
+    }
+    learningItems.unshift({
+      kind: "grammar",
+      surfaceForm: request.surfaceForm,
+      reading: null,
+      meaningZh: "本轮明确询问的语法",
+      explanationZh: "用户明确询问了该语法的用法，可绑定现有语法义项继续复习。",
+      sourceExcerpt: request.sourceExcerpt,
     });
     changed = true;
   }
