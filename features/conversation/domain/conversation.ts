@@ -561,10 +561,28 @@ export function reconcileConversationGrammarLearningItems(
     changed = true;
   }
 
-  for (const request of extractExplicitVocabularyRequests(
+  const explicitVocabularyRequests = extractExplicitVocabularyRequests(
     userTexts,
     assistantTexts
-  )) {
+  );
+  if (explicitVocabularyRequests.length > 0) {
+    const requestedSurfaces = new Set(
+      explicitVocabularyRequests.map((request) =>
+        request.surfaceForm.normalize("NFKC").toLowerCase()
+      )
+    );
+    const requestedVocabularyOnly = learningItems.filter(
+      (item) =>
+        item.kind !== "vocabulary" ||
+        requestedSurfaces.has(item.surfaceForm.normalize("NFKC").toLowerCase())
+    );
+    if (requestedVocabularyOnly.length !== learningItems.length) {
+      learningItems = requestedVocabularyOnly;
+      changed = true;
+    }
+  }
+
+  for (const request of explicitVocabularyRequests) {
     const normalizedSurface = request.surfaceForm
       .normalize("NFKC")
       .toLowerCase();

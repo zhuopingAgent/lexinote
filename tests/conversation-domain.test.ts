@@ -535,7 +535,16 @@ describe("conversation domain", () => {
       summary: "解释了一个词。",
       details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
       memories: [],
-      learningItems: [],
+      learningItems: [
+        {
+          kind: "vocabulary" as const,
+          surfaceForm: "在职证明",
+          reading: "ざいしょくしょうめいしょ",
+          meaningZh: "在职证明",
+          explanationZh: "错误地把中文译文当成日语词条",
+          sourceExcerpt: "在职证明",
+        },
+      ],
     };
 
     const reconciled = reconcileConversationGrammarLearningItems(analysis, [
