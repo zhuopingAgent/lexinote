@@ -90,6 +90,8 @@ describe("conversation domain", () => {
     });
 
     expect(prompt).toContain("把用户的中文翻译成自然、可直接使用的日语");
+    expect(prompt).toContain("准确判断请求中的动作主体");
+    expect(prompt).toContain("只有询问自己或己方是否可以执行时");
     expect(prompt).toContain("默认语体：business");
     expect(prompt).toContain("优先给自然商务表达");
     expect(prompt).toContain("对方是客户");
@@ -352,6 +354,49 @@ describe("conversation domain", () => {
         meaningZh: "最好……",
         explanationZh: "用过去形接「ほうがいい」，表示建议采取某个做法。",
         sourceExcerpt: "たほうがよさそうです",
+      },
+    ]);
+  });
+
+  it("normalizes permission grammar found in a Chinese-to-Japanese answer", () => {
+    const analysis = {
+      title: null,
+      summary: "请求变更会议时间。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜に変更してもよろしいでしょうか",
+          reading: null,
+          meaningZh: "可以改为……吗",
+          explanationZh: "模型把变更动作拼进了语法名称",
+          sourceExcerpt: "変更してもよろしいでしょうか",
+        },
+        {
+          kind: "expression" as const,
+          surfaceForm: "変更してもよろしいでしょうか",
+          reading: null,
+          meaningZh: "可以变更吗",
+          explanationZh: "与许可语法重复",
+          sourceExcerpt: "変更してもよろしいでしょうか",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "请问可以把会议改到下周二吗？"),
+      message(1, "会議を来週の火曜日に変更してもよろしいでしょうか。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜てもよろしいでしょうか",
+        reading: null,
+        meaningZh: "可以……吗",
+        explanationZh: "郑重询问自己或己方是否可以进行某个动作。",
+        sourceExcerpt: "てもよろしいでしょうか",
       },
     ]);
   });

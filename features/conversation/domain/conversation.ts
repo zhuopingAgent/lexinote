@@ -295,7 +295,17 @@ export function validateConversationAnalysisReferences(
   };
 }
 
-const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
+type HighConfidenceGrammarPattern = {
+  pattern: RegExp;
+  coveredPattern: RegExp;
+  assistantPattern: RegExp | null;
+  surfaceForm: string;
+  meaningZh: string;
+  explanationZh: string;
+  includeAssistantSource?: boolean;
+};
+
+const HIGH_CONFIDENCE_GRAMMAR_PATTERNS: readonly HighConfidenceGrammarPattern[] = [
   {
     pattern:
       /(?:て|で)み(?:ませんでした|ました|ません|ます|なかった|ない|よう|たい|る|た|て)(?:よ|ね)?/,
@@ -329,6 +339,15 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
     surfaceForm: "〜たほうがいい",
     meaningZh: "最好……",
     explanationZh: "用过去形接「ほうがいい」，表示建议采取某个做法。",
+  },
+  {
+    pattern: /(?:て|で)もよろしいでしょうか/,
+    coveredPattern: /(?:て|で)もよろしいでしょうか/,
+    assistantPattern: null,
+    surfaceForm: "〜てもよろしいでしょうか",
+    meaningZh: "可以……吗",
+    explanationZh: "郑重询问自己或己方是否可以进行某个动作。",
+    includeAssistantSource: true,
   },
 ] as const;
 
@@ -364,7 +383,10 @@ export function reconcileConversationGrammarLearningItems(
   let changed = false;
 
   for (const grammar of HIGH_CONFIDENCE_GRAMMAR_PATTERNS) {
-    const sourceExcerpt = userTexts
+    const sourceTexts = grammar.includeAssistantSource
+      ? [...userTexts, ...assistantTexts]
+      : userTexts;
+    const sourceExcerpt = sourceTexts
       .map((content) => content.match(grammar.pattern)?.[0] ?? "")
       .find(Boolean);
     if (!sourceExcerpt) continue;
