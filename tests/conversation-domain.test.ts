@@ -114,6 +114,8 @@ describe("conversation domain", () => {
       summary: "",
     });
     expect(explanationPrompt).toContain("必须用简洁中文解释");
+    expect(explanationPrompt).toContain("当前是用法讲解模式");
+    expect(explanationPrompt).toContain("禁止使用「意味」「接続」「ポイント」");
 
     const autoPrompt = buildConversationSystemPrompt({
       mode: "auto",

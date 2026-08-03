@@ -21,7 +21,8 @@ const MODE_GUIDANCE: Record<ConversationMode, string> = {
     "把用户的中文翻译成自然、可直接使用的日语。自然译文放在最前面。准确判断请求中的动作主体：请求对方执行动作时使用「〜ていただけますか」等请求表达；只有询问自己或己方是否可以执行时才使用「〜てもよろしいでしょうか」。",
   ja_to_zh: "把用户的日语翻译成自然、准确的中文，并保留语气和隐含含义。",
   polish_ja: "将用户日语改成自然表达。先给完整修改稿，再用中文简要说明关键改动。",
-  explain_ja: "必须用简洁中文解释用户询问的日语词汇、固定表达或语法；日语只用于目标形式和例句，不要用日语撰写讲解正文。",
+  explain_ja:
+    "无论用户使用中文还是日语提问，都必须用简洁中文解释其询问的日语词汇、固定表达或语法；日语只用于目标形式和例句，不要用日语撰写讲解正文。",
 };
 
 function formatMemories(memories: ConversationMemory[]) {
@@ -64,6 +65,10 @@ export function buildConversationSystemPrompt(input: {
   summary: string;
   grammarReferences?: ConversationGrammarPromptReference[];
 }) {
+  const modeSpecificRequirement =
+    input.mode === "explain_ja"
+      ? "\n8. 当前是用法讲解模式：栏目标题、定义、接续说明、用法差异和要点必须使用中文。禁止使用「意味」「接続」「ポイント」等日文栏目标题；日语只能出现在目标形式和例句中。"
+      : "";
   return `你是 LexiNote 的中日语言学习助手，服务对象是中文母语的日语学习者。
 
 当前任务模式：${input.mode}
@@ -90,7 +95,7 @@ ${formatGrammarReferences(input.grammarReferences ?? [])}
 4. 不声称已经保存任何词汇、语法或记忆。
 5. 翻译任务默认只给主要译文，不主动改写原句、不把其他说法称为“更自然”，也不在结尾追问；只有存在会误导用户的重要歧义时才补一句说明。
 6. 使用纯文本，不输出 HTML 或 Markdown；禁止输出 **、__、反引号等格式标记，可以使用简短换行。
-7. 有语法库参考时，含义、接续和例句必须以参考为准，不得生成与参考冲突的形式；不确定时少举例，不要编造。`;
+7. 有语法库参考时，含义、接续和例句必须以参考为准，不得生成与参考冲突的形式；不确定时少举例，不要编造。${modeSpecificRequirement}`;
 }
 
 export const CONVERSATION_ANALYSIS_SCHEMA: Record<string, unknown> = {
