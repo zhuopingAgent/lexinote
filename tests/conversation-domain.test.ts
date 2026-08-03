@@ -674,6 +674,44 @@ describe("conversation domain", () => {
     expect(parsed?.learningItems[0].surfaceForm).toBe("〜ので");
   });
 
+  it("keeps kana readings and rejects translated text in the reading field", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "摘要",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "vocabulary",
+            surface_form: "在職証明書",
+            reading: "在职证明",
+            meaning_zh: "在职证明",
+            explanation_zh: "证明当前在职的文件",
+            source_excerpt: "在職証明書",
+          },
+          {
+            kind: "vocabulary",
+            surface_form: "領収書",
+            reading: "りょうしゅうしょ",
+            meaning_zh: "收据",
+            explanation_zh: "付款凭证",
+            source_excerpt: "領収書",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems.map((item) => item.reading)).toEqual([
+      null,
+      "りょうしゅうしょ",
+    ]);
+  });
+
   it("builds a bounded fallback title from the first user message", () => {
     expect(buildConversationFallbackTitle("  試してみます\n")).toBe(
       "試してみます"
