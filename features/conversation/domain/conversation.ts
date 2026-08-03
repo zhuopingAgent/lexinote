@@ -74,13 +74,24 @@ export function isConversationMode(value: unknown): value is ConversationMode {
     CONVERSATION_MODES.includes(value as ConversationMode);
 }
 
-function normalizeGrammarForm(value: string) {
+function canonicalizeGrammarSurface(value: string) {
   return value
     .normalize("NFKC")
     .replace(/[~～]/g, "〜")
     .replace(/\s+/g, "")
-    .replace(/^〜+/, "")
     .trim();
+}
+
+function normalizeGrammarForm(value: string) {
+  return canonicalizeGrammarSurface(value).replace(/^〜+/, "");
+}
+
+export function buildConversationFallbackTitle(content: string) {
+  const normalized = content.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 32) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 31)}…`;
 }
 
 export function conversationLearningItemKey(
@@ -182,15 +193,19 @@ export function parseConversationAnalysisOutput(
           }
           const next = item as Record<string, unknown>;
           const kind = next.kind;
-          const surfaceForm = readString(next.surface_form, 200);
+          const rawSurfaceForm = readString(next.surface_form, 200);
           if (
             (kind !== "vocabulary" &&
               kind !== "expression" &&
               kind !== "grammar") ||
-            !surfaceForm
+            !rawSurfaceForm
           ) {
             return null;
           }
+          const surfaceForm =
+            kind === "grammar"
+              ? canonicalizeGrammarSurface(rawSurfaceForm)
+              : rawSurfaceForm;
           const reading = readString(next.reading, 200);
           return {
             kind,

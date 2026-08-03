@@ -3,6 +3,7 @@ import {
   MAX_ANALYSIS_ITEMS,
   MAX_CONTEXT_CHARACTERS,
   MAX_CONTEXT_MESSAGES,
+  buildConversationFallbackTitle,
   conversationLearningItemKey,
   parseConversationAnalysisOutput,
   selectConversationGrammarCandidates,
@@ -111,6 +112,8 @@ describe("conversation domain", () => {
     expect(prompt).toContain("同一个语言现象只选一个 kind");
     expect(prompt).toContain("不要收集助手给出的普通改写");
     expect(prompt).toContain("memories 不是对话摘要");
+    expect(prompt).toContain("通常只选 1–3 个");
+    expect(prompt).toContain("不能输出「〜かもしれませんので」");
   });
 
   it("canonicalizes te-miru and removes ordinary expressions covered by it", () => {
@@ -270,6 +273,42 @@ describe("conversation domain", () => {
     expect(
       conversationLearningItemKey("grammar", "〜そうだ", "看起来……")
     ).not.toBe(conversationLearningItemKey("grammar", "〜そうだ", "听说……"));
+  });
+
+  it("normalizes grammar wave dashes before persistence", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "摘要",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "～ ので",
+            reading: null,
+            meaning_zh: "因为",
+            explanation_zh: "表示原因",
+            source_excerpt: "ので",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems[0].surfaceForm).toBe("〜ので");
+  });
+
+  it("builds a bounded fallback title from the first user message", () => {
+    expect(buildConversationFallbackTitle("  試してみます\n")).toBe(
+      "試してみます"
+    );
+    expect(buildConversationFallbackTitle("あ".repeat(40))).toBe(
+      `${"あ".repeat(31)}…`
+    );
   });
 
   it("drops model candidates whose quoted source is absent from the conversation", () => {
