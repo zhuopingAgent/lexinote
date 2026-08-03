@@ -273,12 +273,6 @@ export function ConversationMessageView({
     () => memories.filter((memory) => memory.sourceMessageId === message.id && memory.status === "suggested"),
     [memories, message.id]
   );
-  const hasDetails = Boolean(
-    message.details.literalTranslation ||
-      message.details.nuanceNotes.length ||
-      message.details.keyPoints.length
-  );
-
   async function updateSuggestedMemory(
     memoryId: string,
     status: "active" | "dismissed"
@@ -326,17 +320,6 @@ export function ConversationMessageView({
                 重新生成
               </button>
             </div>
-          ) : null}
-
-          {hasDetails ? (
-            <details className="mt-4 border-y border-border py-3">
-              <summary className="cursor-pointer text-sm font-medium text-muted transition hover:text-foreground">翻译与表达说明</summary>
-              <div className="mt-3 space-y-3 text-sm leading-6 text-foreground/72">
-                {message.details.literalTranslation ? <div><p className="text-xs font-semibold text-muted">直译</p><p className="mt-1">{message.details.literalTranslation}</p></div> : null}
-                {message.details.nuanceNotes.length > 0 ? <div><p className="text-xs font-semibold text-muted">语气差异</p>{message.details.nuanceNotes.map((note) => <p key={note} className="mt-1">{note}</p>)}</div> : null}
-                {message.details.keyPoints.length > 0 ? <div><p className="text-xs font-semibold text-muted">学习重点</p>{message.details.keyPoints.map((point) => <p key={point} className="mt-1">{point}</p>)}</div> : null}
-              </div>
-            </details>
           ) : null}
 
           {message.analysisStatus === "failed" ? (

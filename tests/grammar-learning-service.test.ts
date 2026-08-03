@@ -642,7 +642,7 @@ describe("GrammarLearningService", () => {
   it("keeps the overall progress total distinct when knowledge dimension tags overlap", async () => {
     const repository = createRepositoryMock();
     repository.getProgressTotals.mockResolvedValue({
-      totalGrammarPoints: 339,
+      totalGrammarPoints: 340,
       startedCount: 10,
       masteredCount: 4,
       pendingCompletionCount: 2,
@@ -658,7 +658,7 @@ describe("GrammarLearningService", () => {
         nameEn: "Expression function",
         description: "",
         priority: 1,
-        totalCount: 339,
+        totalCount: 340,
         startedCount: 10,
         masteredCount: 4,
         pendingCompletionCount: 2,
@@ -689,7 +689,7 @@ describe("GrammarLearningService", () => {
 
     const result = await service.getProgress();
 
-    expect(result.totalGrammarPoints).toBe(339);
+    expect(result.totalGrammarPoints).toBe(340);
     expect(result.masteredCount).toBe(4);
     expect(result.reviewCount).toBe(3);
     expect(result.groupProgress).toEqual(

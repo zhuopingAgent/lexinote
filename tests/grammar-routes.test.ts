@@ -284,7 +284,7 @@ describe("grammar API routes", () => {
         learningModules: [],
       },
       progress: {
-        totalGrammarPoints: 339,
+        totalGrammarPoints: 340,
         startedCount: 12,
         masteredCount: 4,
         pendingCompletionCount: 2,
@@ -313,7 +313,7 @@ describe("grammar API routes", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      progress: { totalGrammarPoints: 339 },
+      progress: { totalGrammarPoints: 340 },
       search: {
         items: [
           {
