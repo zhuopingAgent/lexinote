@@ -10,6 +10,7 @@ import {
 } from "@/features/conversation/prompts/conversation";
 import {
   parseConversationAnalysisOutput,
+  supplementConversationGrammarLearningItems,
   validateConversationAnalysisReferences,
 } from "@/features/conversation/domain/conversation";
 import type {
@@ -78,8 +79,14 @@ export class ConversationAiClient {
     });
 
     const parsed = text ? parseConversationAnalysisOutput(text) : null;
-    return parsed
-      ? validateConversationAnalysisReferences(parsed, input.messages)
-      : null;
+    if (!parsed) {
+      return null;
+    }
+
+    const validated = validateConversationAnalysisReferences(
+      parsed,
+      input.messages
+    );
+    return supplementConversationGrammarLearningItems(validated, input.messages);
   }
 }

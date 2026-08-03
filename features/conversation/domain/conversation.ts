@@ -238,3 +238,62 @@ export function validateConversationAnalysisReferences(
     ),
   };
 }
+
+const HIGH_CONFIDENCE_GRAMMAR_PATTERNS = [
+  {
+    pattern:
+      /(?:て|で)み(?:ませんでした|ました|ません|ます|なかった|ない|よう|たい|る|た|て)(?:よ|ね)?/,
+    surfaceForm: "〜てみる",
+    meaningZh: "试着……",
+    explanationZh: "接在动词て形后，表示尝试做某事并观察结果。",
+  },
+] as const;
+
+export function supplementConversationGrammarLearningItems(
+  analysis: ConversationAnalysisOutput,
+  messages: ConversationMessage[]
+): ConversationAnalysisOutput {
+  const userTexts = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content);
+  const supplements: ConversationAnalysisLearningItem[] = [];
+
+  for (const grammar of HIGH_CONFIDENCE_GRAMMAR_PATTERNS) {
+    if (
+      analysis.learningItems.some(
+        (item) =>
+          item.kind === "grammar" &&
+          normalizeGrammarForm(item.surfaceForm) ===
+            normalizeGrammarForm(grammar.surfaceForm)
+      )
+    ) {
+      continue;
+    }
+
+    const sourceExcerpt = userTexts
+      .map((content) => content.match(grammar.pattern)?.[0] ?? "")
+      .find(Boolean);
+    if (!sourceExcerpt) continue;
+
+    supplements.push({
+      kind: "grammar",
+      surfaceForm: grammar.surfaceForm,
+      reading: null,
+      meaningZh: grammar.meaningZh,
+      explanationZh: grammar.explanationZh,
+      sourceExcerpt,
+    });
+  }
+
+  if (supplements.length === 0) {
+    return analysis;
+  }
+
+  return {
+    ...analysis,
+    learningItems: [...supplements, ...analysis.learningItems].slice(
+      0,
+      MAX_ANALYSIS_ITEMS
+    ),
+  };
+}

@@ -6,6 +6,7 @@ import {
   conversationLearningItemKey,
   parseConversationAnalysisOutput,
   selectConversationGrammarCandidates,
+  supplementConversationGrammarLearningItems,
   trimConversationContextMessages,
   validateConversationAnalysisReferences,
 } from "@/features/conversation/domain/conversation";
@@ -90,6 +91,40 @@ describe("conversation domain", () => {
     expect(prompt).toContain("当前一轮：");
     expect(prompt).toContain("学习项只从“当前一轮”提取");
     expect(prompt).toContain("不要从此前摘要重新提取");
+    expect(prompt).toContain("試してみます");
+    expect(prompt).toContain("〜てみる");
+  });
+
+  it("supplements the te-miru grammar pattern when structured analysis misses it", () => {
+    const analysis = {
+      title: null,
+      summary: "用户表示会尝试。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const supplemented = supplementConversationGrammarLearningItems(analysis, [
+      message(0, "試してみます"),
+      message(1, "意思是我来试试看。"),
+    ]);
+
+    expect(supplemented.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜てみる",
+        reading: null,
+        meaningZh: "试着……",
+        explanationZh: "接在动词て形后，表示尝试做某事并观察结果。",
+        sourceExcerpt: "てみます",
+      },
+    ]);
+
+    const notDuplicated = supplementConversationGrammarLearningItems(
+      supplemented,
+      [message(0, "試してみます")]
+    );
+    expect(notDuplicated.learningItems).toHaveLength(1);
   });
 
   it("keeps only the newest bounded context and truncates the oldest retained text", () => {

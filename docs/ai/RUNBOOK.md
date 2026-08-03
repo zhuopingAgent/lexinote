@@ -33,7 +33,7 @@
 - `AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
 - Canonical AI Gateway model roles live in `shared/ai/gateway.ts`: `cheap` is `openai/gpt-5-nano`, `defaultTeacher` is `openai/gpt-4.1-mini`, `premiumTeacher` is `openai/gpt-5-mini`, `longContext` is `alibaba/qwen3.7-plus`, and `speech` is `openai/whisper-1`.
 - Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.
-- Conversation uses `defaultTeacher` for the streamed learner-facing answer and `cheap` for JSON Schema title, summary, details, learning-item, and memory analysis.
+- Conversation uses `defaultTeacher` for the streamed learner-facing answer and `cheap` for JSON Schema title, summary, learning-item, and memory analysis.
 - For local AI access, either set `AI_GATEWAY_API_KEY` from Vercel AI Gateway API Keys or run `vercel link && vercel env pull` to obtain a project-scoped `VERCEL_OIDC_TOKEN`. Local OIDC tokens are short-lived, so pull again if they expire.
 - `APP_BASIC_AUTH_PASSWORD` enables Basic Auth for all app routes and APIs. Vercel Production and Preview deployments should set it while local development can leave it empty. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
 - `APP_TWO_FACTOR_TOTP_SECRET` enables the TOTP second factor after Basic Auth. `APP_TWO_FACTOR_COOKIE_SECRET` signs the HttpOnly 2FA session cookie, and `APP_TWO_FACTOR_SESSION_SECONDS` defaults to `43200`.
@@ -96,7 +96,7 @@
 - Dictionary lookup and collection-summary polling use abort signals plus generation guards. Restoring a history item or completing a collection mutation invalidates overlapping requests before local state is updated.
 - Browser search history is best-effort. If local storage is unavailable, lookup and clear actions continue with in-memory state for the current page session.
 - Grammar learning tables, 7 knowledge dimensions, 46 knowledge taxonomy nodes, 153 core learning units, 9 core comparison sets, 10 stable error types, 5 learning stages, and 11 migrated legacy compatibility records are created by `shared/db/sql/schema.sql`.
-- `shared/db/sql/grammar-content.sql` expands the curriculum to 339 active learning units, 27 structured comparison sets, and 19 non-empty learning modules. `shared/db/sql/seed.sql` applies both SQL files for local setup.
+- `shared/db/sql/grammar-content.sql` expands the curriculum to 340 active learning units, 27 structured comparison sets, and 19 non-empty learning modules. `shared/db/sql/seed.sql` applies both SQL files for local setup.
 - Grammar seed migrations are key-based and repeatable. E2E global setup applies both grammar SQL files twice and verifies stable record counts, three examples for every expanded unit, active-unit content completeness, comparison member integrity, legacy feedback migration, module and curriculum coverage, prerequisite acyclicity/order, polysemous senses, and taxonomy integrity before loading fixtures.
 - Grammar APIs default to the local single-user id `00000000-0000-0000-0000-000000000001` when no user id is provided.
 - Grammar sentence feedback writes `user_sentences`, `ai_feedback`, `review_records`, and `learning_history`; review records should update when feedback contains mistakes.

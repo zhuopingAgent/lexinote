@@ -55,16 +55,6 @@ export const CONVERSATION_ANALYSIS_SCHEMA: Record<string, unknown> = {
   properties: {
     title: { type: ["string", "null"] },
     summary: { type: "string" },
-    details: {
-      type: "object",
-      properties: {
-        literal_translation: { type: ["string", "null"] },
-        nuance_notes: { type: "array", items: { type: "string" } },
-        key_points: { type: "array", items: { type: "string" } },
-      },
-      required: ["literal_translation", "nuance_notes", "key_points"],
-      additionalProperties: false,
-    },
     memories: {
       type: "array",
       items: {
@@ -105,7 +95,7 @@ export const CONVERSATION_ANALYSIS_SCHEMA: Record<string, unknown> = {
       },
     },
   },
-  required: ["title", "summary", "details", "memories", "learning_items"],
+  required: ["title", "summary", "memories", "learning_items"],
   additionalProperties: false,
 };
 
@@ -131,10 +121,10 @@ ${transcript}
 规则：
 1. summary 用中文压缩稳定上下文和本轮结论，不超过 1000 字，不记录无关寒暄。
 2. 只有标题不是手动设置且此前摘要为空时才给简洁标题，否则 title 为 null。
-3. details 用于折叠说明；没有可靠直译时 literal_translation 为 null。
-4. 学习项只从“当前一轮”提取，不要从此前摘要重新提取；只保留对中文母语日语学习者真正有价值、可能不熟悉的词汇、固定表达或语法，总数最多 5 个。
+3. 学习项只从“当前一轮”提取，不要从此前摘要重新提取；只保留对中文母语日语学习者真正有价值的词汇、固定表达或语法，总数最多 5 个。
+4. 用户输入很短时也要检查其中完整的语法结构，不能因为表达自然或已经给出回答就跳过。例如「試してみます」必须提取 grammar「〜てみる」，source_excerpt 使用本轮原文中的「てみます」或「試してみます」，不要误拆成单独的「ます形」。
 5. vocabulary 使用词典原形；expression 用完整固定搭配；grammar 使用规范语法形式。
-6. source_excerpt 必须来自本轮对话，不得编造。
+6. source_excerpt 必须逐字来自本轮对话，不得把规范语法形式当作原文引用。
 7. 只有稳定、可能影响未来回答的信息才建议为 memory。跨会话稳定偏好用 global；仅本会话背景用 session。
 8. 不要把临时翻译内容、词汇知识或助手自己的结论保存为全局记忆。`;
 }

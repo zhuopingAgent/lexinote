@@ -8,7 +8,7 @@ describe("grammar progress overview", () => {
     const markup = renderToStaticMarkup(
       createElement(GrammarProgressOverview, {
         progress: {
-          totalGrammarPoints: 339,
+          totalGrammarPoints: 340,
           startedCount: 12,
           masteredCount: 4,
           pendingCompletionCount: 2,

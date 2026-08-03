@@ -300,6 +300,7 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
   await page.getByLabel("对话消息").fill("可以帮我改一下预约时间吗？");
   await page.getByLabel("对话消息").press("Enter");
   await expect(page.getByText("予約時間を変更していただけますか。")).toBeVisible();
+  await expect(page.getByText("翻译与表达说明")).toHaveCount(0);
   await expect(page.getByText("変更する", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("article").getByText("默认单词本", { exact: true })
