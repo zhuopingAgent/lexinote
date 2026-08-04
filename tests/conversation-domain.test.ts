@@ -89,7 +89,8 @@ describe("conversation domain", () => {
       ],
     });
 
-    expect(prompt).toContain("把用户的中文翻译成自然、可直接使用的日语");
+    expect(prompt).toContain("把用户的中文完整翻译成自然、可直接使用的日语");
+    expect(prompt).toContain("禁止写成「花生アレルギー」");
     expect(prompt).toContain("准确判断请求中的动作主体");
     expect(prompt).toContain("只有询问自己或己方是否可以执行时");
     expect(prompt).toContain("默认语体：business");
@@ -145,6 +146,7 @@ describe("conversation domain", () => {
     });
     expect(autoPrompt).toContain("完整日语句子按日译中处理");
     expect(autoPrompt).toContain("涉及过敏、症状或安全确认");
+    expect(autoPrompt).toContain("花生使用「ピーナッツ」或「落花生」");
   });
 
   it("limits structured learning extraction to the current turn", () => {
@@ -895,6 +897,51 @@ describe("conversation domain", () => {
             meaning_zh: "能请您……吗",
             explanation_zh: "礼貌请求对方做某事",
             source_excerpt: "確認していただけますか",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems.map((item) => item.surfaceForm)).toEqual([
+      "〜ていただけますか",
+    ]);
+  });
+
+  it("drops combined grammar labels and full-sentence learning surfaces", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "翻译了餐厅过敏请求。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "くださいませんか/いただけますか",
+            reading: null,
+            meaning_zh: "能请您……吗",
+            explanation_zh: "礼貌请求",
+            source_excerpt: "ご確認いただけますか",
+          },
+          {
+            kind: "expression",
+            surface_form: "ピーナッツアレルギーがあります。",
+            reading: null,
+            meaning_zh: "我对花生过敏",
+            explanation_zh: "声明过敏信息",
+            source_excerpt: "ピーナッツアレルギーがあります。",
+          },
+          {
+            kind: "grammar",
+            surface_form: "〜ていただけますか",
+            reading: null,
+            meaning_zh: "能请您……吗",
+            explanation_zh: "礼貌请求对方做某事",
+            source_excerpt: "ご確認いただけますか",
           },
         ],
       })
