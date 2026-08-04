@@ -3,6 +3,7 @@ import {
   throwIfAiGatewayBudgetExceeded,
   throwIfAiGatewayRateLimited,
 } from "@/shared/utils/ai-gateway-errors";
+import { AiGatewayNoProvidersError } from "@/shared/utils/errors";
 
 // These creator/model IDs route through AI Gateway, not direct provider endpoints.
 export const AI_MODELS = {
@@ -90,6 +91,13 @@ async function logAiGatewayFailure(
     upstreamCode,
     retryAfter: response.headers.get("retry-after") ?? "",
   });
+  return upstreamCode;
+}
+
+function throwIfAiGatewayHasNoProviders(response: Response, upstreamCode: string) {
+  if (response.status === 403 && upstreamCode === "no_providers_available") {
+    throw new AiGatewayNoProvidersError();
+  }
 }
 
 export function resolveAiModel(role: AiModelRole) {
@@ -261,7 +269,12 @@ export async function requestAiGatewayTextStream(
     throwIfAiGatewayRateLimited(response);
 
     if (!response.ok || !response.body) {
-      await logAiGatewayFailure("stream", prompt.role, response);
+      const upstreamCode = await logAiGatewayFailure(
+        "stream",
+        prompt.role,
+        response
+      );
+      throwIfAiGatewayHasNoProviders(response, upstreamCode);
       return null;
     }
 
@@ -306,11 +319,25 @@ export async function requestAiGatewayStructuredText(
     throwIfAiGatewayRateLimited(response);
 
     if (!response.ok) {
-      await logAiGatewayFailure("structured", prompt.role, response);
+      const upstreamCode = await logAiGatewayFailure(
+        "structured",
+        prompt.role,
+        response
+      );
+      throwIfAiGatewayHasNoProviders(response, upstreamCode);
       return null;
     }
 
-    return extractAiGatewayResponseText((await response.json()) as AiGatewayResponse);
+    const text = extractAiGatewayResponseText(
+      (await response.json()) as AiGatewayResponse
+    );
+    if (!text) {
+      console.warn("AI Gateway structured response contained no output text", {
+        role: prompt.role,
+        status: response.status,
+      });
+    }
+    return text;
   } catch (error) {
     rethrowAiGatewayBudgetError(error);
     if (error instanceof DOMException && error.name === "AbortError") {

@@ -3,7 +3,10 @@ import {
   requestAiGatewayStructuredText,
   requestAiGatewayTextStream,
 } from "@/shared/ai/gateway";
-import { AiGatewayRateLimitedError } from "@/shared/utils/errors";
+import {
+  AiGatewayNoProvidersError,
+  AiGatewayRateLimitedError,
+} from "@/shared/utils/errors";
 
 const request = {
   url: "https://ai-gateway.example/v1/responses",
@@ -15,6 +18,7 @@ const request = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("AI Gateway model fallback serialization", () => {
@@ -76,5 +80,33 @@ describe("AI Gateway model fallback serialization", () => {
         schema: { type: "object" },
       })
     ).rejects.toBeInstanceOf(AiGatewayRateLimitedError);
+  });
+
+  it("classifies a restricted no-provider response for conversation calls", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json(
+          { error: { type: "no_providers_available" } },
+          { status: 403 }
+        )
+      )
+    );
+
+    await expect(
+      requestAiGatewayTextStream(request, {
+        role: "defaultTeacher",
+        maxOutputTokens: 500,
+        messages: [{ role: "user", content: "你好" }],
+      })
+    ).rejects.toBeInstanceOf(AiGatewayNoProvidersError);
+    expect(warn).toHaveBeenCalledWith(
+      "AI Gateway request failed",
+      expect.objectContaining({
+        status: 403,
+        upstreamCode: "no_providers_available",
+      })
+    );
   });
 });

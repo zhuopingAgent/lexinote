@@ -65,6 +65,14 @@ const CONVERSATION_META_SUMMARY_PATTERNS = [
 ] as const;
 
 const HANGUL_PATTERN = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u;
+const LEXICAL_HONORIFIC_FORMS = new Set([
+  "おっしゃる",
+  "いらっしゃる",
+  "召し上がる",
+  "ご覧になる",
+  "なさる",
+  "くださる",
+]);
 
 function readString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -246,27 +254,34 @@ export function parseConversationAnalysisOutput(
             return null;
           }
           const next = item as Record<string, unknown>;
-          const kind = next.kind;
+          const rawKind = next.kind;
           const rawSurfaceForm = readString(next.surface_form, 200);
           if (
-            (kind !== "vocabulary" &&
-              kind !== "expression" &&
-              kind !== "grammar") ||
+            (rawKind !== "vocabulary" &&
+              rawKind !== "expression" &&
+              rawKind !== "grammar") ||
             !rawSurfaceForm
           ) {
             return null;
           }
+          const lexicalHonorific =
+            rawKind === "grammar" &&
+            LEXICAL_HONORIFIC_FORMS.has(normalizeGrammarForm(rawSurfaceForm));
+          const kind = lexicalHonorific ? "vocabulary" : rawKind;
           const surfaceForm =
             kind === "grammar"
               ? canonicalizeGrammarSurface(rawSurfaceForm)
-              : rawSurfaceForm;
+              : lexicalHonorific
+                ? rawSurfaceForm.replace(/^[~～〜]+/u, "")
+                : rawSurfaceForm;
           const meaningZh = readString(next.meaning_zh, 500);
           const explanationZh = readString(next.explanation_zh, 1_000);
           if (
             HANGUL_PATTERN.test(meaningZh) ||
             HANGUL_PATTERN.test(explanationZh) ||
             (kind === "grammar" &&
-              (/^(?:接续|接続)[：:]/u.test(meaningZh) ||
+              (isLowValueStandaloneGrammar(surfaceForm) ||
+                /^(?:接续|接続)[：:]/u.test(meaningZh) ||
                 /用于构成.*接续/u.test(explanationZh)))
           ) {
             return null;
@@ -469,7 +484,12 @@ function extractExplicitVocabularyRequests(
 }
 
 function isLowValueStandaloneGrammar(surfaceForm: string) {
-  return new Set(["には", "必要です", "をいただけますか"]).has(
+  return new Set([
+    "には",
+    "必要です",
+    "いただけますか",
+    "をいただけますか",
+  ]).has(
     normalizeGrammarForm(surfaceForm)
   );
 }
