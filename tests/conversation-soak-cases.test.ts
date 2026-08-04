@@ -169,6 +169,15 @@ describe("conversation production soak corpus", () => {
             status: "suggested",
             grammarCandidates: [],
           },
+          {
+            kind: "grammar",
+            surfaceForm: "が入っていないか",
+            reading: null,
+            meaningZh: "是否不含有……",
+            sourceExcerpt: "花生アレルギーがあります。",
+            status: "needs_review",
+            grammarCandidates: [],
+          },
         ],
       },
     };
@@ -180,6 +189,7 @@ describe("conversation production soak corpus", () => {
         "untranslated_chinese_in_japanese",
         "composite_grammar_surface",
         "sentence_learning_surface",
+        "low_value_grammar",
       ])
     );
   });

@@ -898,6 +898,14 @@ describe("conversation domain", () => {
             explanation_zh: "礼貌请求对方做某事",
             source_excerpt: "確認していただけますか",
           },
+          {
+            kind: "grammar",
+            surface_form: "〜が入っていないか",
+            reading: null,
+            meaning_zh: "是否不含有……",
+            explanation_zh: "询问是否包含某种成分",
+            source_excerpt: "ピーナッツが入っていないか",
+          },
         ],
       })
     );
