@@ -4,6 +4,7 @@ import {
   MAX_CONTEXT_CHARACTERS,
   MAX_CONTEXT_MESSAGES,
   buildConversationFallbackTitle,
+  buildConversationGrammarSearchQuery,
   conversationLearningItemKey,
   parseConversationAnalysisOutput,
   selectConversationGrammarCandidates,
@@ -93,6 +94,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("禁止写成「花生アレルギー」");
     expect(prompt).toContain("准确判断请求中的动作主体");
     expect(prompt).toContain("只有询问自己或己方是否可以执行时");
+    expect(prompt).toContain("禁止直译成「状況を注意して見る」");
     expect(prompt).toContain("默认语体：business");
     expect(prompt).toContain("优先给自然商务表达");
     expect(prompt).toContain("对方是客户");
@@ -132,6 +134,8 @@ describe("conversation domain", () => {
       summary: "",
     });
     expect(polishPrompt).toContain("「お水」的「お」是美化语");
+    expect(polishPrompt).toContain("必须同时删除「必ず」「絶対」");
+    expect(polishPrompt).toContain("不得改用日语讲解");
 
     const autoPrompt = buildConversationSystemPrompt({
       mode: "auto",
@@ -889,6 +893,42 @@ describe("conversation domain", () => {
     ]);
   });
 
+  it("reclassifies context-dependent service responses as expressions", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "说明了服务场景中的委婉拒绝。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "vocabulary",
+            surface_form: "大丈夫です",
+            reading: "だいじょうぶです",
+            meaning_zh: "不用了，谢谢",
+            explanation_zh: "在服务场景中委婉表示不需要。",
+            source_excerpt: "大丈夫です",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems).toEqual([
+      {
+        kind: "expression",
+        surfaceForm: "大丈夫です",
+        reading: "だいじょうぶです",
+        meaningZh: "不用了，谢谢",
+        explanationZh: "在服务场景中委婉表示不需要。",
+        sourceExcerpt: "大丈夫です",
+      },
+    ]);
+  });
+
   it("drops generic existence forms and counter modifiers mislabeled as grammar", () => {
     const parsed = parseConversationAnalysisOutput(
       JSON.stringify({
@@ -1112,6 +1152,63 @@ describe("conversation domain", () => {
     ]);
   });
 
+  it("recovers 〜こそ and removes the continuative 〜ており pseudo-candidate", () => {
+    const analysis = {
+      title: null,
+      summary: "翻译了托儿所的状态说明。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜ており",
+          reading: null,
+          meaningZh: "书面连接形式",
+          explanationZh: "表示状态延续",
+          sourceExcerpt: "水分は取れており",
+        },
+      ],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(
+        0,
+        "今日は食欲こそありませんでしたが、水分は取れており、午睡後は普段どおり遊んでいました。"
+      ),
+      message(1, "今天虽然没有食欲，但能喝水，午睡后也照常玩耍。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜こそ",
+        reading: null,
+        meaningZh: "正是……/这次一定……",
+        explanationZh: "把前接成分作为焦点加以强调，并常暗含与其他情况的对比。",
+        sourceExcerpt: "今日は食欲こそ",
+      },
+    ]);
+  });
+
+  it("does not split compound 〜からこそ into a second 〜こそ candidate", () => {
+    const analysis = {
+      title: null,
+      summary: "解释了强调原因。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "「〜からこそ」和普通的原因「から」有什么区别？"),
+      message(1, "「〜からこそ」强调正因为前项，后项才成立。"),
+    ]);
+
+    expect(reconciled.learningItems.map((item) => item.surfaceForm)).toEqual([
+      "〜からこそ",
+    ]);
+  });
+
   it("recovers 〜ないことには as one canonical grammar point", () => {
     const analysis = {
       title: null,
@@ -1291,5 +1388,13 @@ describe("conversation domain", () => {
         },
       ])
     ).toEqual([]);
+  });
+
+  it("removes wave-dash variants before searching the grammar repository", () => {
+    expect(buildConversationGrammarSearchQuery("〜こそ")).toBe("こそ");
+    expect(buildConversationGrammarSearchQuery("～ てみる")).toBe("てみる");
+    expect(buildConversationGrammarSearchQuery("~わけではありません")).toBe(
+      "わけではない"
+    );
   });
 });

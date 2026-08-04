@@ -2,6 +2,7 @@ import {
   MAX_CONTEXT_MESSAGES,
   MAX_CONVERSATION_INPUT_LENGTH,
   buildConversationFallbackTitle,
+  buildConversationGrammarSearchQuery,
   conversationLearningItemKey,
   extractExplicitConversationGrammarForms,
   isConversationMode,
@@ -159,7 +160,7 @@ async function loadConversationGrammarReferences(
     requests.map(async (request) => {
       try {
         const search = await grammarLearningService.searchGrammarPoints({
-          query: request.surfaceForm,
+          query: buildConversationGrammarSearchQuery(request.surfaceForm),
           limit: 5,
           userId,
         });
@@ -820,7 +821,7 @@ export class ConversationService {
         let grammarCandidates: ConversationGrammarCandidate[] = [];
         if (item.kind === "grammar") {
           const search = await this.grammarLearningService.searchGrammarPoints({
-            query: item.surfaceForm,
+            query: buildConversationGrammarSearchQuery(item.surfaceForm),
             limit: 5,
             userId,
           });

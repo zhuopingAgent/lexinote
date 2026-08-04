@@ -1,6 +1,6 @@
 const HAN_PATTERN = /[\u3400-\u9fff\uf900-\ufaff]/u;
 const KANA_PATTERN = /[\u3040-\u30ff]/u;
-const CHINESE_SIGNAL_PATTERN = /[这请说语时为会应过将与发实习问词译还较让给从门开关变认为区别说明表示正确]/u;
+const CHINESE_SIGNAL_PATTERN = /[这请说语时为应过与发实习问词译还较让给从门开关变认为别确]/u;
 const MARKDOWN_PATTERN = /(?:\*\*|__|```|<\/?[a-z][^>]*>)/iu;
 const META_SUMMARY_PATTERN = /(?:学习项|候选).*(?:提取|分析)|\b(?:grammar|vocabulary|expression)\b/iu;
 const HANGUL_PATTERN = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u;
@@ -94,6 +94,11 @@ export function evaluateConversationSoakResult(testCase, result) {
     !testCase.expect.responseAny.some((value) => content.includes(value))
   ) {
     issues.push(issue("expected_response_signal_missing", `none of the expected signals appeared: ${testCase.expect.responseAny.join(", ")}`, "warning"));
+  }
+  for (const forbidden of testCase.expect.responseNone ?? []) {
+    if (content.includes(forbidden)) {
+      issues.push(issue("forbidden_response_signal", `response contains a known-wrong signal: ${forbidden}`));
+    }
   }
 
   if (learningItems.length > 5) {

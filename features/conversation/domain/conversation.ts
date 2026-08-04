@@ -74,6 +74,10 @@ const LEXICAL_HONORIFIC_FORMS = new Set([
   "くださる",
 ]);
 const LEXICAL_POLITE_NOUNS = new Set(["お水"]);
+const CONTEXTUAL_RESPONSE_EXPRESSIONS = new Set([
+  "大丈夫です",
+  "結構です",
+]);
 const LEXICAL_HONORIFIC_INFLECTIONS = new Map([
   ["おっしゃった", "おっしゃる"],
   ["おっしゃいます", "おっしゃる"],
@@ -167,6 +171,10 @@ function canonicalizeGrammarSurface(value: string) {
 
 function normalizeGrammarForm(value: string) {
   return canonicalizeGrammarSurface(value).replace(/^〜+/, "");
+}
+
+export function buildConversationGrammarSearchQuery(surfaceForm: string) {
+  return normalizeGrammarForm(surfaceForm);
 }
 
 function canonicalizeLexicalHonorificSurface(value: string) {
@@ -303,9 +311,14 @@ export function parseConversationAnalysisOutput(
             rawKind === "grammar" &&
             !/^[~～〜]/u.test(rawSurfaceForm) &&
             /が(?:あります|ある)$/u.test(rawSurfaceForm);
+          const contextualResponseExpression =
+            rawKind === "vocabulary" &&
+            CONTEXTUAL_RESPONSE_EXPRESSIONS.has(
+              rawSurfaceForm.normalize("NFKC").trim()
+            );
           const kind = lexicalHonorific || lexicalPoliteNoun
             ? "vocabulary"
-            : contextualCollocation
+            : contextualCollocation || contextualResponseExpression
               ? "expression"
               : rawKind;
           const surfaceForm =
@@ -413,6 +426,14 @@ type HighConfidenceGrammarPattern = {
 };
 
 const HIGH_CONFIDENCE_GRAMMAR_PATTERNS: readonly HighConfidenceGrammarPattern[] = [
+  {
+    pattern: /[^\s。、！？「」]{1,20}(?<!から)(?<!て)(?<!で)(?<!ば)こそ/u,
+    coveredPattern: /こそ/u,
+    assistantPattern: null,
+    surfaceForm: "〜こそ",
+    meaningZh: "正是……/这次一定……",
+    explanationZh: "把前接成分作为焦点加以强调，并常暗含与其他情况的对比。",
+  },
   {
     pattern:
       /(?:て|で)み(?:ませんでした|ました|ません|ます|なかった|ない|よう|たい|る|た|て)(?:よ|ね)?/,
@@ -554,6 +575,7 @@ function isLowValueStandaloneGrammar(surfaceForm: string) {
     "が入っていないか",
     "ひとつの",
     "一つの",
+    "ており",
   ]).has(
     normalizeGrammarForm(surfaceForm)
   );

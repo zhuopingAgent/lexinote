@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { Pool } from "pg";
 import { CONVERSATION_SOAK_CASES } from "../scripts/conversation-soak-cases.mjs";
 import { expectNoHorizontalOverflow } from "./helpers";
 
@@ -6,6 +7,14 @@ const NOW = "2026-08-04T00:00:00.000Z";
 const COLLECTION_ID = 7;
 
 type SoakCase = (typeof CONVERSATION_SOAK_CASES)[number];
+
+function normalizeGrammarForm(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/[~～]/gu, "〜")
+    .replace(/\s+/gu, "")
+    .replace(/^〜+/u, "");
+}
 
 function uuidFor(index: number, suffix: number) {
   const tail = String(index * 10 + suffix).padStart(12, "0");
@@ -119,6 +128,7 @@ async function installSoakRoutes(
     index: number;
     sent: boolean;
     analyzed: boolean;
+    promoted: boolean;
   }
 ) {
   await page.route("**/api/conversation/bootstrap**", async (route) => {
@@ -221,6 +231,31 @@ async function installSoakRoutes(
     });
   });
 
+  await page.route("**/api/conversation/learning-items/*/promote", async (route) => {
+    const expected = current.testCase.expect.learning;
+    expect(expected).not.toBeNull();
+    const payload = route.request().postDataJSON() as {
+      collectionId?: number;
+      grammarPointId?: string;
+    };
+    if (expected?.kind === "grammar") {
+      expect(payload.grammarPointId).toBe(uuidFor(current.index, 5));
+    } else {
+      expect(payload.collectionId).toBe(COLLECTION_ID);
+    }
+    current.promoted = true;
+    const [item] = learningItems(current.testCase, current.index);
+    await fulfillJson(route, {
+      item: {
+        ...item,
+        status: "saved",
+        ...(expected?.kind === "grammar"
+          ? { grammarPointId: uuidFor(current.index, 5) }
+          : { wordId: current.index + 1, collectionId: COLLECTION_ID }),
+      },
+    });
+  });
+
   await page.route("**/api/conversations/*", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     const content = assistantContent(current.testCase);
@@ -256,15 +291,54 @@ async function installSoakRoutes(
   });
 }
 
-test("100 complex conversation cases exercise every mode and learning handoff", async ({
+test("every promotable soak grammar resolves to exactly one active sense", async () => {
+  const connectionString = process.env.E2E_DATABASE_URL;
+  expect(connectionString, "E2E_DATABASE_URL must be configured").toBeTruthy();
+  const pool = new Pool({ connectionString, max: 1 });
+  try {
+    const result = await pool.query<{
+      canonical_form: string;
+      sense_key: string;
+    }>(
+      "SELECT canonical_form, sense_key FROM grammar_points WHERE status = 'active'"
+    );
+    const expectedForms = [
+      ...new Set(
+        CONVERSATION_SOAK_CASES.flatMap((testCase) =>
+          testCase.expect.learning?.kind === "grammar"
+            ? [testCase.expect.learning.surfaceForm]
+            : []
+        )
+      ),
+    ];
+    const mismatches = expectedForms.flatMap((surfaceForm) => {
+      const matches = result.rows.filter(
+        (row) =>
+          normalizeGrammarForm(row.canonical_form) ===
+          normalizeGrammarForm(surfaceForm)
+      );
+      return matches.length === 1
+        ? []
+        : [{ surfaceForm, matchCount: matches.length }];
+    });
+
+    expect(expectedForms).toHaveLength(34);
+    expect(mismatches).toEqual([]);
+  } finally {
+    await pool.end();
+  }
+});
+
+test("400 complex conversation cases exercise every mode and learning handoff", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(420_000);
   const current = {
     testCase: CONVERSATION_SOAK_CASES[0],
     index: 0,
     sent: false,
     analyzed: false,
+    promoted: false,
   };
   await installSoakRoutes(page, current);
 
@@ -273,6 +347,7 @@ test("100 complex conversation cases exercise every mode and learning handoff", 
     current.index = index;
     current.sent = false;
     current.analyzed = false;
+    current.promoted = false;
     const bootstrapResponse = page.waitForResponse(
       (response) =>
         response.url().includes("/api/conversation/bootstrap") && response.ok()
@@ -289,11 +364,18 @@ test("100 complex conversation cases exercise every mode and learning handoff", 
       testCase.expect.responseAny[0] ?? "自然表达"
     );
     if (testCase.expect.learning?.kind === "grammar") {
-      await expect(page.getByRole("button", { name: "加入复习" })).toBeVisible();
-    } else if (testCase.expect.learning?.kind === "vocabulary") {
-      await expect(page.getByRole("button", { name: "加入单词本" })).toBeVisible();
+      await page.getByRole("button", { name: "加入复习" }).click();
+      await expect(
+        page.getByText(`${testCase.expect.learning.surfaceForm} 已保存`)
+      ).toBeVisible();
+    } else if (testCase.expect.learning) {
+      await page.getByRole("button", { name: "加入单词本" }).click();
+      await expect(
+        page.getByText(`${testCase.expect.learning.surfaceForm} 已保存`)
+      ).toBeVisible();
     }
-    if ((index + 1) % 20 === 0) {
+    expect(current.promoted).toBe(Boolean(testCase.expect.learning));
+    if ((index + 1) % 40 === 0) {
       await expectNoHorizontalOverflow(page);
     }
   }

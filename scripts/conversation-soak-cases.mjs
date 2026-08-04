@@ -1,4 +1,6 @@
-const casesByMode = {
+import { ADDITIONAL_CONVERSATION_SOAK_CASES_BY_MODE } from "./conversation-soak-cases-additional.mjs";
+
+const baselineCasesByMode = {
   auto: [
     ["daily-plan", "daily_life", "週末に新しいレシピを試してみます。", "zh", ["周末", "食谱"], ["grammar", "〜てみる"]],
     ["meeting-request", "workplace", "请问可以把明天下午的会议改到下周二下午吗？", "ja", ["来週", "火曜日"], ["grammar", "〜ていただけますか"]],
@@ -122,24 +124,52 @@ function seededShuffle(items, seed) {
   return next;
 }
 
-export function buildConversationSoakCases(seed = 20260804) {
-  const cases = Object.entries(casesByMode).flatMap(([mode, entries]) =>
-    entries.map(([slug, scenario, input, responseLanguage, responseAny, learning]) => ({
+function materializeCases(casesByMode, suite) {
+  return Object.entries(casesByMode).flatMap(([mode, entries]) =>
+    entries.map(([
+      slug,
+      scenario,
+      input,
+      responseLanguage,
+      responseAny,
+      learning,
+      riskTags = ["baseline"],
+      responseNone = [],
+    ]) => ({
       id: `${mode}-${slug}`,
+      suite,
       mode,
       scenario,
       input,
+      riskTags,
       expect: {
         responseLanguage,
         responseAny,
+        responseNone,
         learning: learning
           ? { kind: learning[0], surfaceForm: learning[1] }
           : null,
       },
     }))
   );
+}
+
+export const BASELINE_CONVERSATION_SOAK_CASES = materializeCases(
+  baselineCasesByMode,
+  "baseline"
+);
+
+export const ADDITIONAL_CONVERSATION_SOAK_CASES = materializeCases(
+  ADDITIONAL_CONVERSATION_SOAK_CASES_BY_MODE,
+  "additional"
+);
+
+export function buildConversationSoakCases(seed = 20260804) {
+  const cases = [
+    ...BASELINE_CONVERSATION_SOAK_CASES,
+    ...ADDITIONAL_CONVERSATION_SOAK_CASES,
+  ];
   return seededShuffle(cases, seed);
 }
 
 export const CONVERSATION_SOAK_CASES = buildConversationSoakCases();
-
