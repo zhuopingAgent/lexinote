@@ -84,6 +84,12 @@ export function evaluateConversationSoakResult(testCase, result) {
     issues.push(issue("japanese_explanation_heading", "explanation mode used Japanese section headings"));
   }
   if (
+    testCase.id === "auto-explicit-word" &&
+    (/(?:居民)?户口簿/u.test(content) || /^「住民票」は中国語で/u.test(content))
+  ) {
+    issues.push(issue("inaccurate_word_translation", "住民票 was mistranslated or explained in Japanese"));
+  }
+  if (
     testCase.expect.responseAny.length > 0 &&
     !testCase.expect.responseAny.some((value) => content.includes(value))
   ) {

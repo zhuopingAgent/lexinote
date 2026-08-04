@@ -145,6 +145,8 @@ describe("conversation domain", () => {
       summary: "",
     });
     expect(autoPrompt).toContain("完整日语句子按日译中处理");
+    expect(autoPrompt).toContain("必须直接用中文回答该词的中文译法");
+    expect(autoPrompt).toContain("不能误译成中国户口簿");
     expect(autoPrompt).toContain("涉及过敏、症状或安全确认");
     expect(autoPrompt).toContain("花生使用「ピーナッツ」或「落花生」");
   });
@@ -796,8 +798,8 @@ describe("conversation domain", () => {
         learning_items: [
           {
             kind: "grammar",
-            surface_form: "〜おっしゃる",
-            reading: "おっしゃる",
+            surface_form: "おっしゃった",
+            reading: "おっしゃった",
             meaning_zh: "说的尊敬语",
             explanation_zh: "用于抬高动作主体",
             source_excerpt: "おっしゃる",
