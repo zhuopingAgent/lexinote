@@ -87,6 +87,9 @@ export class ConversationAiClient {
 
     const parsed = text ? parseConversationAnalysisOutput(text) : null;
     if (!parsed) {
+      console.warn("Conversation analysis returned invalid structured output", {
+        outputLength: text?.length ?? 0,
+      });
       return null;
     }
 

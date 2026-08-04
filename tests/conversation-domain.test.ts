@@ -164,6 +164,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("memories 不是对话摘要");
     expect(prompt).toContain("通常只选 1–3 个");
     expect(prompt).toContain("不能输出「〜かもしれませんので」");
+    expect(prompt).toContain("特殊敬语动词属于 vocabulary");
     expect(prompt).toContain("不要把「楽しいです/楽しかったです」");
   });
 
@@ -763,11 +764,55 @@ describe("conversation domain", () => {
             explanation_zh: "用于构成该语法点的接续形式",
             source_excerpt: "ことになっている",
           },
+          {
+            kind: "grammar",
+            surface_form: "いただけますか",
+            reading: null,
+            meaning_zh: "礼貌请求",
+            explanation_zh: "名词后接该表达",
+            source_excerpt: "お水をいただけますか",
+          },
         ],
       })
     );
 
     expect(parsed?.learningItems).toEqual([]);
+  });
+
+  it("reclassifies lexical honorific verbs as vocabulary", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "修正了双重敬语。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "〜おっしゃる",
+            reading: "おっしゃる",
+            meaning_zh: "说的尊敬语",
+            explanation_zh: "用于抬高动作主体",
+            source_excerpt: "おっしゃる",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems).toEqual([
+      {
+        kind: "vocabulary",
+        surfaceForm: "おっしゃる",
+        reading: "おっしゃる",
+        meaningZh: "说的尊敬语",
+        explanationZh: "用于抬高动作主体",
+        sourceExcerpt: "おっしゃる",
+      },
+    ]);
   });
 
   it("normalizes inflected grammar candidates to dictionary forms", () => {

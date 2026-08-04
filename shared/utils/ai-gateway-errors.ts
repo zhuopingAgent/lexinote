@@ -1,5 +1,6 @@
 import {
   AiGatewayBudgetExceededError,
+  AiGatewayNoProvidersError,
   AiGatewayRateLimitedError,
 } from "@/shared/utils/errors";
 
@@ -21,6 +22,7 @@ export function throwIfAiGatewayRateLimited(response: Response) {
 export function rethrowAiGatewayBudgetError(error: unknown) {
   if (
     error instanceof AiGatewayBudgetExceededError ||
+    error instanceof AiGatewayNoProvidersError ||
     error instanceof AiGatewayRateLimitedError
   ) {
     throw error;

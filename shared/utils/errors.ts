@@ -24,6 +24,9 @@ export const AI_GATEWAY_BUDGET_EXCEEDED_MESSAGE =
 export const AI_GATEWAY_RATE_LIMITED_CODE = "AI_GATEWAY_RATE_LIMITED";
 export const AI_GATEWAY_RATE_LIMITED_MESSAGE =
   "AI 服务请求过于频繁，请稍后重试。";
+export const AI_GATEWAY_NO_PROVIDERS_CODE = "AI_GATEWAY_NO_PROVIDERS";
+export const AI_GATEWAY_NO_PROVIDERS_MESSAGE =
+  "AI Gateway 当前没有可用的模型供应商，请稍后重试；如果持续出现，请检查 Gateway 额度或供应商权限。";
 
 export function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -40,6 +43,13 @@ export class AiGatewayRateLimitedError extends AppError {
   constructor(message = AI_GATEWAY_RATE_LIMITED_MESSAGE) {
     super(message, 429, AI_GATEWAY_RATE_LIMITED_CODE, true);
     this.name = "AiGatewayRateLimitedError";
+  }
+}
+
+export class AiGatewayNoProvidersError extends AppError {
+  constructor(message = AI_GATEWAY_NO_PROVIDERS_MESSAGE) {
+    super(message, 503, AI_GATEWAY_NO_PROVIDERS_CODE, true);
+    this.name = "AiGatewayNoProvidersError";
   }
 }
 
