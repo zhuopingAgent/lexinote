@@ -500,6 +500,9 @@ function isLowValueStandaloneGrammar(surfaceForm: string) {
     "必要です",
     "いただけますか",
     "をいただけますか",
+    "があります",
+    "ひとつの",
+    "一つの",
   ]).has(
     normalizeGrammarForm(surfaceForm)
   );
