@@ -292,7 +292,7 @@ export function parseConversationAnalysisOutput(
             /[。！？?!]/u.test(surfaceForm) ||
             (kind === "grammar" &&
               (isLowValueStandaloneGrammar(surfaceForm) ||
-                /[、，,\/／]/u.test(surfaceForm) ||
+                /[、，,\/／→⇒]/u.test(surfaceForm) ||
                 /^(?:接续|接続)[：:]/u.test(meaningZh) ||
                 /用于构成.*接续/u.test(explanationZh)))
           ) {
@@ -414,6 +414,14 @@ const HIGH_CONFIDENCE_GRAMMAR_PATTERNS: readonly HighConfidenceGrammarPattern[] 
     meaningZh: "可以……吗",
     explanationZh: "郑重询问自己或己方是否可以进行某个动作。",
     includeAssistantSource: true,
+  },
+  {
+    pattern: /(?:て|で)もらいましたです/,
+    coveredPattern: /(?:て|で)もら(?:いましたです|いました|う)/,
+    assistantPattern: /(?:て|で)もらいました(?:。|$)/,
+    surfaceForm: "〜てもらう",
+    meaningZh: "请别人做某事并接受其帮助",
+    explanationZh: "动词て形后接「もらう」表示接受别人为自己做某事；礼貌过去式是「てもらいました」。",
   },
   {
     pattern: /(?:て|で)いただけますか/,

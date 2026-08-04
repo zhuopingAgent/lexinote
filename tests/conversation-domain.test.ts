@@ -945,6 +945,14 @@ describe("conversation domain", () => {
           },
           {
             kind: "grammar",
+            surface_form: "おっしゃる→おっしゃった",
+            reading: null,
+            meaning_zh: "尊敬语过去式",
+            explanation_zh: "错误形式到正确形式的对照",
+            source_excerpt: "おっしゃった",
+          },
+          {
+            kind: "grammar",
             surface_form: "〜ていただけますか",
             reading: null,
             meaning_zh: "能请您……吗",
@@ -995,6 +1003,33 @@ describe("conversation domain", () => {
     expect(parsed?.learningItems.map((item) => item.surfaceForm)).toEqual([
       "〜てもらう",
       "〜ことになっている",
+    ]);
+  });
+
+  it("recovers 〜てもらう from a corrected polite-past form", () => {
+    const analysis = {
+      title: null,
+      summary: "修正了不自然的句尾。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [],
+    };
+
+    const reconciled = reconcileConversationGrammarLearningItems(analysis, [
+      message(0, "请帮我润色：昨日、部長に資料を見せてもらいましたです。"),
+      message(1, "昨日、部長に資料を見せてもらいました。"),
+    ]);
+
+    expect(reconciled.learningItems).toEqual([
+      {
+        kind: "grammar",
+        surfaceForm: "〜てもらう",
+        reading: null,
+        meaningZh: "请别人做某事并接受其帮助",
+        explanationZh:
+          "动词て形后接「もらう」表示接受别人为自己做某事；礼貌过去式是「てもらいました」。",
+        sourceExcerpt: "てもらいましたです",
+      },
     ]);
   });
 

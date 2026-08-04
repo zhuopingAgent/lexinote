@@ -120,7 +120,7 @@ export function evaluateConversationSoakResult(testCase, result) {
     if (/[。！？?!]/u.test(item.surfaceForm)) {
       issues.push(issue("sentence_learning_surface", `sentence-shaped learning candidate: ${item.surfaceForm}`));
     }
-    if (item.kind === "grammar" && /[\/／]/u.test(item.surfaceForm)) {
+    if (item.kind === "grammar" && /[\/／→⇒]/u.test(item.surfaceForm)) {
       issues.push(issue("composite_grammar_surface", `combined grammar candidate: ${item.surfaceForm}`));
     }
     if (item.kind === "grammar" && item.status === "suggested" && item.grammarCandidates.length !== 1) {
