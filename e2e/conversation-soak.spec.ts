@@ -273,8 +273,15 @@ test("100 complex conversation cases exercise every mode and learning handoff", 
     current.index = index;
     current.sent = false;
     current.analyzed = false;
+    const bootstrapResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/conversation/bootstrap") && response.ok()
+    );
     await page.goto("/conversation");
-    await page.getByLabel("对话模式").selectOption(testCase.mode);
+    await bootstrapResponse;
+    const modeSelector = page.getByLabel("对话模式");
+    await modeSelector.selectOption(testCase.mode);
+    await expect(modeSelector).toHaveValue(testCase.mode);
     await page.getByLabel("对话消息").fill(testCase.input);
     await page.getByLabel("对话消息").press("Enter");
 
