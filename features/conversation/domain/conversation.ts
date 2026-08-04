@@ -289,9 +289,10 @@ export function parseConversationAnalysisOutput(
           if (
             HANGUL_PATTERN.test(meaningZh) ||
             HANGUL_PATTERN.test(explanationZh) ||
+            /[。！？?!]/u.test(surfaceForm) ||
             (kind === "grammar" &&
               (isLowValueStandaloneGrammar(surfaceForm) ||
-                /[、。！？，,]/u.test(surfaceForm) ||
+                /[、，,\/／]/u.test(surfaceForm) ||
                 /^(?:接续|接続)[：:]/u.test(meaningZh) ||
                 /用于构成.*接续/u.test(explanationZh)))
           ) {
