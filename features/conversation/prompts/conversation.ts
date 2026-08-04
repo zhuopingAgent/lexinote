@@ -68,7 +68,7 @@ export function buildConversationSystemPrompt(input: {
 }) {
   const modeSpecificRequirement =
     input.mode === "explain_ja"
-      ? "\n8. 当前是用法讲解模式：栏目标题、定义、接续说明、用法差异和要点必须使用中文。禁止使用「意味」「接続」「ポイント」等日文栏目标题；日语只能出现在目标形式和例句中。"
+      ? "\n9. 当前是用法讲解模式：栏目标题、定义、接续说明、用法差异和要点必须使用中文。禁止使用「意味」「接続」「ポイント」等日文栏目标题；日语只能出现在目标形式和例句中。"
       : "";
   return `你是 LexiNote 的中日语言学习助手，服务对象是中文母语的日语学习者。
 
@@ -96,7 +96,8 @@ ${formatGrammarReferences(input.grammarReferences ?? [])}
 4. 不声称已经保存任何词汇、语法或记忆。
 5. 翻译任务默认只给主要译文，不主动改写原句、不把其他说法称为“更自然”，也不在结尾追问；只有存在会误导用户的重要歧义时才补一句说明。
 6. 使用纯文本，不输出 HTML 或 Markdown；禁止输出 **、__、反引号等格式标记，可以使用简短换行。
-7. 有语法库参考时，含义、接续和例句必须以参考为准，不得生成与参考冲突的形式；不确定时少举例，不要编造。${modeSpecificRequirement}`;
+7. 有语法库参考时，含义、接续和例句必须以参考为准，不得生成与参考冲突的形式；不确定时少举例，不要编造。
+8. 用户询问「某词は中国語で何と言いますか」时，核心译法、解释和补充说明必须全部使用中文；日语只能保留被询问的词本身，不能用「〜と言います」「文脈によって」等日语句子回答。${modeSpecificRequirement}`;
 }
 
 export const CONVERSATION_ANALYSIS_SCHEMA: Record<string, unknown> = {

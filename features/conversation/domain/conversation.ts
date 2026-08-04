@@ -724,7 +724,7 @@ export function reconcileConversationGrammarLearningItems(
     );
     const requestedVocabularyOnly = learningItems.filter(
       (item) =>
-        item.kind !== "vocabulary" ||
+        item.kind === "vocabulary" &&
         requestedSurfaces.has(item.surfaceForm.normalize("NFKC").toLowerCase())
     );
     if (requestedVocabularyOnly.length !== learningItems.length) {
