@@ -73,6 +73,7 @@ const LEXICAL_HONORIFIC_FORMS = new Set([
   "なさる",
   "くださる",
 ]);
+const LEXICAL_POLITE_NOUNS = new Set(["お水"]);
 
 function readString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -267,11 +268,14 @@ export function parseConversationAnalysisOutput(
           const lexicalHonorific =
             rawKind === "grammar" &&
             LEXICAL_HONORIFIC_FORMS.has(normalizeGrammarForm(rawSurfaceForm));
+          const lexicalPoliteNoun =
+            rawKind === "grammar" &&
+            LEXICAL_POLITE_NOUNS.has(normalizeGrammarForm(rawSurfaceForm));
           const contextualCollocation =
             rawKind === "grammar" &&
             !/^[~～〜]/u.test(rawSurfaceForm) &&
             /が(?:あります|ある)$/u.test(rawSurfaceForm);
-          const kind = lexicalHonorific
+          const kind = lexicalHonorific || lexicalPoliteNoun
             ? "vocabulary"
             : contextualCollocation
               ? "expression"
@@ -279,7 +283,7 @@ export function parseConversationAnalysisOutput(
           const surfaceForm =
             kind === "grammar"
               ? canonicalizeGrammarSurface(rawSurfaceForm)
-              : lexicalHonorific
+              : lexicalHonorific || lexicalPoliteNoun
                 ? rawSurfaceForm.replace(/^[~～〜]+/u, "")
                 : contextualCollocation
                   ? rawSurfaceForm.replace(/があります$/u, "がある")
