@@ -74,6 +74,26 @@ const LEXICAL_HONORIFIC_FORMS = new Set([
   "くださる",
 ]);
 const LEXICAL_POLITE_NOUNS = new Set(["お水"]);
+const LEXICAL_HONORIFIC_INFLECTIONS = new Map([
+  ["おっしゃった", "おっしゃる"],
+  ["おっしゃいます", "おっしゃる"],
+  ["おっしゃいました", "おっしゃる"],
+  ["いらっしゃった", "いらっしゃる"],
+  ["いらっしゃいます", "いらっしゃる"],
+  ["いらっしゃいました", "いらっしゃる"],
+  ["召し上がった", "召し上がる"],
+  ["召し上がります", "召し上がる"],
+  ["召し上がりました", "召し上がる"],
+  ["ご覧になった", "ご覧になる"],
+  ["ご覧になります", "ご覧になる"],
+  ["ご覧になりました", "ご覧になる"],
+  ["なさった", "なさる"],
+  ["なさいます", "なさる"],
+  ["なさいました", "なさる"],
+  ["くださった", "くださる"],
+  ["くださいます", "くださる"],
+  ["くださいました", "くださる"],
+]);
 
 function readString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -147,6 +167,11 @@ function canonicalizeGrammarSurface(value: string) {
 
 function normalizeGrammarForm(value: string) {
   return canonicalizeGrammarSurface(value).replace(/^〜+/, "");
+}
+
+function canonicalizeLexicalHonorificSurface(value: string) {
+  const normalized = normalizeGrammarForm(value);
+  return LEXICAL_HONORIFIC_INFLECTIONS.get(normalized) ?? normalized;
 }
 
 export function buildConversationFallbackTitle(content: string) {
@@ -265,9 +290,12 @@ export function parseConversationAnalysisOutput(
           ) {
             return null;
           }
+          const lexicalHonorificSurface = canonicalizeLexicalHonorificSurface(
+            rawSurfaceForm
+          );
           const lexicalHonorific =
             rawKind === "grammar" &&
-            LEXICAL_HONORIFIC_FORMS.has(normalizeGrammarForm(rawSurfaceForm));
+            LEXICAL_HONORIFIC_FORMS.has(lexicalHonorificSurface);
           const lexicalPoliteNoun =
             rawKind === "grammar" &&
             LEXICAL_POLITE_NOUNS.has(normalizeGrammarForm(rawSurfaceForm));
@@ -283,8 +311,10 @@ export function parseConversationAnalysisOutput(
           const surfaceForm =
             kind === "grammar"
               ? canonicalizeGrammarSurface(rawSurfaceForm)
-              : lexicalHonorific || lexicalPoliteNoun
-                ? rawSurfaceForm.replace(/^[~～〜]+/u, "")
+              : lexicalHonorific
+                ? lexicalHonorificSurface
+                : lexicalPoliteNoun
+                  ? rawSurfaceForm.replace(/^[~～〜]+/u, "")
                 : contextualCollocation
                   ? rawSurfaceForm.replace(/があります$/u, "がある")
                   : rawSurfaceForm;
@@ -302,10 +332,17 @@ export function parseConversationAnalysisOutput(
           ) {
             return null;
           }
+          const reading =
+            kind === "grammar"
+              ? null
+              : lexicalHonorific &&
+                  /^[\u3040-\u30ffー]+$/u.test(lexicalHonorificSurface)
+                ? lexicalHonorificSurface
+                : readJapaneseReading(next.reading);
           return {
             kind,
             surfaceForm,
-            reading: kind === "grammar" ? null : readJapaneseReading(next.reading),
+            reading,
             meaningZh,
             explanationZh,
             sourceExcerpt: readString(next.source_excerpt, 500),

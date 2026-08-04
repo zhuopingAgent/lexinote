@@ -193,4 +193,30 @@ describe("conversation production soak corpus", () => {
       ])
     );
   });
+
+  it("flags an inaccurate Japanese explanation for the 住民票 word case", () => {
+    const testCase = CONVERSATION_SOAK_CASES.find(
+      (candidate) => candidate.id === "auto-explicit-word"
+    );
+    expect(testCase).toBeDefined();
+
+    const evaluation = evaluateConversationSoakResult(testCase!, {
+      assistantMessage: {
+        status: "completed",
+        content:
+          "「住民票」は中国語で「居民户口簿」と言います。文脈によって使い分けます。",
+      },
+      analysis: {
+        message: { analysisStatus: "completed" },
+        session: { title: "住民票", summary: "住民票的中文表达。" },
+        memories: [],
+        learningItems: [],
+      },
+    });
+
+    expect(evaluation.status).toBe("failed");
+    expect(evaluation.issues.map((entry) => entry.code)).toContain(
+      "inaccurate_word_translation"
+    );
+  });
 });
