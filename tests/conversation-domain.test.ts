@@ -144,6 +144,7 @@ describe("conversation domain", () => {
       summary: "",
     });
     expect(autoPrompt).toContain("完整日语句子按日译中处理");
+    expect(autoPrompt).toContain("涉及过敏、症状或安全确认");
   });
 
   it("limits structured learning extraction to the current turn", () => {
@@ -811,6 +812,50 @@ describe("conversation domain", () => {
         meaningZh: "说的尊敬语",
         explanationZh: "用于抬高动作主体",
         sourceExcerpt: "おっしゃる",
+      },
+    ]);
+  });
+
+  it("reclassifies contextual collocations and drops punctuation fragments", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "整理了餐厅和会议表达。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "アレルギーがあります",
+            reading: null,
+            meaning_zh: "有过敏",
+            explanation_zh: "描述自己有某种过敏",
+            source_excerpt: "ピーナッツアレルギーがあります",
+          },
+          {
+            kind: "grammar",
+            surface_form: "来週、この問題について",
+            reading: null,
+            meaning_zh: "下周讨论这个问题",
+            explanation_zh: "逗号后的停顿",
+            source_excerpt: "来週、この問題について",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems).toEqual([
+      {
+        kind: "expression",
+        surfaceForm: "アレルギーがある",
+        reading: null,
+        meaningZh: "有过敏",
+        explanationZh: "描述自己有某种过敏",
+        sourceExcerpt: "ピーナッツアレルギーがあります",
       },
     ]);
   });

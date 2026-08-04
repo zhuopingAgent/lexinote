@@ -267,13 +267,23 @@ export function parseConversationAnalysisOutput(
           const lexicalHonorific =
             rawKind === "grammar" &&
             LEXICAL_HONORIFIC_FORMS.has(normalizeGrammarForm(rawSurfaceForm));
-          const kind = lexicalHonorific ? "vocabulary" : rawKind;
+          const contextualCollocation =
+            rawKind === "grammar" &&
+            !/^[~～〜]/u.test(rawSurfaceForm) &&
+            /が(?:あります|ある)$/u.test(rawSurfaceForm);
+          const kind = lexicalHonorific
+            ? "vocabulary"
+            : contextualCollocation
+              ? "expression"
+              : rawKind;
           const surfaceForm =
             kind === "grammar"
               ? canonicalizeGrammarSurface(rawSurfaceForm)
               : lexicalHonorific
                 ? rawSurfaceForm.replace(/^[~～〜]+/u, "")
-                : rawSurfaceForm;
+                : contextualCollocation
+                  ? rawSurfaceForm.replace(/があります$/u, "がある")
+                  : rawSurfaceForm;
           const meaningZh = readString(next.meaning_zh, 500);
           const explanationZh = readString(next.explanation_zh, 1_000);
           if (
@@ -281,6 +291,7 @@ export function parseConversationAnalysisOutput(
             HANGUL_PATTERN.test(explanationZh) ||
             (kind === "grammar" &&
               (isLowValueStandaloneGrammar(surfaceForm) ||
+                /[、。！？，,]/u.test(surfaceForm) ||
                 /^(?:接续|接続)[：:]/u.test(meaningZh) ||
                 /用于构成.*接续/u.test(explanationZh)))
           ) {
