@@ -4,7 +4,16 @@ const CHINESE_SIGNAL_PATTERN = /[这请说语时为会应过将与发实习问�
 const MARKDOWN_PATTERN = /(?:\*\*|__|```|<\/?[a-z][^>]*>)/iu;
 const META_SUMMARY_PATTERN = /(?:学习项|候选).*(?:提取|分析)|\b(?:grammar|vocabulary|expression)\b/iu;
 const HANGUL_PATTERN = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u;
-const LOW_VALUE_GRAMMAR = new Set(["には", "必要です", "をいただけますか"]);
+const LOW_VALUE_GRAMMAR = new Set([
+  "には",
+  "必要です",
+  "いただけますか",
+  "をいただけますか",
+  "があります",
+  "ひとつの",
+  "一つの",
+]);
+const UNTRANSLATED_CHINESE_JAPANESE_PATTERN = /花生(?:アレルギー)?/u;
 
 function normalizeGrammar(value) {
   return value.normalize("NFKC").replace(/[~～]/gu, "〜").replace(/\s+/gu, "").replace(/^〜+/u, "");
@@ -57,6 +66,12 @@ export function evaluateConversationSoakResult(testCase, result) {
   if ((language === "ja" || language === "mixed") && !KANA_PATTERN.test(content)) {
     issues.push(issue("missing_japanese", "expected Japanese text was not found"));
   }
+  if (
+    (language === "ja" || language === "mixed") &&
+    UNTRANSLATED_CHINESE_JAPANESE_PATTERN.test(content)
+  ) {
+    issues.push(issue("untranslated_chinese_in_japanese", "Japanese output contains the untranslated Chinese word 花生"));
+  }
   if (language === "zh" && !HAN_PATTERN.test(content)) {
     issues.push(issue("missing_chinese", "expected Chinese text was not found"));
   }
@@ -100,6 +115,12 @@ export function evaluateConversationSoakResult(testCase, result) {
     }
     if (item.kind === "grammar" && LOW_VALUE_GRAMMAR.has(item.surfaceForm)) {
       issues.push(issue("low_value_grammar", `low-value grammar candidate: ${item.surfaceForm}`));
+    }
+    if (/[。！？?!]/u.test(item.surfaceForm)) {
+      issues.push(issue("sentence_learning_surface", `sentence-shaped learning candidate: ${item.surfaceForm}`));
+    }
+    if (item.kind === "grammar" && /[\/／]/u.test(item.surfaceForm)) {
+      issues.push(issue("composite_grammar_surface", `combined grammar candidate: ${item.surfaceForm}`));
     }
     if (item.kind === "grammar" && item.status === "suggested" && item.grammarCandidates.length !== 1) {
       issues.push(issue("invalid_promotable_grammar", `${item.surfaceForm} is suggested without exactly one grammar match`));

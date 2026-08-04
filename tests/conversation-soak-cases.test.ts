@@ -129,4 +129,58 @@ describe("conversation production soak corpus", () => {
       issueCounts: { warning: 1 },
     });
   });
+
+  it("flags untranslated Chinese and malformed learning surfaces", () => {
+    const testCase = {
+      id: "allergy",
+      mode: "zh_to_ja",
+      input: "我对花生过敏，请店员确认。",
+      expect: {
+        responseLanguage: "ja",
+        responseAny: ["アレルギー"],
+        learning: null,
+      },
+    };
+    const result = {
+      assistantMessage: {
+        status: "completed",
+        content: "花生アレルギーがあります。ご確認いただけますか。",
+      },
+      analysis: {
+        message: { analysisStatus: "completed" },
+        session: { title: "过敏确认", summary: "用户说明花生过敏。" },
+        memories: [],
+        learningItems: [
+          {
+            kind: "grammar",
+            surfaceForm: "くださいませんか/いただけますか",
+            reading: null,
+            meaningZh: "能请您……吗",
+            sourceExcerpt: "ご確認いただけますか",
+            status: "needs_review",
+            grammarCandidates: [],
+          },
+          {
+            kind: "expression",
+            surfaceForm: "花生アレルギーがあります。",
+            reading: null,
+            meaningZh: "我对花生过敏",
+            sourceExcerpt: "花生アレルギーがあります。",
+            status: "suggested",
+            grammarCandidates: [],
+          },
+        ],
+      },
+    };
+
+    const evaluation = evaluateConversationSoakResult(testCase, result);
+    expect(evaluation.status).toBe("failed");
+    expect(evaluation.issues.map((entry) => entry.code)).toEqual(
+      expect.arrayContaining([
+        "untranslated_chinese_in_japanese",
+        "composite_grammar_surface",
+        "sentence_learning_surface",
+      ])
+    );
+  });
 });
