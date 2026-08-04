@@ -101,6 +101,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("不在结尾追问");
     expect(prompt).toContain("甘いものが嫌いなわけではありません");
     expect(prompt).toContain("禁止输出 **");
+    expect(prompt).toContain("核心译法、解释和补充说明必须全部使用中文");
 
     const explanationPrompt = buildConversationSystemPrompt({
       mode: "explain_ja",
@@ -563,6 +564,14 @@ describe("conversation domain", () => {
           meaningZh: "在职证明",
           explanationZh: "错误地把中文译文当成日语词条",
           sourceExcerpt: "在职证明",
+        },
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜は中国語で...と言います",
+          reading: null,
+          meaningZh: "用另一种语言怎么说",
+          explanationZh: "模型误提取的问句模板",
+          sourceExcerpt: "中国語で何と言いますか",
         },
       ],
     };
