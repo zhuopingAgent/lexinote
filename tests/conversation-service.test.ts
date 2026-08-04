@@ -253,7 +253,7 @@ describe("ConversationService", () => {
     await consumeConversationEventStream(new Response(stream), () => undefined);
 
     expect(grammarLearningService.searchGrammarPoints).toHaveBeenCalledWith(
-      expect.objectContaining({ query: "〜わけではない" })
+      expect.objectContaining({ query: "わけではない" })
     );
     expect(grammarLearningService.getGrammarPointDetail).toHaveBeenCalledWith(
       "55555555-5555-4555-8555-555555555555",
@@ -698,6 +698,9 @@ describe("ConversationService", () => {
       messages: [userMessage, completedAssistant],
     });
     expect(repository.insertMemory).toHaveBeenCalledTimes(1);
+    expect(grammarLearningService.searchGrammarPoints).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "ていただけますか" })
+    );
     expect(repository.insertLearningItem).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "suggested",

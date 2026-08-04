@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADDITIONAL_CONVERSATION_SOAK_CASES,
+  BASELINE_CONVERSATION_SOAK_CASES,
   CONVERSATION_SOAK_CASES,
   buildConversationSoakCases,
 } from "../scripts/conversation-soak-cases.mjs";
@@ -9,9 +11,11 @@ import {
 } from "../scripts/conversation-soak-evaluator.mjs";
 
 describe("conversation production soak corpus", () => {
-  it("contains exactly 100 unique, deterministic, evenly distributed cases", () => {
-    expect(CONVERSATION_SOAK_CASES).toHaveLength(100);
-    expect(new Set(CONVERSATION_SOAK_CASES.map((testCase) => testCase.id)).size).toBe(100);
+  it("contains exactly 400 unique, deterministic, evenly distributed cases", () => {
+    expect(BASELINE_CONVERSATION_SOAK_CASES).toHaveLength(100);
+    expect(ADDITIONAL_CONVERSATION_SOAK_CASES).toHaveLength(300);
+    expect(CONVERSATION_SOAK_CASES).toHaveLength(400);
+    expect(new Set(CONVERSATION_SOAK_CASES.map((testCase) => testCase.id)).size).toBe(400);
     expect(buildConversationSoakCases()).toEqual(CONVERSATION_SOAK_CASES);
     expect(buildConversationSoakCases(7)).not.toEqual(CONVERSATION_SOAK_CASES);
 
@@ -23,15 +27,106 @@ describe("conversation production soak corpus", () => {
       {}
     );
     expect(modeCounts).toEqual({
-      auto: 20,
-      explain_ja: 20,
-      ja_to_zh: 20,
-      polish_ja: 20,
-      zh_to_ja: 20,
+      auto: 80,
+      explain_ja: 80,
+      ja_to_zh: 80,
+      polish_ja: 80,
+      zh_to_ja: 80,
     });
     expect(new Set(CONVERSATION_SOAK_CASES.map((testCase) => testCase.scenario)).size)
-      .toBeGreaterThanOrEqual(12);
+      .toBeGreaterThanOrEqual(30);
+    expect(new Set(ADDITIONAL_CONVERSATION_SOAK_CASES.map((testCase) => testCase.scenario)).size)
+      .toBeGreaterThanOrEqual(30);
+    expect(
+      new Set(ADDITIONAL_CONVERSATION_SOAK_CASES.flatMap((testCase) => testCase.riskTags)).size
+    ).toBeGreaterThanOrEqual(100);
+    expect(
+      ADDITIONAL_CONVERSATION_SOAK_CASES.every(
+        (testCase) => testCase.riskTags.length >= 2 && testCase.input.length >= 20
+      )
+    ).toBe(true);
+    expect(
+      new Set(ADDITIONAL_CONVERSATION_SOAK_CASES.map((testCase) => testCase.input)).size
+    ).toBe(300);
+    expect(
+      ADDITIONAL_CONVERSATION_SOAK_CASES.every(
+        (testCase) =>
+          testCase.expect.responseAny.length > 0 &&
+          testCase.expect.responseNone.every(
+            (signal: string) => !testCase.expect.responseAny.includes(signal)
+          )
+      )
+    ).toBe(true);
+    expect(
+      ADDITIONAL_CONVERSATION_SOAK_CASES.filter(
+        (testCase) => testCase.mode === "zh_to_ja"
+      ).every((testCase) => /[\u3400-\u9fff]/u.test(testCase.input))
+    ).toBe(true);
+    expect(
+      ADDITIONAL_CONVERSATION_SOAK_CASES.filter((testCase) =>
+        ["ja_to_zh", "polish_ja"].includes(testCase.mode)
+      ).every((testCase) => /[\u3040-\u30ff]/u.test(testCase.input))
+    ).toBe(true);
     expect(CONVERSATION_SOAK_CASES.every((testCase) => testCase.input.length <= 8_000)).toBe(true);
+  });
+
+  it("flags known-wrong response signals declared by a case", () => {
+    const testCase = {
+      id: "contextual-answer",
+      mode: "auto",
+      input: "店员问要不要续杯，我说大丈夫です。",
+      expect: {
+        responseLanguage: "zh",
+        responseAny: ["不需要"],
+        responseNone: ["身体健康"],
+        learning: null,
+      },
+    };
+    const evaluation = evaluateConversationSoakResult(testCase, {
+      assistantMessage: { status: "completed", content: "意思是身体健康。" },
+      analysis: {
+        message: { analysisStatus: "completed" },
+        session: { title: "语境翻译", summary: "说明语境表达。" },
+        memories: [],
+        learningItems: [],
+      },
+    });
+
+    expect(evaluation.status).toBe("failed");
+    expect(evaluation.issues.map((entry) => entry.code)).toContain(
+      "forbidden_response_signal"
+    );
+  });
+
+  it("does not mistake Japanese kanji for a Chinese explanation", () => {
+    const testCase = {
+      id: "polish-japanese-explanation",
+      mode: "polish_ja",
+      input: "この文章を直してください。",
+      expect: {
+        responseLanguage: "mixed",
+        responseAny: ["修正"],
+        responseNone: [],
+        learning: null,
+      },
+    };
+    const evaluation = evaluateConversationSoakResult(testCase, {
+      assistantMessage: {
+        status: "completed",
+        content: "修正後の文です。表現を自然にしました。",
+      },
+      analysis: {
+        message: { analysisStatus: "completed" },
+        session: { title: "日语润色", summary: "修正了日语表达。" },
+        memories: [],
+        learningItems: [],
+      },
+    });
+
+    expect(evaluation.status).toBe("failed");
+    expect(evaluation.issues.map((entry) => entry.code)).toContain(
+      "missing_chinese_explanation"
+    );
   });
 
   it("flags duplicate, ungrounded, invalid-reading, and unpromotable output", () => {

@@ -3,10 +3,20 @@ import { ConversationLearningService } from "@/features/conversation/application
 import { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import type { ConversationLearningItem } from "@/shared/types/conversation";
 import { ValidationError } from "@/shared/utils/errors";
+import { CONVERSATION_SOAK_CASES } from "../scripts/conversation-soak-cases.mjs";
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111";
 const SESSION_ID = "22222222-2222-4222-8222-222222222222";
 const GRAMMAR_POINT_ID = "33333333-3333-4333-8333-333333333333";
+const SOAK_VOCABULARY_SURFACES = [
+  ...new Set(
+    CONVERSATION_SOAK_CASES.flatMap((testCase) =>
+      testCase.expect.learning?.kind === "vocabulary"
+        ? [testCase.expect.learning.surfaceForm]
+        : []
+    )
+  ),
+];
 
 function learningItem(
   overrides: Partial<ConversationLearningItem> = {}
@@ -175,6 +185,50 @@ describe("ConversationLearningService", () => {
     );
     expect(result.item.status).toBe("saved");
   });
+
+  it.each(SOAK_VOCABULARY_SURFACES)(
+    "completes the soak vocabulary %s before adding it to the default collection",
+    async (surfaceForm) => {
+      const item = learningItem({
+        surfaceForm,
+        meaningZh: "测试词义",
+        explanationZh: "用于验证对话生词沉淀。",
+      });
+      const candidate = {
+        wordId: 101,
+        word: surfaceForm,
+        pronunciation: "テストよみ",
+        meaningZh: "测试词义",
+        partOfSpeech: "名词",
+      };
+      const findCandidates = vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([candidate]);
+      const addWord = vi
+        .fn()
+        .mockResolvedValue({ status: "added", candidate });
+      const { service, lookup, repository } = makeService({
+        item,
+        findCandidates,
+        addWord,
+      });
+
+      const result = await service.promote(ITEM_ID, { collectionId: 7 });
+
+      expect(lookup.lookupWord).toHaveBeenCalledWith(surfaceForm);
+      expect(addWord).toHaveBeenCalledWith(7, surfaceForm, "テストよみ");
+      expect(repository.updateLearningItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: ITEM_ID,
+          status: "saved",
+          wordId: 101,
+          collectionId: 7,
+        })
+      );
+      expect(result.item.status).toBe("saved");
+    }
+  );
 
   it("stores a newly generated fixed expression with its dictionary category", async () => {
     const item = learningItem({
