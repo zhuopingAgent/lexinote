@@ -860,6 +860,51 @@ describe("conversation domain", () => {
     ]);
   });
 
+  it("drops generic existence forms and counter modifiers mislabeled as grammar", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "整理了餐厅请求和会议表达。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "〜があります",
+            reading: null,
+            meaning_zh: "表示有某种状态",
+            explanation_zh: "表示存在",
+            source_excerpt: "ピーナッツアレルギーがあります",
+          },
+          {
+            kind: "grammar",
+            surface_form: "ひとつの",
+            reading: null,
+            meaning_zh: "一个",
+            explanation_zh: "数量词修饰名词",
+            source_excerpt: "一つの会議",
+          },
+          {
+            kind: "grammar",
+            surface_form: "〜ていただけますか",
+            reading: null,
+            meaning_zh: "能请您……吗",
+            explanation_zh: "礼貌请求对方做某事",
+            source_excerpt: "確認していただけますか",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems.map((item) => item.surfaceForm)).toEqual([
+      "〜ていただけますか",
+    ]);
+  });
+
   it("normalizes inflected grammar candidates to dictionary forms", () => {
     const parsed = parseConversationAnalysisOutput(
       JSON.stringify({
