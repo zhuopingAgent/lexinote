@@ -502,6 +502,7 @@ function isLowValueStandaloneGrammar(surfaceForm: string) {
     "いただけますか",
     "をいただけますか",
     "があります",
+    "が入っていないか",
     "ひとつの",
     "一つの",
   ]).has(
