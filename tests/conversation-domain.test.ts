@@ -159,6 +159,48 @@ describe("conversation domain", () => {
     expect(autoPrompt).toContain("その電話番号を利用できません");
   });
 
+  it("pins auto-mode routing to the current turn instead of conversation history", () => {
+    const preferences = {
+      defaultMode: "auto" as const,
+      translationStyle: "natural_first" as const,
+      defaultRegister: "auto" as const,
+      defaultCollectionId: null,
+    };
+    const chineseTurn = buildConversationSystemPrompt({
+      mode: "auto",
+      preferences,
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "上一轮把日语翻译成了中文。",
+      currentUserContent:
+        "这个账户我登录不上去，重设密码需要绑定的邮箱和手机号。",
+    });
+    const japaneseTurn = buildConversationSystemPrompt({
+      mode: "auto",
+      preferences,
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "上一轮把中文翻译成了日语。",
+      currentUserContent: "週末に新しいレシピを試してみます。",
+    });
+    const explicitTurn = buildConversationSystemPrompt({
+      mode: "auto",
+      preferences,
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "上一轮是普通翻译。",
+      currentUserContent: "请帮我润色这句日语：昨日、部長に会いました。",
+    });
+
+    expect(chineseTurn).toContain("当前输入是完整中文");
+    expect(chineseTurn).toContain("核心结果必须是日语翻译");
+    expect(chineseTurn).toContain("不得沿用上一轮的日译中方向");
+    expect(japaneseTurn).toContain("当前输入是日语");
+    expect(japaneseTurn).toContain("核心结果必须是中文翻译");
+    expect(explicitTurn).toContain("当前输入含有明确任务指令");
+    expect(explicitTurn).toContain("不得沿用上一轮的任务方向");
+  });
+
   it("limits structured learning extraction to the current turn", () => {
     const prompt = buildConversationAnalysisPrompt({
       sessionTitle: "预约表达",
