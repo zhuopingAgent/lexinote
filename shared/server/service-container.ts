@@ -5,7 +5,10 @@ import { CollectionAutoFilterService } from "@/features/collections/application/
 import { CollectionService } from "@/features/collections/application/CollectionService";
 import { CollectionWordService } from "@/features/collections/application/CollectionWordService";
 import { ConversationLearningService } from "@/features/conversation/application/ConversationLearningService";
-import { ConversationService } from "@/features/conversation/application/ConversationService";
+import { ConversationAnalysisService } from "@/features/conversation/application/ConversationAnalysisService";
+import { ConversationMaintenanceService } from "@/features/conversation/application/ConversationMaintenanceService";
+import { ConversationMessageService } from "@/features/conversation/application/ConversationMessageService";
+import { ConversationSessionService } from "@/features/conversation/application/ConversationSessionService";
 import { ConversationAiClient } from "@/features/conversation/infrastructure/ConversationAiClient";
 import { ConversationRepository } from "@/features/conversation/infrastructure/ConversationRepository";
 import { CollectionAutoFilterJobRepository } from "@/features/collections/infrastructure/CollectionAutoFilterJobRepository";
@@ -30,9 +33,12 @@ let collectionRepository: CollectionRepository | null = null;
 let collectionService: CollectionService | null = null;
 let collectionWordService: CollectionWordService | null = null;
 let conversationAiClient: ConversationAiClient | null = null;
+let conversationAnalysisService: ConversationAnalysisService | null = null;
 let conversationLearningService: ConversationLearningService | null = null;
+let conversationMaintenanceService: ConversationMaintenanceService | null = null;
+let conversationMessageService: ConversationMessageService | null = null;
 let conversationRepository: ConversationRepository | null = null;
-let conversationService: ConversationService | null = null;
+let conversationSessionService: ConversationSessionService | null = null;
 let dictionaryService: JapaneseDictionaryService | null = null;
 let grammarAiClient: GrammarAiClient | null = null;
 let grammarLearningService: GrammarLearningService | null = null;
@@ -156,14 +162,39 @@ export function getPracticeSessionService() {
   return practiceSessionService;
 }
 
-export function getConversationService() {
-  conversationService ??= new ConversationService(
+export function getConversationSessionService() {
+  conversationSessionService ??= new ConversationSessionService(
     getConversationRepository(),
     getConversationAiClient(),
-    getCollectionService(),
+    getCollectionService()
+  );
+  return conversationSessionService;
+}
+
+export function getConversationMessageService() {
+  conversationMessageService ??= new ConversationMessageService(
+    getConversationRepository(),
+    getConversationAiClient(),
     getGrammarLearningService()
   );
-  return conversationService;
+  return conversationMessageService;
+}
+
+export function getConversationMaintenanceService() {
+  conversationMaintenanceService ??= new ConversationMaintenanceService(
+    getConversationRepository(),
+    getConversationAiClient()
+  );
+  return conversationMaintenanceService;
+}
+
+export function getConversationAnalysisService() {
+  conversationAnalysisService ??= new ConversationAnalysisService(
+    getConversationRepository(),
+    getConversationAiClient(),
+    getGrammarLearningService()
+  );
+  return conversationAnalysisService;
 }
 
 export function getConversationLearningService() {

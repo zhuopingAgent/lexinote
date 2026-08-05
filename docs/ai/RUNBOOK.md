@@ -84,8 +84,9 @@
 - `collection_words.source` distinguishes `manual` vs `auto` membership.
 - `auto_filter_jobs` stores asynchronous collection auto-filter work; lookup requests enqueue jobs instead of doing all classification inline.
 - Conversation storage uses `conversation_sessions`, `conversation_messages`, `conversation_preferences`, `conversation_memories`, `conversation_analyses`, and `conversation_learning_items`. Apply `shared/db/sql/schema.sql` before deploying `/conversation`; production request handling will not create these tables.
-- A conversation request sends at most 16 recent messages and about 16,000 characters plus a 2,000-character-bounded summary. Only `active` memories are prompt context.
+- A conversation request sends at most 16 completed messages through the triggering user message, about 16,000 message characters, and a 2,000-character-bounded summary. Streamed answers are capped at 8,000 characters. Only `active` memories are prompt context.
 - Completed answers start with no learning analysis. `POST /api/conversations/[sessionId]/messages/[messageId]/maintenance` updates internal conversation context, while the sibling `/analysis` endpoint creates a user-directed version with a client idempotency key, focus, and optional instruction. Reusing the same key replays a completed result; failed or five-minute-stale running records can be reclaimed with the same parameters.
+- `conversation_analyses.lease_token` fences candidate, completion, and failure writes after stale-work recovery. Apply the current schema before deploying code that selects this column. Analysis completion uses a checked-out PostgreSQL transaction and locks the parent message before finalizing the current revision.
 - `auto_filter_jobs` uses bounded retries plus a stale-running lease. API entry points start a lightweight in-process poller so pending or crashed jobs can resume after the app receives traffic.
 - When a stale `collection_sync` job exhausts retries, the recovery SQL also marks the owning collection as `failed` if that job still matches the current auto-filter rule version.
 - Editing auto-filter criteria affects future incremental classification, but rescanning existing words now requires an explicit collection-level AI resync.
@@ -124,6 +125,8 @@
   `npm run build`
 - Start production server:
   `npm run start`
+- Conversation-specific test ownership and release gates:
+  `docs/ai/CONVERSATION_TESTING.md`
 
 ## Conversation Agent Soak
 

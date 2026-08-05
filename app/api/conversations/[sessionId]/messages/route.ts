@@ -1,4 +1,4 @@
-import { getConversationService } from "@/app/api/services";
+import { getConversationMessageService } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
 import { readJsonBody } from "@/app/api/request";
 import type { SendConversationMessageRequest } from "@/shared/types/conversation";
@@ -6,7 +6,7 @@ import type { SendConversationMessageRequest } from "@/shared/types/conversation
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const conversationService = getConversationService();
+const conversationService = getConversationMessageService();
 
 export async function POST(
   request: Request,
@@ -17,7 +17,7 @@ export async function POST(
     const body = await readJsonBody<SendConversationMessageRequest>(request);
     const stream = await conversationService.streamMessage(
       sessionId,
-      body as SendConversationMessageRequest,
+      body,
       request.signal
     );
     return new Response(stream, {

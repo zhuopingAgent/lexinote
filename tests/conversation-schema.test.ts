@@ -5,14 +5,20 @@ import {
   COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
   DELETE_CONVERSATION_SESSION_SQL,
+  FAIL_CONVERSATION_ANALYSIS_RECORD_SQL,
   INSERT_CONVERSATION_ANALYSIS_SQL,
+  INSERT_CONVERSATION_LEARNING_ITEM_SQL,
   LIST_CONVERSATION_ANALYSES_SQL,
+  LIST_CONVERSATION_CONTEXT_MESSAGES_SQL,
   LIST_CONVERSATION_LEARNING_ITEMS_SQL,
+  LIST_CONVERSATION_MESSAGES_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
+  LIST_CONVERSATION_SESSIONS_SQL,
+  LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL,
   RECLAIM_CONVERSATION_ANALYSIS_SQL,
   RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  SAVE_CONVERSATION_MAINTENANCE_SQL,
   UPDATE_CONVERSATION_PREFERENCES_SQL,
-  UPDATE_CONVERSATION_SUMMARY_SQL,
 } from "@/shared/db/sql/conversation.sql";
 import { UPSERT_REVIEW_RECORD_FROM_CONVERSATION_SQL } from "@/shared/db/sql/grammar.sql";
 
@@ -107,11 +113,18 @@ describe("conversation schema and persistence semantics", () => {
     );
   });
 
-  it("creates versioned analysis records only on request and protects summaries", () => {
+  it("creates versioned analysis records only on request", () => {
+    expect(COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL).not.toContain(
+      "analysis_status"
+    );
     expect(COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL).toContain(
-      "analysis_status = 'not_requested'"
+      "WITH completed_message AS"
+    );
+    expect(COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL).toContain(
+      "UPDATE conversation_sessions"
     );
     expect(INSERT_CONVERSATION_ANALYSIS_SQL).toContain("client_analysis_id");
+    expect(INSERT_CONVERSATION_ANALYSIS_SQL).toContain("lease_token");
     expect(INSERT_CONVERSATION_ANALYSIS_SQL).toContain(
       "message.status = 'completed'"
     );
@@ -119,24 +132,98 @@ describe("conversation schema and persistence semantics", () => {
       "INTERVAL '5 minutes'"
     );
     expect(RECLAIM_CONVERSATION_ANALYSIS_SQL).toContain("status = 'failed'");
+    expect(RECLAIM_CONVERSATION_ANALYSIS_SQL).toContain(
+      "lease_token = $5::uuid"
+    );
     expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
       "analysis_id IS DISTINCT FROM $1::uuid"
     );
     expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
       "status IN ('suggested', 'needs_review')"
     );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "previous.status IN ('completed', 'failed')"
+    );
     expect(LIST_CONVERSATION_ANALYSES_SQL).toContain("PARTITION BY message_id");
     expect(LIST_CONVERSATION_ANALYSES_SQL).toContain(
       "is_current OR latest_rank = 1"
     );
     expect(LIST_CONVERSATION_ANALYSES_SQL).not.toContain("LIMIT 200");
-    expect(UPDATE_CONVERSATION_SUMMARY_SQL).toContain(
-      "summary_updated_at IS NOT NULL"
+  });
+
+  it("fences every analysis write with the active lease", () => {
+    expect(schema).toContain(
+      "lease_token UUID NOT NULL DEFAULT gen_random_uuid()"
+    );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "analysis.lease_token = $3::uuid"
+    );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "FOR UPDATE OF message"
+    );
+    expect(LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL).toContain(
+      "FOR UPDATE OF message"
+    );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "message_id IN (SELECT id FROM locked_message)"
+    );
+    expect(FAIL_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "lease_token = $3::uuid"
+    );
+    expect(FAIL_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "status = 'running'"
+    );
+    expect(INSERT_CONVERSATION_LEARNING_ITEM_SQL).toContain(
+      "lease_token = $13::uuid"
+    );
+    expect(INSERT_CONVERSATION_LEARNING_ITEM_SQL).toContain("FOR SHARE");
+  });
+
+  it("bounds model context at the message that triggered the workflow", () => {
+    expect(LIST_CONVERSATION_CONTEXT_MESSAGES_SQL).toContain(
+      "WITH boundary_message AS"
+    );
+    expect(LIST_CONVERSATION_CONTEXT_MESSAGES_SQL).toContain(
+      "WHERE id = $4::uuid"
+    );
+    expect(LIST_CONVERSATION_CONTEXT_MESSAGES_SQL).toContain(
+      "SELECT created_at, id"
+    );
+    expect(LIST_CONVERSATION_CONTEXT_MESSAGES_SQL).toContain(
+      "status = 'completed'"
+    );
+    expect(LIST_CONVERSATION_CONTEXT_MESSAGES_SQL).not.toContain("'cancelled'");
+  });
+
+  it("resolves pagination boundaries inside PostgreSQL before timestamp fallback", () => {
+    expect(LIST_CONVERSATION_SESSIONS_SQL).toContain(
+      "WITH cursor_session AS"
+    );
+    expect(LIST_CONVERSATION_SESSIONS_SQL).toContain(
+      "EXISTS (SELECT 1 FROM cursor_session)"
+    );
+    expect(LIST_CONVERSATION_MESSAGES_SQL).toContain(
+      "WITH cursor_message AS"
+    );
+    expect(LIST_CONVERSATION_MESSAGES_SQL).toContain(
+      "EXISTS (SELECT 1 FROM cursor_message)"
+    );
+  });
+
+  it("advances summary and memory suggestions in one monotonic statement", () => {
+    expect(SAVE_CONVERSATION_MAINTENANCE_SQL).toContain(
+      "WITH advanced_session AS"
+    );
+    expect(SAVE_CONVERSATION_MAINTENANCE_SQL).toContain(
+      "summary_through_at < $5::timestamptz"
+    );
+    expect(SAVE_CONVERSATION_MAINTENANCE_SQL).toContain(
+      "inserted_memories AS"
+    );
+    expect(SAVE_CONVERSATION_MAINTENANCE_SQL).toContain(
+      "WHERE EXISTS (SELECT 1 FROM advanced_session)"
     );
     expect(schema).toContain("summary_through_at TIMESTAMPTZ");
-    expect(UPDATE_CONVERSATION_SUMMARY_SQL).toContain(
-      "summary_through_at > $5::timestamptz"
-    );
   });
 
   it("adds conversation grammar as due learning evidence without a mistake", () => {

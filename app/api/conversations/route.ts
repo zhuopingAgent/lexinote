@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { getConversationService } from "@/app/api/services";
+import { getConversationSessionService } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
 import { readJsonBody } from "@/app/api/request";
 import type { CreateConversationSessionRequest } from "@/shared/types/conversation";
 
 export const runtime = "nodejs";
 
-const conversationService = getConversationService();
+const conversationService = getConversationSessionService();
 
 export async function POST(request: Request) {
   try {

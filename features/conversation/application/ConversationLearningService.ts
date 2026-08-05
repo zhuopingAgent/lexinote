@@ -2,8 +2,11 @@ import type { CollectionWordService } from "@/features/collections/application/C
 import type { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import type { VocabularyCoreService } from "@/features/vocabulary-core/application/VocabularyCoreService";
 import type { WordLookupService } from "@/features/word-lookup/application/WordLookupService";
+import type {
+  ConversationLearningItemStore,
+  ConversationSessionStore,
+} from "@/features/conversation/application/ports";
 import { assertUuid } from "@/features/conversation/domain/validation";
-import type { ConversationRepository } from "@/features/conversation/infrastructure/ConversationRepository";
 import { DEFAULT_GRAMMAR_USER_ID } from "@/shared/db/sql/grammar.sql";
 import type {
   PromoteConversationLearningItemRequest,
@@ -13,7 +16,8 @@ import { NotFoundError, ValidationError } from "@/shared/utils/errors";
 
 export class ConversationLearningService {
   constructor(
-    private readonly repository: ConversationRepository,
+    private readonly repository: ConversationLearningItemStore &
+      ConversationSessionStore,
     private readonly vocabularyCoreService: VocabularyCoreService,
     private readonly wordLookupService: WordLookupService,
     private readonly collectionWordService: CollectionWordService,

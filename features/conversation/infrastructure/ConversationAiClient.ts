@@ -1,9 +1,12 @@
 import {
+  hasAiGatewayCredentials,
   requestAiGatewayStructuredText,
   requestAiGatewayTextStream,
   resolveAiGatewayRequest,
+  resolveAiTextModel,
   type AiGatewayInputMessage,
 } from "@/shared/ai/gateway";
+import type { ConversationAiPort } from "@/features/conversation/application/ports";
 import {
   CONVERSATION_ANALYSIS_SCHEMA,
   CONVERSATION_MAINTENANCE_SCHEMA,
@@ -34,11 +37,19 @@ export const CONVERSATION_AI_MODEL_FALLBACKS = {
   analysis: ["google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
 } as const;
 
-export class ConversationAiClient {
+export class ConversationAiClient implements ConversationAiPort {
   constructor(
     private readonly streamRequester: StreamRequester = requestAiGatewayTextStream,
     private readonly structuredRequester: StructuredRequester = requestAiGatewayStructuredText
   ) {}
+
+  isAvailable() {
+    return hasAiGatewayCredentials();
+  }
+
+  modelName(task: "reply" | "analysis") {
+    return resolveAiTextModel(task === "reply" ? "defaultTeacher" : "cheap");
+  }
 
   async streamReply(messages: AiGatewayInputMessage[], signal?: AbortSignal) {
     const request = resolveAiGatewayRequest();
@@ -56,7 +67,6 @@ export class ConversationAiClient {
   }
 
   async analyze(input: {
-    session: ConversationSession;
     messages: ConversationMessage[];
     focus: ConversationAnalysisFocus;
     instruction: string;

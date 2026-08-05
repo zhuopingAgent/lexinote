@@ -38,6 +38,7 @@ import {
   upsertSessionByActivity,
 } from "@/app/lib/conversation-state";
 import { consumeConversationEventStream } from "@/app/lib/conversation-stream";
+import { parseConversationAnalysisCommand } from "@/features/conversation/domain/analysis-request";
 import {
   getErrorMessage,
   isAbortError,
@@ -47,7 +48,6 @@ import type { CollectionSummary } from "@/shared/types/collections";
 import type {
   AnalyzeConversationMessageRequest,
   ConversationAnalysis,
-  ConversationAnalysisFocus,
   ConversationLearningItem,
   ConversationMemory,
   ConversationMemoryKind,
@@ -79,28 +79,6 @@ const STOP_GENERATION_ARM_DELAY_MS = 500;
 type ConversationClientProps = {
   initialSessionId?: string | null;
 };
-
-function parseAnalysisCommand(content: string): {
-  focus: ConversationAnalysisFocus;
-  instruction: string;
-} | null {
-  const match = content.match(/^\/analysis(?:\s+([\s\S]*))?$/i);
-  if (!match) return null;
-  let instruction = match[1]?.trim() ?? "";
-  let focus: ConversationAnalysisFocus = "all";
-  const aliases: Array<[RegExp, ConversationAnalysisFocus]> = [
-    [/^(?:grammar|语法)(?:\s+|$)/i, "grammar"],
-    [/^(?:vocabulary|词汇|单词)(?:\s+|$)/i, "vocabulary"],
-    [/^(?:expressions?|表达|固定表达)(?:\s+|$)/i, "expressions"],
-  ];
-  for (const [pattern, nextFocus] of aliases) {
-    if (!pattern.test(instruction)) continue;
-    focus = nextFocus;
-    instruction = instruction.replace(pattern, "").trim();
-    break;
-  }
-  return { focus, instruction };
-}
 
 export function ConversationClient({ initialSessionId = null }: ConversationClientProps) {
   const router = useRouter();
@@ -356,6 +334,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     if (activeSessionId) return activeSessionId;
     const session = await createConversationSession(mode);
     skipSessionLoadRef.current = session.id;
+    activeSessionIdRef.current = session.id;
     setActiveSessionId(session.id);
     setCurrentSession(session);
     setSessions((current) => upsertSessionByActivity(current, session));
@@ -467,7 +446,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const content = (overrideContent ?? input).trim();
     if (!content || isGenerating || !aiAvailable) return;
     setError(null);
-    const analysisCommand = !overrideContent ? parseAnalysisCommand(content) : null;
+    const analysisCommand = !overrideContent
+      ? parseConversationAnalysisCommand(content)
+      : null;
     if (analysisCommand) {
       const target = [...messages]
         .reverse()
@@ -488,6 +469,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const controller = new AbortController();
     abortControllerRef.current = controller;
     let completedMessage: ConversationMessage | null = null;
+    let generatedAssistantMessageId: string | null = null;
     try {
       const sessionId = await ensureSession();
       const response = await streamConversationMessage(
@@ -501,10 +483,9 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         },
         controller.signal
       );
-      let assistantMessageId = "";
       await consumeConversationEventStream(response, (event) => {
         if (event.type === "assistant_created") {
-          assistantMessageId = event.assistantMessage.id;
+          generatedAssistantMessageId = event.assistantMessage.id;
           setMessages((current) =>
             mergeById(current, [event.userMessage, event.assistantMessage])
           );
@@ -513,7 +494,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         if (event.type === "text_delta") {
           setMessages((current) =>
             current.map((message) =>
-              message.id === assistantMessageId
+              message.id === generatedAssistantMessageId
                 ? { ...message, content: message.content + event.delta }
                 : message
             )
@@ -565,6 +546,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
       } else {
         setMessages((current) =>
           current.map((message) =>
+            message.id === generatedAssistantMessageId &&
             message.status === "streaming"
               ? { ...message, status: "cancelled", errorMessage: "回答已停止。" }
               : message

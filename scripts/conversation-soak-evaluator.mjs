@@ -41,10 +41,7 @@ export function evaluateConversationSoakResult(testCase, result) {
 
   const assistant = result.assistantMessage;
   const analysis = result.analysis;
-  const maintenance = result.maintenance ?? {
-    session: analysis?.session,
-    memories: analysis?.memories,
-  };
+  const maintenance = result.maintenance;
   const content = assistant?.content?.trim() ?? "";
   const learningItems = analysis?.learningItems ?? [];
   const memories = maintenance?.memories ?? [];
@@ -55,8 +52,7 @@ export function evaluateConversationSoakResult(testCase, result) {
   if (!content) issues.push(issue("empty_response", "assistant response is empty"));
   if (content.length > 8_000) issues.push(issue("response_too_long", "assistant response exceeds 8,000 characters"));
   if (MARKDOWN_PATTERN.test(content)) issues.push(issue("formatted_response", "assistant response contains forbidden Markdown or HTML"));
-  const analysisStatus =
-    analysis?.analysis?.status ?? analysis?.message?.analysisStatus;
+  const analysisStatus = analysis?.analysis?.status;
   if (analysisStatus !== "completed") {
     issues.push(issue("analysis_not_completed", `analysis status: ${analysisStatus ?? "missing"}`));
   }

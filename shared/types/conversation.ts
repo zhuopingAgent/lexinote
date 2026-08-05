@@ -15,8 +15,6 @@ export type ConversationMessageStatus =
   | "failed"
   | "cancelled";
 export type ConversationAnalysisStatus =
-  | "not_requested"
-  | "pending"
   | "running"
   | "completed"
   | "failed";
@@ -38,12 +36,6 @@ export type ConversationSession = {
   updatedAt: string;
 };
 
-export type ConversationMessageDetails = {
-  literalTranslation?: string | null;
-  nuanceNotes: string[];
-  keyPoints: string[];
-};
-
 export type ConversationMessage = {
   id: string;
   sessionId: string;
@@ -55,8 +47,6 @@ export type ConversationMessage = {
   modelName: string | null;
   errorCode: string | null;
   errorMessage: string | null;
-  details: ConversationMessageDetails;
-  analysisStatus: ConversationAnalysisStatus;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

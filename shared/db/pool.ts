@@ -1,10 +1,16 @@
 import { ConfigurationError } from "@/shared/utils/errors";
 
-type PgPool = {
+export type PgClient = {
   query: <T = unknown>(
     text: string,
     values?: readonly unknown[]
   ) => Promise<{ rows: T[] }>;
+  release: (error?: Error | boolean) => void;
+};
+
+type PgPool = {
+  query: PgClient["query"];
+  connect: () => Promise<PgClient>;
   end: () => Promise<void>;
 };
 
