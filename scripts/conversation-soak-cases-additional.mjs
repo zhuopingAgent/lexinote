@@ -114,7 +114,7 @@ export const ADDITIONAL_CONVERSATION_SOAK_CASES_BY_MODE = {
     ["club-trial", "school", "我想先参加一次社团体验，再决定是否正式加入。需要提前预约或准备器材吗？", "ja", ["体験", "入部"], ["grammar", "〜てみる"], ["decision_boundary", "school"]],
     ["teacher-extension", "school", "报告已经完成大部分，但引用格式需要重做。我想申请延长一天，不想用“身体不适”作为理由。", "ja", ["提出期限", "引用"], null, ["academic_integrity", "request"]],
     ["research-interview", "academic", "访谈会录音，但只用于研究分析，不会公开姓名。请翻成向参与者说明同意条件的正式日语。", "ja", ["録音", "匿名"], null, ["informed_consent", "formal_register"]],
-    ["photo-permission", "event", "我可以拍展品，但不确定能否使用闪光灯，也不确定照片能否上传社交媒体。", "ja", ["フラッシュ", "SNS"], ["grammar", "〜てもよろしいでしょうか"], ["permission", "ambiguity"]],
+    ["photo-permission", "event", "我可以拍展品，但不确定能否使用闪光灯，也不确定照片能否上传社交媒体。", "ja", ["てもよろしいでしょうか"], ["grammar", "〜てもよろしいでしょうか"], ["permission", "ambiguity"], ["かどうか", "わかりません"]],
     ["police-report", "police", "自行车停在车站两小时后不见了。我锁了车，但不知道是被偷还是被管理处移走。", "ja", ["自転車", "撤去"], null, ["public_safety", "uncertainty"]],
     ["lost-child", "event", "我和六岁的孩子走散了。孩子穿黄色外套，只会说中文，最后在南门附近看到。", "ja", ["迷子", "黄色"], null, ["emergency", "precision"]],
     ["disaster-medication", "disaster", "避难时忘记带每天服用的药，也没有处方照片。药名可以从医院的就诊卡查到。", "ja", ["避難", "薬"], null, ["emergency", "medical_constraint"]],

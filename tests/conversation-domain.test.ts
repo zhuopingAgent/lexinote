@@ -203,6 +203,31 @@ describe("conversation domain", () => {
     expect(explicitTurn).toContain("不得沿用上一轮的任务方向");
   });
 
+  it("turns first-person permission uncertainty into direct Japanese questions", () => {
+    const prompt = buildConversationSystemPrompt({
+      mode: "zh_to_ja",
+      preferences: {
+        defaultMode: "auto",
+        translationStyle: "natural_first",
+        defaultRegister: "polite",
+        defaultCollectionId: null,
+      },
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "",
+      currentUserContent:
+        "我可以拍展品，但不确定能否使用闪光灯，也不确定照片能否上传社交媒体。",
+    });
+
+    expect(prompt).toContain("当前输入包含己方尚未确认的许可事项");
+    expect(prompt).toContain("每个“不确定/不知道自己能否做”的事项");
+    expect(prompt).toContain("使用「〜てもよろしいでしょうか」");
+    expect(prompt).toContain("禁止译成「〜かどうかわかりません」");
+    expect(prompt).toContain("原文已明确允许的事项只写成");
+    expect(prompt).toContain("不属于添加新请求");
+    expect(prompt).toContain("必须保留其沟通功能");
+  });
+
   it("limits structured learning extraction to the current turn", () => {
     const prompt = buildConversationAnalysisPrompt({
       sessionTitle: "预约表达",
