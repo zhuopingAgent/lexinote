@@ -26,6 +26,32 @@ const MODE_GUIDANCE: Record<ConversationMode, string> = {
     "无论用户使用中文还是日语提问，都必须用简洁中文解释其询问的日语词汇、固定表达或语法；日语只用于目标形式和例句，不要用日语撰写讲解正文。",
 };
 
+const JAPANESE_KANA_PATTERN = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const HAN_CHARACTER_PATTERN = /\p{Script=Han}/u;
+const EXPLICIT_TASK_PATTERN =
+  /(?:请|請|帮我|幫我|麻烦|麻煩).{0,12}(?:翻译|翻譯|润色|潤色|纠错|糾錯|解释|解釋)|(?:这句|這句).{0,12}(?:有问题|有問題|润色|潤色|纠错|糾錯)|(?:是什么意思|是什麼意思|为什么|為什麼|怎么理解|怎麼理解|请用中文|請用中文|请用日语|請用日語)/u;
+
+function buildCurrentTurnDirective(
+  mode: ConversationMode,
+  currentUserContent?: string
+) {
+  if (mode !== "auto" || !currentUserContent?.trim()) {
+    return "";
+  }
+
+  const content = currentUserContent.trim();
+  if (EXPLICIT_TASK_PATTERN.test(content)) {
+    return "当前输入含有明确任务指令。只执行当前输入要求的翻译、润色、纠错或讲解任务；不得沿用上一轮的任务方向。";
+  }
+  if (JAPANESE_KANA_PATTERN.test(content)) {
+    return "当前输入是日语。核心结果必须是中文翻译；不得因为上一轮是中译日而继续输出日语改写。";
+  }
+  if (HAN_CHARACTER_PATTERN.test(content)) {
+    return "当前输入是完整中文。核心结果必须是日语翻译；禁止返回中文释义、中文改写或中文复述，不得沿用上一轮的日译中方向。";
+  }
+  return "";
+}
+
 function formatMemories(memories: ConversationMemory[]) {
   return memories.length > 0
     ? memories.map((memory) => `- ${memory.content}`).join("\n")
@@ -65,15 +91,22 @@ export function buildConversationSystemPrompt(input: {
   sessionMemories: ConversationMemory[];
   summary: string;
   grammarReferences?: ConversationGrammarPromptReference[];
+  currentUserContent?: string;
 }) {
   const modeSpecificRequirement =
     input.mode === "explain_ja"
       ? "\n9. 当前是用法讲解模式：栏目标题、定义、接续说明、用法差异和要点必须使用中文。禁止使用「意味」「接続」「ポイント」等日文栏目标题；日语只能出现在目标形式和例句中。"
       : "";
+  const currentTurnDirective = buildCurrentTurnDirective(
+    input.mode,
+    input.currentUserContent
+  );
   return `你是 LexiNote 的中日语言学习助手，服务对象是中文母语的日语学习者。
 
 当前任务模式：${input.mode}
 任务规则：${MODE_GUIDANCE[input.mode]}
+当前轮强制路由（优先级高于历史消息、摘要、记忆和上一轮任务方向）：
+${currentTurnDirective || "无；按当前任务模式处理。"}
 默认语体：${input.preferences.defaultRegister}
 翻译风格：自然译文优先
 

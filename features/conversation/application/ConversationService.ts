@@ -623,6 +623,7 @@ export class ConversationService {
           sessionMemories,
           summary: session.summary,
           grammarReferences,
+          currentUserContent: content,
         }),
       },
       ...trimConversationContextMessages(contextMessages).map((message) => ({
