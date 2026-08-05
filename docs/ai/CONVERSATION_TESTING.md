@@ -43,7 +43,7 @@ Run repository and schema tests against a disposable PostgreSQL database for beh
 - session/user isolation and deletion retention rules;
 - message and analysis idempotency constraints;
 - lease fencing after stale reclaim;
-- concurrent completion of two revisions for one message;
+- concurrent completion of two revisions for one message in both completion orders;
 - message-before-analysis lock ordering and deadlock absence;
 - atomic `summary_through_at` plus memory suggestion writes;
 - context queries ending at the triggering message;

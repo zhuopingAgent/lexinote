@@ -527,7 +527,7 @@ export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
     FOR UPDATE OF message
   ),
   target_analysis AS (
-    SELECT id, message_id
+    SELECT id, message_id, revision
     FROM conversation_analyses
     WHERE id = $1::uuid
       AND user_id = $2::uuid
@@ -536,11 +536,24 @@ export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
       AND message_id IN (SELECT id FROM locked_message)
     FOR UPDATE
   ),
-  dismissed_items AS (
+  winning_target AS (
+    SELECT target.id, target.message_id, target.revision
+    FROM target_analysis target
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM conversation_analyses current_analysis
+      WHERE current_analysis.user_id = $2::uuid
+        AND current_analysis.message_id = target.message_id
+        AND current_analysis.status = 'completed'
+        AND current_analysis.is_current
+        AND current_analysis.revision > target.revision
+    )
+  ),
+  dismissed_superseded_items AS (
     UPDATE conversation_learning_items
     SET status = 'dismissed', updated_at = NOW()
     WHERE user_id = $2::uuid
-      AND source_message_id IN (SELECT message_id FROM target_analysis)
+      AND source_message_id IN (SELECT message_id FROM winning_target)
       AND analysis_id IS DISTINCT FROM $1::uuid
       AND status IN ('suggested', 'needs_review')
       AND (
@@ -554,20 +567,30 @@ export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
       )
     RETURNING id
   ),
+  dismissed_stale_target_items AS (
+    UPDATE conversation_learning_items
+    SET status = 'dismissed', updated_at = NOW()
+    WHERE user_id = $2::uuid
+      AND analysis_id IN (SELECT id FROM target_analysis)
+      AND NOT EXISTS (SELECT 1 FROM winning_target)
+      AND status IN ('suggested', 'needs_review')
+    RETURNING id
+  ),
   superseded_analyses AS (
     UPDATE conversation_analyses
     SET is_current = FALSE, updated_at = NOW()
     WHERE user_id = $2::uuid
-      AND message_id IN (SELECT message_id FROM target_analysis)
+      AND message_id IN (SELECT message_id FROM winning_target)
       AND id <> $1::uuid
       AND is_current
+      AND revision < (SELECT revision FROM winning_target)
     RETURNING id
   ),
   completed_analysis AS (
   UPDATE conversation_analyses
   SET status = 'completed',
       overview = $4::text,
-      is_current = TRUE,
+      is_current = EXISTS (SELECT 1 FROM winning_target),
       error_code = NULL,
       error_message = NULL,
       completed_at = NOW(),
@@ -576,7 +599,8 @@ export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
     AND user_id = $2::uuid
     AND status = 'running'
     AND lease_token = $3::uuid
-    AND (SELECT COUNT(*) FROM dismissed_items) >= 0
+    AND (SELECT COUNT(*) FROM dismissed_superseded_items) >= 0
+    AND (SELECT COUNT(*) FROM dismissed_stale_target_items) >= 0
     AND (SELECT COUNT(*) FROM superseded_analyses) >= 0
   RETURNING ${ANALYSIS_COLUMNS}
   )

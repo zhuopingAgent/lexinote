@@ -37,10 +37,16 @@ const ASSISTANT_MESSAGE_ID = "c3000000-0000-4000-8000-000000000001";
 const STREAMING_MESSAGE_ID = "c3000000-0000-4000-8000-000000000002";
 const ANALYSIS_A_ID = "c4000000-0000-4000-8000-000000000001";
 const ANALYSIS_B_ID = "c4000000-0000-4000-8000-000000000002";
+const ANALYSIS_C_ID = "c4000000-0000-4000-8000-000000000003";
+const ANALYSIS_D_ID = "c4000000-0000-4000-8000-000000000004";
 const ITEM_A_ID = "c5000000-0000-4000-8000-000000000001";
 const ITEM_B_ID = "c5000000-0000-4000-8000-000000000002";
+const ITEM_C_ID = "c5000000-0000-4000-8000-000000000003";
+const ITEM_D_ID = "c5000000-0000-4000-8000-000000000004";
 const LEASE_A = "ca000000-0000-4000-8000-000000000001";
 const LEASE_B = "ca000000-0000-4000-8000-000000000002";
+const LEASE_C = "ca000000-0000-4000-8000-000000000003";
+const LEASE_D = "ca000000-0000-4000-8000-000000000004";
 
 test("conversation persistence serializes competing analysis revisions", async () => {
   const connectionString = process.env.E2E_DATABASE_URL;
@@ -263,6 +269,105 @@ test("conversation persistence serializes competing analysis revisions", async (
     expect(items.rows).toEqual([
       { id: ITEM_A_ID, status: "dismissed" },
       { id: ITEM_B_ID, status: "suggested" },
+    ]);
+
+    await pool.query(
+      `
+        INSERT INTO conversation_analyses (
+          id, user_id, session_id, message_id, client_analysis_id,
+          focus, status, lease_token
+        ) VALUES
+          ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'analysis-c', 'all', 'running', $6::uuid),
+          ($5::uuid, $2::uuid, $3::uuid, $4::uuid, 'analysis-d', 'all', 'running', $7::uuid)
+      `,
+      [
+        ANALYSIS_C_ID,
+        USER_ID,
+        SESSION_ID,
+        ASSISTANT_MESSAGE_ID,
+        ANALYSIS_D_ID,
+        LEASE_C,
+        LEASE_D,
+      ]
+    );
+    await pool.query(
+      `
+        INSERT INTO conversation_learning_items (
+          id, user_id, session_id, source_message_id, analysis_id,
+          kind, surface_form, meaning_zh, explanation_zh, source_excerpt, status
+        ) VALUES
+          ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'grammar', '〜てみる', '尝试', '版本 C', '試してみます', 'suggested'),
+          ($6::uuid, $2::uuid, $3::uuid, $4::uuid, $7::uuid,
+           'grammar', '〜てみる', '尝试', '版本 D', '試してみます', 'suggested')
+      `,
+      [
+        ITEM_C_ID,
+        USER_ID,
+        SESSION_ID,
+        ASSISTANT_MESSAGE_ID,
+        ANALYSIS_C_ID,
+        ITEM_D_ID,
+        ANALYSIS_D_ID,
+      ]
+    );
+
+    await first.query("BEGIN");
+    await first.query(LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL, [
+      ANALYSIS_D_ID,
+      USER_ID,
+      LEASE_D,
+    ]);
+    await first.query(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL, [
+      ANALYSIS_D_ID,
+      USER_ID,
+      LEASE_D,
+      "版本 D",
+    ]);
+    await first.query("COMMIT");
+
+    await second.query("BEGIN");
+    await second.query(LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL, [
+      ANALYSIS_C_ID,
+      USER_ID,
+      LEASE_C,
+    ]);
+    const staleCompletion = await second.query<{ is_current: boolean }>(
+      COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
+      [ANALYSIS_C_ID, USER_ID, LEASE_C, "版本 C"]
+    );
+    await second.query("COMMIT");
+    expect(staleCompletion.rows[0]?.is_current).toBe(false);
+
+    const reverseOrderAnalyses = await pool.query<{
+      id: string;
+      is_current: boolean;
+    }>(
+      `
+        SELECT id::text, is_current
+        FROM conversation_analyses
+        WHERE id IN ($1::uuid, $2::uuid)
+        ORDER BY id
+      `,
+      [ANALYSIS_C_ID, ANALYSIS_D_ID]
+    );
+    expect(reverseOrderAnalyses.rows).toEqual([
+      { id: ANALYSIS_C_ID, is_current: false },
+      { id: ANALYSIS_D_ID, is_current: true },
+    ]);
+
+    const reverseOrderItems = await pool.query<{ id: string; status: string }>(
+      `
+        SELECT id::text, status
+        FROM conversation_learning_items
+        WHERE id IN ($1::uuid, $2::uuid)
+        ORDER BY id
+      `,
+      [ITEM_C_ID, ITEM_D_ID]
+    );
+    expect(reverseOrderItems.rows).toEqual([
+      { id: ITEM_C_ID, status: "dismissed" },
+      { id: ITEM_D_ID, status: "suggested" },
     ]);
   } finally {
     await first.query("ROLLBACK").catch(() => undefined);

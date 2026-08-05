@@ -325,7 +325,15 @@ export class ConversationAnalysisService {
         overview: output.overview,
       });
       if (!completed) throw new ConversationAnalysisLeaseLostError();
-      return { analysis: completed, learningItems };
+      return {
+        analysis: completed,
+        learningItems: completed.isCurrent
+          ? learningItems
+          : await this.store.listLearningItemsByAnalysis(
+              completed.id,
+              input.userId
+            ),
+      };
     } catch (error) {
       await this.store.failAnalysisRecord({
         analysisId: input.lease.analysis.id,

@@ -144,6 +144,15 @@ describe("conversation schema and persistence semantics", () => {
     expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
       "previous.status IN ('completed', 'failed')"
     );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "current_analysis.revision > target.revision"
+    );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "dismissed_stale_target_items AS"
+    );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "is_current = EXISTS (SELECT 1 FROM winning_target)"
+    );
     expect(LIST_CONVERSATION_ANALYSES_SQL).toContain("PARTITION BY message_id");
     expect(LIST_CONVERSATION_ANALYSES_SQL).toContain(
       "is_current OR latest_rank = 1"

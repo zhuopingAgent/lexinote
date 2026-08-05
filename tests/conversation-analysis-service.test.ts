@@ -225,6 +225,47 @@ describe("ConversationAnalysisService", () => {
     expect(insertLearningItem).toHaveBeenCalledOnce();
   });
 
+  it("reloads candidates when an older revision loses to a newer current analysis", async () => {
+    const inserted = makeConversationLearningItem({ status: "suggested" });
+    const dismissed = { ...inserted, status: "dismissed" as const };
+    const listLearningItemsByAnalysis = vi
+      .fn()
+      .mockResolvedValue([dismissed]);
+    const service = new ConversationAnalysisService(
+      createConversationStore({
+        findMessage: vi.fn(findTurnMessage),
+        createAnalysisLease: vi.fn().mockResolvedValue({
+          analysis: makeConversationAnalysis(),
+          leaseToken: LEASE_TOKEN,
+        }),
+        insertLearningItem: vi.fn().mockResolvedValue(inserted),
+        completeAnalysisRecord: vi.fn().mockResolvedValue(
+          makeConversationAnalysis({
+            status: "completed",
+            isCurrent: false,
+          })
+        ),
+        listLearningItemsByAnalysis,
+      }),
+      createConversationAi({ analyze: vi.fn().mockResolvedValue(analysisOutput()) }),
+      createConversationGrammar(),
+      () => LEASE_TOKEN
+    );
+
+    const result = await service.analyzeMessage(
+      TEST_SESSION_ID,
+      TEST_ASSISTANT_MESSAGE_ID,
+      { clientAnalysisId: "analysis-stale-revision", focus: "grammar" }
+    );
+
+    expect(result.analysis.isCurrent).toBe(false);
+    expect(result.learningItems).toEqual([dismissed]);
+    expect(listLearningItemsByAnalysis).toHaveBeenCalledWith(
+      TEST_ANALYSIS_ID,
+      expect.any(String)
+    );
+  });
+
   it("cannot let a stale worker complete or fail a reclaimed analysis", async () => {
     const failAnalysisRecord = vi.fn().mockResolvedValue(null);
     const service = new ConversationAnalysisService(
