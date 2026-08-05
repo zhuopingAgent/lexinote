@@ -30,26 +30,57 @@ const JAPANESE_KANA_PATTERN = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const HAN_CHARACTER_PATTERN = /\p{Script=Han}/u;
 const EXPLICIT_TASK_PATTERN =
   /(?:请|請|帮我|幫我|麻烦|麻煩).{0,12}(?:翻译|翻譯|润色|潤色|纠错|糾錯|解释|解釋)|(?:这句|這句).{0,12}(?:有问题|有問題|润色|潤色|纠错|糾錯)|(?:是什么意思|是什麼意思|为什么|為什麼|怎么理解|怎麼理解|请用中文|請用中文|请用日语|請用日語)/u;
+const FIRST_PERSON_PERMISSION_UNCERTAINTY_PATTERN =
+  /(?:我|我们|我們|本人|我方).{0,80}(?:不确定|不確定|不知道|不清楚|想确认|想確認).{0,20}(?:能否|是否可以|可不可以)/u;
+
+function isChineseToJapaneseTurn(
+  mode: ConversationMode,
+  content: string
+) {
+  return (
+    mode === "zh_to_ja" ||
+    (mode === "auto" &&
+      HAN_CHARACTER_PATTERN.test(content) &&
+      !JAPANESE_KANA_PATTERN.test(content))
+  );
+}
 
 function buildCurrentTurnDirective(
   mode: ConversationMode,
   currentUserContent?: string
 ) {
-  if (mode !== "auto" || !currentUserContent?.trim()) {
+  if (!currentUserContent?.trim()) {
     return "";
   }
 
   const content = currentUserContent.trim();
-  if (EXPLICIT_TASK_PATTERN.test(content)) {
-    return "当前输入含有明确任务指令。只执行当前输入要求的翻译、润色、纠错或讲解任务；不得沿用上一轮的任务方向。";
+  const directives: string[] = [];
+  if (mode === "auto") {
+    if (EXPLICIT_TASK_PATTERN.test(content)) {
+      directives.push(
+        "当前输入含有明确任务指令。只执行当前输入要求的翻译、润色、纠错或讲解任务；不得沿用上一轮的任务方向。"
+      );
+    } else if (JAPANESE_KANA_PATTERN.test(content)) {
+      directives.push(
+        "当前输入是日语。核心结果必须是中文翻译；不得因为上一轮是中译日而继续输出日语改写。"
+      );
+    } else if (HAN_CHARACTER_PATTERN.test(content)) {
+      directives.push(
+        "当前输入是完整中文。核心结果必须是日语翻译；禁止返回中文释义、中文改写或中文复述，不得沿用上一轮的日译中方向。"
+      );
+    }
   }
-  if (JAPANESE_KANA_PATTERN.test(content)) {
-    return "当前输入是日语。核心结果必须是中文翻译；不得因为上一轮是中译日而继续输出日语改写。";
+
+  if (
+    isChineseToJapaneseTurn(mode, content) &&
+    FIRST_PERSON_PERMISSION_UNCERTAINTY_PATTERN.test(content)
+  ) {
+    directives.push(
+      "当前输入包含己方尚未确认的许可事项。每个“不确定/不知道自己能否做”的事项都必须转换为工作人员可直接回答的独立许可问句，并使用「〜てもよろしいでしょうか」。禁止译成「〜かどうかわかりません」「できるかどうか」「〜てもよいかどうか」等间接陈述。原文已明确允许的事项只写成「〜は可能ですが」等客观事实，不要改成问句。把原文已有的确认意图改成直接许可问句不属于添加新请求。"
+    );
   }
-  if (HAN_CHARACTER_PATTERN.test(content)) {
-    return "当前输入是完整中文。核心结果必须是日语翻译；禁止返回中文释义、中文改写或中文复述，不得沿用上一轮的日译中方向。";
-  }
-  return "";
+
+  return directives.join("\n");
 }
 
 function formatMemories(memories: ConversationMemory[]) {
@@ -127,7 +158,7 @@ ${formatGrammarReferences(input.grammarReferences ?? [])}
 2. 默认使用中文解释；日语译文保持自然，并根据场景选择合适语体。
 3. 不输出词汇候选、记忆建议或数据库操作，这些由后续分析完成。
 4. 不声称已经保存任何词汇、语法或记忆。
-5. 翻译任务默认只给主要译文，不主动改写原句、不把其他说法称为“更自然”，也不在结尾追问；不得添加原文没有的请求、建议、结论或下一步，自然化只能调整语序、语体和主语省略；只有存在会误导用户的重要歧义时才补一句说明。
+5. 翻译任务默认只给主要译文，不主动改写原句、不把其他说法称为“更自然”，也不在结尾追问；不得添加原文没有的请求、建议、结论或下一步，自然化只能调整语序、语体和主语省略；把原文已经表达的确认、请求或许可意图转换成目标语言中可直接使用的问句不属于添加内容，必须保留其沟通功能；只有存在会误导用户的重要歧义时才补一句说明。
 6. 使用纯文本，不输出 HTML 或 Markdown；禁止输出 **、__、反引号等格式标记，可以使用简短换行。
 7. 有语法库参考时，含义、接续和例句必须以参考为准，不得生成与参考冲突的形式；不确定时少举例，不要编造。
 8. 用户询问「某词は中国語で何と言いますか」时，核心译法、解释和补充说明必须全部使用中文；日语只能保留被询问的词本身，不能用「〜と言います」「文脈によって」等日语句子回答。${modeSpecificRequirement}`;
