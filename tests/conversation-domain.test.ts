@@ -101,6 +101,8 @@ describe("conversation domain", () => {
     expect(prompt).toContain("正在准备预约变更邮件");
     expect(prompt).toContain("不声称已经保存");
     expect(prompt).toContain("不在结尾追问");
+    expect(prompt).toContain("不得添加原文没有的请求、建议、结论或下一步");
+    expect(prompt).toContain("不能说号码本身没有「アクセス権」");
     expect(prompt).toContain("甘いものが嫌いなわけではありません");
     expect(prompt).toContain("禁止输出 **");
     expect(prompt).toContain("核心译法、解释和补充说明必须全部使用中文");
@@ -154,6 +156,7 @@ describe("conversation domain", () => {
     expect(autoPrompt).toContain("不能误译成中国户口簿");
     expect(autoPrompt).toContain("涉及过敏、症状或安全确认");
     expect(autoPrompt).toContain("花生使用「ピーナッツ」或「落花生」");
+    expect(autoPrompt).toContain("その電話番号を利用できません");
   });
 
   it("limits structured learning extraction to the current turn", () => {
@@ -167,8 +170,9 @@ describe("conversation domain", () => {
     expect(prompt).toContain("当前一轮：");
     expect(prompt).toContain("学习项只从“当前一轮”提取");
     expect(prompt).toContain("不要从此前摘要重新提取");
-    expect(prompt).toContain("試してみます");
-    expect(prompt).toContain("〜てみる");
+    expect(prompt).not.toContain("試してみます");
+    expect(prompt).toContain("补助动词和复合语法结构");
+    expect(prompt).toContain("实际文字中得到直接支持");
     expect(prompt).toContain("同一个语言现象只选一个 kind");
     expect(prompt).toContain("不要收集助手给出的普通改写");
     expect(prompt).toContain("memories 不是对话摘要");
@@ -1345,6 +1349,46 @@ describe("conversation domain", () => {
       "这次对话对象是医院前台",
       "偏好简洁的商务日语",
     ]);
+  });
+
+  it("rejects a grammar candidate copied from context without source evidence", () => {
+    const sourceExcerpt =
+      "このアカウントにログインできません。パスワードをリセットするには、登録済みのメールアドレスと携帯電話番号が必要です。";
+    const analysis = {
+      title: null,
+      summary: "账户登录翻译。",
+      details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
+      memories: [],
+      learningItems: [
+        {
+          kind: "grammar" as const,
+          surfaceForm: "〜てみる",
+          reading: null,
+          meaningZh: "试着……",
+          explanationZh: "表示尝试。",
+          sourceExcerpt,
+        },
+      ],
+    };
+
+    const rejected = validateConversationAnalysisReferences(analysis, [
+      { content: sourceExcerpt },
+    ]);
+    expect(rejected.learningItems).toEqual([]);
+
+    const supported = validateConversationAnalysisReferences(
+      {
+        ...analysis,
+        learningItems: [
+          {
+            ...analysis.learningItems[0],
+            sourceExcerpt: "試してみます",
+          },
+        ],
+      },
+      [{ content: "試してみます" }]
+    );
+    expect(supported.learningItems).toHaveLength(1);
   });
 
   it("prefers exact grammar forms while retaining true exact polysemy", () => {

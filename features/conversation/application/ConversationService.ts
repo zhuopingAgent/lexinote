@@ -791,6 +791,15 @@ export class ConversationService {
           conversationLearningItemKey(item.kind, item.surfaceForm, item.meaningZh)
         )
       );
+      const grammarPointIds = new Set(
+        existingLearningItems.flatMap((item) => {
+          if (item.kind !== "grammar") return [];
+          if (item.grammarPointId) return [item.grammarPointId];
+          return item.grammarCandidates.length === 1
+            ? [item.grammarCandidates[0].grammarPointId]
+            : [];
+        })
+      );
       const memories = [];
       for (const memory of analysis.memories) {
         const key = memory.content.trim().toLowerCase();
@@ -835,6 +844,19 @@ export class ConversationService {
               coreMeaning: candidate.coreMeaning,
             }))
           );
+          const resolvedGrammarPointId =
+            grammarCandidates.length === 1
+              ? grammarCandidates[0].grammarPointId
+              : null;
+          if (
+            resolvedGrammarPointId &&
+            grammarPointIds.has(resolvedGrammarPointId)
+          ) {
+            continue;
+          }
+          if (resolvedGrammarPointId) {
+            grammarPointIds.add(resolvedGrammarPointId);
+          }
         }
         learningItems.push(
           await this.repository.insertLearningItem({
