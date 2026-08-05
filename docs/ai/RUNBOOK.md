@@ -118,10 +118,22 @@
   `npm run test`
 - E2E test:
   `npm run test:e2e`
+- Conversation Agent soak test:
+  `npm run test:soak:conversation`
 - Production build:
   `npm run build`
 - Start production server:
   `npm run start`
+
+## Conversation Agent Soak
+
+- The runner executes 100 stateful sessions by default, with three real conversation turns per session, structured analysis after every answer, a separate model judge, and database invariant checks. It writes JSON and Markdown reports under `output/conversation-agent-soak/`.
+- Required variables are `SOAK_BASE_URL`, `SOAK_DATABASE_URL`, `SOAK_AI_GATEWAY_API_KEY`, and the explicit write guard `SOAK_ALLOW_PRODUCTION_WRITES=1`.
+- Protected deployments can receive an existing `Authorization` header through `SOAK_HTTP_AUTHORIZATION` and an authenticated session cookie through `SOAK_HTTP_COOKIE`. Treat both as secrets and never place them in reports or commit them.
+- `SOAK_SESSION_COUNT`, `SOAK_CONCURRENCY`, `SOAK_PROMOTION_LIMIT`, `SOAK_CLEANUP`, `SOAK_RUN_LABEL`, and `SOAK_OUTPUT_DIR` are optional. Concurrency defaults to `1`, promotions default to disabled, and cleanup defaults to enabled.
+- Production runs create clearly prefixed temporary sessions and one temporary collection. Cleanup removes those records through application APIs; promoted dictionary and review data intentionally survives session deletion, so keep `SOAK_PROMOTION_LIMIT=0` unless persistence is part of the test.
+- A 100-session run uses about 700 model calls: 300 streamed answers, 300 analyses, and 100 session judges. The AI Gateway free tier is not sufficient for a prompt run and will return `429`; provision paid credits or deliberately throttle the run before starting.
+- Take a production database snapshot before a live run and audit the cleanup report afterward. Never truncate or reset shared production tables for this test.
 
 ## Common Issues
 
