@@ -719,7 +719,7 @@ describe("ConversationService", () => {
     expect(repository.failAnalysis).not.toHaveBeenCalled();
   });
 
-  it("does not extract an unresolved learning item from an earlier turn again", async () => {
+  it("deduplicates the same resolved grammar sense across turns", async () => {
     const historicalAssistant = message({
       id: "77777777-7777-4777-8777-777777777777",
       role: "assistant",
@@ -739,7 +739,15 @@ describe("ConversationService", () => {
       explanationZh: "礼貌请求",
       sourceExcerpt: "変更していただけますか",
       status: "suggested" as const,
-      grammarCandidates: [],
+      grammarCandidates: [
+        {
+          grammarPointId: "55555555-5555-4555-8555-555555555555",
+          grammarPoint: "〜ていただけますか",
+          canonicalForm: "〜ていただけますか",
+          senseKey: "request_te_itadakemasu_ka",
+          coreMeaning: "礼貌请求对方做某事",
+        },
+      ],
       wordId: null,
       grammarPointId: null,
       collectionId: null,
@@ -782,14 +790,26 @@ describe("ConversationService", () => {
             kind: "grammar",
             surfaceForm: "～ていただけますか",
             reading: null,
-            meaningZh: "可以请您……吗",
+            meaningZh: "礼貌地请求对方做某事",
             explanationZh: "礼貌请求",
             sourceExcerpt: "変更していただけますか",
           },
         ],
       }),
     };
-    const grammarLearningService = { searchGrammarPoints: vi.fn() };
+    const grammarLearningService = {
+      searchGrammarPoints: vi.fn().mockResolvedValue({
+        items: [
+          {
+            id: "55555555-5555-4555-8555-555555555555",
+            grammarPoint: "〜ていただけますか",
+            canonicalForm: "〜ていただけますか",
+            senseKey: "request_te_itadakemasu_ka",
+            coreMeaning: "礼貌请求对方做某事",
+          },
+        ],
+      }),
+    };
     const service = new ConversationService(
       repository as never,
       aiClient as never,
@@ -804,7 +824,7 @@ describe("ConversationService", () => {
 
     expect(result.learningItems).toEqual([]);
     expect(repository.insertLearningItem).not.toHaveBeenCalled();
-    expect(grammarLearningService.searchGrammarPoints).not.toHaveBeenCalled();
+    expect(grammarLearningService.searchGrammarPoints).toHaveBeenCalledTimes(1);
     expect(aiClient.analyze).toHaveBeenCalledWith({
       session,
       messages: [userMessage, completedAssistant],

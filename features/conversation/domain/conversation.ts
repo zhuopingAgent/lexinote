@@ -410,9 +410,39 @@ export function validateConversationAnalysisReferences(
     learningItems: analysis.learningItems.filter(
       (item) =>
         Boolean(item.sourceExcerpt) &&
-        sourceTexts.some((content) => content.includes(item.sourceExcerpt))
+        sourceTexts.some((content) => content.includes(item.sourceExcerpt)) &&
+        (item.kind !== "grammar" ||
+          grammarFormHasSourceEvidence(item.surfaceForm, item.sourceExcerpt))
     ),
   };
+}
+
+function grammarFormHasSourceEvidence(
+  surfaceForm: string,
+  sourceExcerpt: string
+) {
+  const grammarForm = normalizeGrammarForm(surfaceForm)
+    .normalize("NFKC")
+    .replace(/\s+/g, "");
+  const source = sourceExcerpt.normalize("NFKC").replace(/\s+/g, "");
+  if (!grammarForm || !source) return false;
+  if (source.includes(grammarForm)) return true;
+
+  const evidenceLength = grammarForm.length <= 3 ? 2 : 3;
+  if (grammarForm.length < evidenceLength) {
+    return source.includes(grammarForm);
+  }
+  for (let index = 0; index <= grammarForm.length - evidenceLength; index += 1) {
+    const fragment = grammarForm.slice(index, index + evidenceLength);
+    if (
+      /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u.test(
+        fragment
+      ) && source.includes(fragment)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 type HighConfidenceGrammarPattern = {
