@@ -95,6 +95,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("准确判断请求中的动作主体");
     expect(prompt).toContain("只有询问自己或己方是否可以执行时");
     expect(prompt).toContain("不能只陈述「わかりません」");
+    expect(prompt).toContain("禁止把「〜てもよろしいです」当作自己批准自己的陈述");
     expect(prompt).toContain("禁止直译成「状況を注意して見る」");
     expect(prompt).toContain("默认语体：business");
     expect(prompt).toContain("优先给自然商务表达");
