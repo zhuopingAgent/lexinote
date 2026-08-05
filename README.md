@@ -1,5 +1,6 @@
 LexiNote is a small Next.js monolith for Japanese word lookup, local dictionary
-storage, grammar learning, collections, and Chinese/Japanese conversation study.
+storage, grammar learning, collections, and general conversation with optional
+Japanese learning analysis.
 
 ## Local Setup
 
@@ -44,7 +45,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 `AI_GATEWAY_API_KEY` is optional for local development. In Vercel deployments, the app can use Vercel's project-scoped `VERCEL_OIDC_TOKEN` instead. If neither credential is available, local dictionary hits still work, but AI-generated examples and AI auto-filtering are unavailable or fall back.
 Conversation history, preferences, and memory remain available without Gateway
-credentials, but sending is disabled because conversation translation has no
+credentials, but sending is disabled because conversation generation has no
 fabricated local fallback.
 
 AI requests go through Vercel AI Gateway at `AI_GATEWAY_BASE_URL`, which defaults to `https://ai-gateway.vercel.sh/v1`. The canonical model roles are:
@@ -60,7 +61,7 @@ not call provider API endpoints directly; all model requests use the configured
 AI Gateway base URL.
 
 Current text workflows use `cheap` for normalization, incremental collection
-classification, and conversation analysis; `defaultTeacher` for entry/practice
+classification, conversation maintenance, and requested learning analysis; `defaultTeacher` for entry/practice
 generation, collection backfills, and conversation replies; and `premiumTeacher`
 for reconciliation and sentence feedback.
 `longContext` and `speech` are reserved roles for future large-context and

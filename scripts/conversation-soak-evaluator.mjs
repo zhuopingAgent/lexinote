@@ -41,9 +41,13 @@ export function evaluateConversationSoakResult(testCase, result) {
 
   const assistant = result.assistantMessage;
   const analysis = result.analysis;
+  const maintenance = result.maintenance ?? {
+    session: analysis?.session,
+    memories: analysis?.memories,
+  };
   const content = assistant?.content?.trim() ?? "";
   const learningItems = analysis?.learningItems ?? [];
-  const memories = analysis?.memories ?? [];
+  const memories = maintenance?.memories ?? [];
 
   if (assistant?.status !== "completed") {
     issues.push(issue("assistant_not_completed", `assistant status: ${assistant?.status ?? "missing"}`));
@@ -51,13 +55,15 @@ export function evaluateConversationSoakResult(testCase, result) {
   if (!content) issues.push(issue("empty_response", "assistant response is empty"));
   if (content.length > 8_000) issues.push(issue("response_too_long", "assistant response exceeds 8,000 characters"));
   if (MARKDOWN_PATTERN.test(content)) issues.push(issue("formatted_response", "assistant response contains forbidden Markdown or HTML"));
-  if (analysis?.message?.analysisStatus !== "completed") {
-    issues.push(issue("analysis_not_completed", `analysis status: ${analysis?.message?.analysisStatus ?? "missing"}`));
+  const analysisStatus =
+    analysis?.analysis?.status ?? analysis?.message?.analysisStatus;
+  if (analysisStatus !== "completed") {
+    issues.push(issue("analysis_not_completed", `analysis status: ${analysisStatus ?? "missing"}`));
   }
-  if (!analysis?.session?.title || analysis.session.title === "新对话") {
-    issues.push(issue("missing_title", "first analysis did not produce a useful title", "warning"));
+  if (!maintenance?.session?.title || maintenance.session.title === "新对话") {
+    issues.push(issue("missing_title", "session maintenance did not produce a useful title", "warning"));
   }
-  if (META_SUMMARY_PATTERN.test(analysis?.session?.summary ?? "")) {
+  if (META_SUMMARY_PATTERN.test(maintenance?.session?.summary ?? "")) {
     issues.push(issue("meta_summary", "summary contains extraction metadata"));
   }
   if (memories.length > 0) {

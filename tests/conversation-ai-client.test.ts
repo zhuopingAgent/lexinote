@@ -13,6 +13,7 @@ const session: ConversationSession = {
   title: "新对话",
   mode: "auto",
   summary: "",
+  summaryThroughAt: null,
   titleIsManual: false,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -70,14 +71,7 @@ describe("conversation AI model fallbacks", () => {
   it("uses inexpensive fallbacks for structured analysis", async () => {
     const structuredRequester = vi.fn().mockResolvedValue(
       JSON.stringify({
-        title: "尝试",
-        summary: "用户表示会尝试。",
-        details: {
-          literal_translation: null,
-          nuance_notes: [],
-          key_points: [],
-        },
-        memories: [],
+        overview: "重点是尝试表达。",
         learning_items: [],
       })
     );
@@ -86,7 +80,12 @@ describe("conversation AI model fallbacks", () => {
       structuredRequester as never
     );
 
-    await client.analyze({ session, messages: [message] });
+    await client.analyze({
+      session,
+      messages: [message],
+      focus: "grammar",
+      instruction: "只看尝试表达",
+    });
 
     expect(structuredRequester).toHaveBeenCalledWith(
       expect.any(Object),

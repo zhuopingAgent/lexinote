@@ -210,7 +210,8 @@ export function ConversationSettingsDrawer({
             <h3 className="text-xs font-semibold uppercase text-muted">回答偏好</h3>
             <label className="mt-3 block text-xs text-muted" htmlFor="conversation-default-mode">默认模式</label>
             <select id="conversation-default-mode" value={preferences.defaultMode} onChange={(event) => void savePreferences({ defaultMode: event.target.value as ConversationPreferences["defaultMode"] })} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
-              <option value="auto">自动识别</option>
+              <option value="chat">通用对话</option>
+              <option value="auto">中日自动</option>
               <option value="zh_to_ja">中译日</option>
               <option value="ja_to_zh">日译中</option>
               <option value="polish_ja">日语润色</option>

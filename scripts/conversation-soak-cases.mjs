@@ -1,6 +1,28 @@
 import { ADDITIONAL_CONVERSATION_SOAK_CASES_BY_MODE } from "./conversation-soak-cases-additional.mjs";
 
 const baselineCasesByMode = {
+  chat: [
+    ["project-plan", "planning", "我准备在六周内完成一个个人知识库项目，请帮我拆成里程碑，并指出最容易延期的风险。", "zh", ["里程碑", "风险"], null],
+    ["closure-explanation", "programming", "请用一个很小的 JavaScript 例子解释闭包，以及它为什么能访问外层作用域。", "zh", ["闭包", "作用域"], null],
+    ["sql-nosql", "programming", "比较关系型数据库和文档数据库，重点说明事务、一致性和数据结构变化时的取舍。", "zh", ["事务", "一致性"], null],
+    ["article-outline", "writing", "我要写一篇关于远程办公效率的短文，请给出一个包含论点、反例和结论的提纲。", "zh", ["论点", "结论"], null],
+    ["argument-review", "reasoning", "有人说一家公司允许弹性上班后利润增长，所以利润增长一定由弹性上班造成。请分析这个推理的问题。", "zh", ["因果", "相关"], null],
+    ["meeting-summary", "workplace", "会议结论是先修复登录故障，再延后一周发布新功能；负责人分别是小王和小李。请整理成简洁行动项。", "zh", ["登录", "负责人"], null],
+    ["product-names", "brainstorming", "为一个帮助自由职业者记录工时和发票的工具想十个中文名称，风格要可靠而不过度活泼。", "zh", ["工时", "发票"], null],
+    ["decision-matrix", "decision", "我在比较两个租房方案：一个通勤短但租金高，另一个安静便宜但通勤长。请给我一个可填写的决策框架。", "zh", ["通勤", "权重"], null],
+    ["complexity", "programming", "为什么在有序数组中二分查找是 O(log n)？请从每一步缩小的搜索范围解释。", "zh", ["一半", "log"], null],
+    ["bayes", "learning", "用体检假阳性的例子直观解释贝叶斯定理，不要只列公式。", "zh", ["先验", "假阳性"], null],
+    ["debugging", "programming", "一个接口偶尔返回重复订单，但日志没有报错。请给出从复现到定位的排查顺序。", "zh", ["幂等", "日志"], null],
+    ["meal-plan", "daily_life", "我工作日晚上只有二十分钟做饭，请安排三天能复用食材、步骤简单的晚餐。", "zh", ["食材", "晚餐"], null],
+    ["interview-practice", "interview", "模拟面试官问我为什么离开上一份工作，并帮我把回答组织得诚实但不抱怨前公司。", "zh", ["成长", "职业"], null],
+    ["study-plan", "learning", "我每天可以学习四十分钟，想在一个月内复习概率论基础。请安排每周目标和自测方式。", "zh", ["每周", "自测"], null],
+    ["rewrite-chinese", "writing", "请把这句话改得专业但不生硬：这个问题你们一直没处理，已经严重影响我们工作了。", "zh", ["影响", "处理"], null],
+    ["remote-tradeoffs", "workplace", "列出完全远程、混合办公和完全到岗三种模式对协作与专注的主要利弊。", "zh", ["协作", "专注"], null],
+    ["fallacy", "reasoning", "“所有成功者都早起，所以只要早起就一定成功”犯了什么逻辑错误？", "zh", ["充分", "必要"], null],
+    ["budget", "planning", "我每月可支配 6000 元，想同时建立应急金、学习预算和旅行基金，请给一个能调整比例的方案。", "zh", ["应急金", "比例"], null],
+    ["realtime-boundary", "travel", "告诉我东京明天逐小时的降雨概率；如果你拿不到实时数据，请明确说明并告诉我应该查哪里。", "zh", ["实时", "天气"], null],
+    ["explicit-translation", "friend_chat", "请把“我先试试看，如果不行再联系你”翻译成自然的日语。", "ja", ["試して", "連絡"], ["grammar", "〜てみる"]],
+  ],
   auto: [
     ["daily-plan", "daily_life", "週末に新しいレシピを試してみます。", "zh", ["周末", "食谱"], ["grammar", "〜てみる"]],
     ["meeting-request", "workplace", "请问可以把明天下午的会议改到下周二下午吗？", "ja", ["来週", "火曜日"], ["grammar", "〜ていただけますか"]],

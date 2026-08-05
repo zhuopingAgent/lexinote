@@ -34,7 +34,7 @@
 - Canonical AI Gateway model roles live in `shared/ai/gateway.ts`: `cheap` is `openai/gpt-5-nano`, `defaultTeacher` is `openai/gpt-4.1-mini`, `premiumTeacher` is `openai/gpt-5-mini`, `longContext` is `alibaba/qwen3.7-plus`, and `speech` is `openai/whisper-1`.
 - These `creator/model` IDs are routed through Vercel AI Gateway. Do not configure direct provider API keys or endpoints. A Gateway `402` means its balance or key budget is exhausted; `429` is rate limiting and must not be presented as a balance error.
 - Current text workflows use `cheap` for normalization and incremental collection classification, `defaultTeacher` for entry/practice generation and collection backfills, and `premiumTeacher` for reconciliation and sentence feedback. `longContext` and `speech` are reserved roles until a large-context or transcription workflow is added.
-- Conversation uses `defaultTeacher` for the streamed learner-facing answer and `cheap` for JSON Schema title, summary, learning-item, and memory analysis.
+- Conversation uses `defaultTeacher` for the streamed answer. Separate `cheap` calls maintain title/summary/memory after a completed turn and run Japanese learning analysis only when the user explicitly requests it.
 - For local AI access, either set `AI_GATEWAY_API_KEY` from Vercel AI Gateway API Keys or run `vercel link && vercel env pull` to obtain a project-scoped `VERCEL_OIDC_TOKEN`. Local OIDC tokens are short-lived, so pull again if they expire.
 - `APP_BASIC_AUTH_PASSWORD` enables Basic Auth for all app routes and APIs. Vercel Production and Preview deployments should set it while local development can leave it empty. `APP_BASIC_AUTH_USERNAME` defaults to `lexinote`.
 - `APP_TWO_FACTOR_TOTP_SECRET` enables the TOTP second factor after Basic Auth. `APP_TWO_FACTOR_COOKIE_SECRET` signs the HttpOnly 2FA session cookie, and `APP_TWO_FACTOR_SESSION_SECONDS` defaults to `43200`.
@@ -83,9 +83,9 @@
 - The same `word_id` can appear only once inside a given collection, no matter whether it is added manually or by AI auto-filtering.
 - `collection_words.source` distinguishes `manual` vs `auto` membership.
 - `auto_filter_jobs` stores asynchronous collection auto-filter work; lookup requests enqueue jobs instead of doing all classification inline.
-- Conversation storage uses `conversation_sessions`, `conversation_messages`, `conversation_preferences`, `conversation_memories`, and `conversation_learning_items`. Apply `shared/db/sql/schema.sql` before deploying `/conversation`; production request handling will not create these tables.
+- Conversation storage uses `conversation_sessions`, `conversation_messages`, `conversation_preferences`, `conversation_memories`, `conversation_analyses`, and `conversation_learning_items`. Apply `shared/db/sql/schema.sql` before deploying `/conversation`; production request handling will not create these tables.
 - A conversation request sends at most 16 recent messages and about 16,000 characters plus a 2,000-character-bounded summary. Only `active` memories are prompt context.
-- Completed conversation answers have an independent analysis state. Use the message-level analysis endpoint to retry `failed` analysis; a stale `running` lease becomes claimable after five minutes.
+- Completed answers start with no learning analysis. `POST /api/conversations/[sessionId]/messages/[messageId]/maintenance` updates internal conversation context, while the sibling `/analysis` endpoint creates a user-directed version with a client idempotency key, focus, and optional instruction. Reusing the same key replays a completed result; failed or five-minute-stale running records can be reclaimed with the same parameters.
 - `auto_filter_jobs` uses bounded retries plus a stale-running lease. API entry points start a lightweight in-process poller so pending or crashed jobs can resume after the app receives traffic.
 - When a stale `collection_sync` job exhausts retries, the recovery SQL also marks the owning collection as `failed` if that job still matches the current auto-filter rule version.
 - Editing auto-filter criteria affects future incremental classification, but rescanning existing words now requires an explicit collection-level AI resync.
@@ -127,12 +127,12 @@
 
 ## Conversation Agent Soak
 
-- The runner executes 100 stateful sessions by default, with three real conversation turns per session, structured analysis after every answer, a separate model judge, and database invariant checks. It writes JSON and Markdown reports under `output/conversation-agent-soak/`.
+- The runner executes 100 stateful sessions by default, with three real conversation turns per session, separate maintenance and explicitly requested learning analysis after every answer, a model judge, and database invariant checks. It writes JSON and Markdown reports under `output/conversation-agent-soak/`.
 - Required variables are `SOAK_BASE_URL`, `SOAK_DATABASE_URL`, `SOAK_AI_GATEWAY_API_KEY`, and the explicit write guard `SOAK_ALLOW_PRODUCTION_WRITES=1`.
 - Protected deployments can receive an existing `Authorization` header through `SOAK_HTTP_AUTHORIZATION` and an authenticated session cookie through `SOAK_HTTP_COOKIE`. Treat both as secrets and never place them in reports or commit them.
 - `SOAK_SESSION_COUNT`, `SOAK_CONCURRENCY`, `SOAK_PROMOTION_LIMIT`, `SOAK_CLEANUP`, `SOAK_RUN_LABEL`, and `SOAK_OUTPUT_DIR` are optional. Concurrency defaults to `1`, promotions default to disabled, and cleanup defaults to enabled.
 - Production runs create clearly prefixed temporary sessions and one temporary collection. Cleanup removes those records through application APIs; promoted dictionary and review data intentionally survives session deletion, so keep `SOAK_PROMOTION_LIMIT=0` unless persistence is part of the test.
-- A 100-session run uses about 700 model calls: 300 streamed answers, 300 analyses, and 100 session judges. The AI Gateway free tier is not sufficient for a prompt run and will return `429`; provision paid credits or deliberately throttle the run before starting.
+- A 100-session run uses about 1,000 model calls: 300 streamed answers, 300 maintenance calls, 300 requested analyses, and 100 session judges. Provision sufficient Gateway credits and deliberately control concurrency before starting.
 - Take a production database snapshot before a live run and audit the cleanup report afterward. Never truncate or reset shared production tables for this test.
 
 ## Common Issues

@@ -3,26 +3,33 @@ import { toIsoString, toNullableIsoString } from "@/shared/db/values";
 import {
   CLAIM_CONVERSATION_ANALYSIS_SQL,
   COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
   COMPLETE_CONVERSATION_ANALYSIS_SQL,
   DELETE_ANALYSIS_SUGGESTIONS_SQL,
   DELETE_CONVERSATION_MEMORY_SQL,
   DELETE_CONVERSATION_SESSION_SQL,
   FAIL_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  FAIL_CONVERSATION_ANALYSIS_RECORD_SQL,
   FAIL_CONVERSATION_ANALYSIS_SQL,
   INSERT_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  INSERT_CONVERSATION_ANALYSIS_SQL,
   INSERT_CONVERSATION_LEARNING_ITEM_SQL,
   INSERT_CONVERSATION_MEMORY_SQL,
   INSERT_CONVERSATION_SESSION_SQL,
   INSERT_USER_CONVERSATION_MESSAGE_SQL,
   LIST_ACTIVE_CONVERSATION_MEMORIES_SQL,
+  LIST_CONVERSATION_ANALYSES_SQL,
   LIST_CONVERSATION_CONTEXT_MESSAGES_SQL,
   LIST_CONVERSATION_LEARNING_ITEMS_SQL,
+  LIST_CONVERSATION_LEARNING_ITEMS_BY_ANALYSIS_SQL,
   LIST_CONVERSATION_MEMORIES_SQL,
   LIST_CONVERSATION_MESSAGES_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
   LIST_CONVERSATION_SESSIONS_SQL,
+  RECLAIM_CONVERSATION_ANALYSIS_SQL,
   RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   SELECT_CONVERSATION_LEARNING_ITEM_SQL,
+  SELECT_CONVERSATION_ANALYSIS_BY_CLIENT_ID_SQL,
   SELECT_CONVERSATION_MEMORY_SQL,
   SELECT_CONVERSATION_MESSAGE_BY_CLIENT_ID_SQL,
   SELECT_CONVERSATION_MESSAGE_SQL,
@@ -37,6 +44,8 @@ import {
   UPSERT_DEFAULT_CONVERSATION_PREFERENCES_SQL,
 } from "@/shared/db/sql/conversation.sql";
 import type {
+  ConversationAnalysis,
+  ConversationAnalysisFocus,
   ConversationAnalysisStatus,
   ConversationGrammarCandidate,
   ConversationLearningItem,
@@ -61,9 +70,28 @@ type SessionRow = {
   title: string;
   mode: ConversationMode;
   summary: string;
+  summary_through_at: string | Date | null;
   title_is_manual: boolean;
   created_at: string | Date;
   updated_at: string | Date;
+};
+
+type AnalysisRow = {
+  id: string;
+  session_id: string;
+  message_id: string;
+  revision: number | string;
+  status: ConversationAnalysisStatus;
+  focus: ConversationAnalysisFocus;
+  instruction: string;
+  overview: string;
+  is_current: boolean;
+  model_name: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  completed_at: string | Date | null;
 };
 
 type MessageRow = {
@@ -107,6 +135,7 @@ type LearningItemRow = {
   id: string;
   session_id: string | null;
   source_message_id: string | null;
+  analysis_id: string | null;
   kind: ConversationLearningItemKind;
   surface_form: string;
   reading: string | null;
@@ -183,9 +212,30 @@ export class ConversationRepository {
       title: row.title,
       mode: row.mode,
       summary: row.summary,
+      summaryThroughAt: toNullableIsoString(row.summary_through_at),
       titleIsManual: row.title_is_manual,
       createdAt: toIsoString(row.created_at),
       updatedAt: toIsoString(row.updated_at),
+    };
+  }
+
+  mapAnalysis(row: AnalysisRow): ConversationAnalysis {
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      messageId: row.message_id,
+      revision: Number(row.revision),
+      status: row.status,
+      focus: row.focus,
+      instruction: row.instruction,
+      overview: row.overview,
+      isCurrent: row.is_current,
+      modelName: row.model_name,
+      errorCode: row.error_code,
+      errorMessage: row.error_message,
+      createdAt: toIsoString(row.created_at),
+      updatedAt: toIsoString(row.updated_at),
+      completedAt: toNullableIsoString(row.completed_at),
     };
   }
 
@@ -228,6 +278,7 @@ export class ConversationRepository {
       id: row.id,
       sessionId: row.session_id,
       sourceMessageId: row.source_message_id,
+      analysisId: row.analysis_id,
       kind: row.kind,
       surfaceForm: row.surface_form,
       reading: row.reading,
@@ -471,6 +522,89 @@ export class ConversationRepository {
     return rows[0] ? this.mapMessage(rows[0]) : null;
   }
 
+  async createAnalysis(input: {
+    sessionId: string;
+    messageId: string;
+    userId: string;
+    clientAnalysisId: string;
+    focus: ConversationAnalysisFocus;
+    instruction: string;
+    modelName: string;
+  }) {
+    const rows = await query<AnalysisRow>(INSERT_CONVERSATION_ANALYSIS_SQL, [
+      input.sessionId,
+      input.messageId,
+      input.userId,
+      input.clientAnalysisId,
+      input.focus,
+      input.instruction,
+      input.modelName,
+    ]);
+    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+  }
+
+  async findAnalysisByClientId(
+    sessionId: string,
+    userId: string,
+    clientAnalysisId: string
+  ) {
+    const rows = await query<AnalysisRow>(
+      SELECT_CONVERSATION_ANALYSIS_BY_CLIENT_ID_SQL,
+      [sessionId, userId, clientAnalysisId]
+    );
+    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+  }
+
+  async reclaimAnalysis(input: {
+    sessionId: string;
+    messageId: string;
+    userId: string;
+    clientAnalysisId: string;
+  }) {
+    const rows = await query<AnalysisRow>(RECLAIM_CONVERSATION_ANALYSIS_SQL, [
+      input.sessionId,
+      input.messageId,
+      input.userId,
+      input.clientAnalysisId,
+    ]);
+    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+  }
+
+  async listAnalyses(sessionId: string, userId: string) {
+    const rows = await query<AnalysisRow>(LIST_CONVERSATION_ANALYSES_SQL, [
+      sessionId,
+      userId,
+    ]);
+    return rows.map((row) => this.mapAnalysis(row));
+  }
+
+  async completeAnalysisRecord(
+    analysisId: string,
+    userId: string,
+    overview: string
+  ) {
+    const rows = await query<AnalysisRow>(
+      COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
+      [analysisId, userId, overview]
+    );
+    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+  }
+
+  async failAnalysisRecord(
+    analysisId: string,
+    userId: string,
+    errorCode: string,
+    errorMessage: string
+  ) {
+    const rows = await query<AnalysisRow>(FAIL_CONVERSATION_ANALYSIS_RECORD_SQL, [
+      analysisId,
+      userId,
+      errorCode,
+      errorMessage,
+    ]);
+    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+  }
+
   async claimAnalysis(messageId: string, userId: string) {
     const rows = await query<MessageRow>(CLAIM_CONVERSATION_ANALYSIS_SQL, [
       messageId,
@@ -600,6 +734,7 @@ export class ConversationRepository {
     userId: string;
     sessionId: string;
     sourceMessageId: string;
+    analysisId?: string | null;
     kind: ConversationLearningItemKind;
     surfaceForm: string;
     reading: string | null;
@@ -613,6 +748,7 @@ export class ConversationRepository {
       input.userId,
       input.sessionId,
       input.sourceMessageId,
+      input.analysisId ?? null,
       input.kind,
       input.surfaceForm,
       input.reading,
@@ -630,6 +766,14 @@ export class ConversationRepository {
       sessionId,
       userId,
     ]);
+    return rows.map((row) => this.mapLearningItem(row));
+  }
+
+  async listLearningItemsByAnalysis(analysisId: string, userId: string) {
+    const rows = await query<LearningItemRow>(
+      LIST_CONVERSATION_LEARNING_ITEMS_BY_ANALYSIS_SQL,
+      [analysisId, userId]
+    );
     return rows.map((row) => this.mapLearningItem(row));
   }
 

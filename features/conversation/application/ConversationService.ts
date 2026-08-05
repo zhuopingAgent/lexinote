@@ -25,10 +25,13 @@ import { DEFAULT_GRAMMAR_USER_ID } from "@/shared/db/sql/grammar.sql";
 import type { CollectionService } from "@/features/collections/application/CollectionService";
 import type { GrammarLearningService } from "@/features/grammar-learning/application/GrammarLearningService";
 import type {
+  AnalyzeConversationMessageRequest,
+  ConversationAnalysisFocus,
   ConversationAnalysisResponse,
   ConversationBootstrapResponse,
   ConversationGrammarCandidate,
   ConversationMessage,
+  ConversationMaintenanceResponse,
   ConversationMode,
   ConversationRegister,
   ConversationSessionResponse,
@@ -100,6 +103,31 @@ function normalizeRegister(value: unknown): ConversationRegister {
     return value;
   }
   throw new ValidationError("defaultRegister is invalid");
+}
+
+function normalizeAnalysisFocus(value: unknown): ConversationAnalysisFocus {
+  if (value === undefined || value === null || value === "") return "all";
+  if (
+    value === "all" ||
+    value === "grammar" ||
+    value === "vocabulary" ||
+    value === "expressions"
+  ) {
+    return value;
+  }
+  throw new ValidationError("analysis focus is invalid");
+}
+
+function learningItemMatchesFocus(
+  kind: "vocabulary" | "expression" | "grammar",
+  focus: ConversationAnalysisFocus
+) {
+  return (
+    focus === "all" ||
+    (focus === "grammar" && kind === "grammar") ||
+    (focus === "vocabulary" && kind === "vocabulary") ||
+    (focus === "expressions" && kind === "expression")
+  );
 }
 
 function toSse(event: ConversationStreamEvent) {
@@ -297,7 +325,7 @@ export class ConversationService {
     }
     const decodedCursor = decodeCursor<{ createdAt: string; id: string }>(cursor);
     assertCursorPosition(decodedCursor);
-    const [messageRows, memories, learningItems] = await Promise.all([
+    const [messageRows, memories, analyses, learningItems] = await Promise.all([
       this.repository.listMessages({
         sessionId,
         userId,
@@ -305,6 +333,7 @@ export class ConversationService {
         limit: MESSAGE_PAGE_SIZE + 1,
       }),
       this.repository.listMemories(userId, sessionId),
+      this.repository.listAnalyses(sessionId, userId),
       this.repository.listLearningItems(sessionId, userId),
     ]);
     const hasOlder = messageRows.length > MESSAGE_PAGE_SIZE;
@@ -315,6 +344,7 @@ export class ConversationService {
       session,
       messages,
       memories,
+      analyses,
       learningItems,
       olderMessagesCursor:
         hasOlder && firstMessage
@@ -363,7 +393,7 @@ export class ConversationService {
   ) {
     const next: UpdateConversationPreferencesRequest = {};
     if (input.defaultMode !== undefined) {
-      next.defaultMode = normalizeMode(input.defaultMode, "auto");
+      next.defaultMode = normalizeMode(input.defaultMode, "chat");
     }
     if (input.defaultRegister !== undefined) {
       next.defaultRegister = normalizeRegister(input.defaultRegister);
@@ -724,76 +754,256 @@ export class ConversationService {
     });
   }
 
-  async analyzeMessage(
+  async maintainSession(
     sessionId: string,
     messageId: string,
     userId = DEFAULT_GRAMMAR_USER_ID
-  ): Promise<ConversationAnalysisResponse> {
+  ): Promise<ConversationMaintenanceResponse> {
     assertUuid(sessionId, "sessionId");
     assertUuid(messageId, "messageId");
-    const [session, existingMessage] = await Promise.all([
+    if (!hasAiGatewayCredentials()) {
+      throw new ConfigurationError("AI Gateway credentials are not configured");
+    }
+    const [session, message] = await Promise.all([
       this.repository.findSession(sessionId, userId),
       this.repository.findMessage(messageId, userId),
     ]);
-    if (!session || !existingMessage || existingMessage.sessionId !== sessionId) {
-      throw new NotFoundError("未找到要分析的回答。");
+    if (
+      !session ||
+      !message ||
+      message.sessionId !== sessionId ||
+      message.role !== "assistant" ||
+      message.status !== "completed"
+    ) {
+      throw new NotFoundError("未找到要维护的回答。");
     }
-    if (existingMessage.analysisStatus === "completed") {
-      const [globalMemories, sessionMemories, learningItems] = await Promise.all([
+
+    const alreadyMaintained =
+      session.summaryThroughAt !== null &&
+      Date.parse(session.summaryThroughAt) >= Date.parse(message.createdAt);
+    if (alreadyMaintained) {
+      const [globalMemories, sessionMemories] = await Promise.all([
         this.repository.listMemories(userId, null),
         this.repository.listMemories(userId, sessionId),
-        this.repository.listLearningItems(sessionId, userId),
       ]);
       return {
-        message: existingMessage,
         session,
         memories: [...globalMemories, ...sessionMemories].filter(
           (memory) => memory.sourceMessageId === messageId
         ),
-        learningItems: learningItems.filter(
-          (item) => item.sourceMessageId === messageId
-        ),
       };
     }
-    const claimed = await this.repository.claimAnalysis(messageId, userId);
-    if (!claimed) {
-      throw new ValidationError("这条回答正在分析，请稍后再试。");
+
+    const [parentMessage, contextMessages] = await Promise.all([
+      message.parentMessageId
+        ? this.repository.findMessage(message.parentMessageId, userId)
+        : Promise.resolve(null),
+      this.repository.listContextMessages(
+        sessionId,
+        userId,
+        MAX_CONTEXT_MESSAGES
+      ),
+    ]);
+    const turnMessages =
+      parentMessage?.sessionId === sessionId && parentMessage.role === "user"
+        ? [parentMessage, message]
+        : [message];
+    const summaryThroughTime = session.summaryThroughAt
+      ? Date.parse(session.summaryThroughAt)
+      : Number.NEGATIVE_INFINITY;
+    const targetMessageTime = Date.parse(message.createdAt);
+    const unmaintainedMessages = trimConversationContextMessages(
+      contextMessages.filter((contextMessage) => {
+        const createdAt = Date.parse(contextMessage.createdAt);
+        return createdAt > summaryThroughTime && createdAt <= targetMessageTime;
+      })
+    );
+    const firstUnmaintainedUserMessage = unmaintainedMessages.find(
+      (contextMessage) => contextMessage.role === "user"
+    );
+    const maintenance = await this.aiClient.maintainSession({
+      session,
+      messages:
+        unmaintainedMessages.length > 0 ? unmaintainedMessages : turnMessages,
+    });
+    if (!maintenance) {
+      throw new DependencyError("conversation maintenance failed");
+    }
+
+    const [globalMemories, sessionMemories] = await Promise.all([
+      this.repository.listMemories(userId, null),
+      this.repository.listMemories(userId, sessionId),
+    ]);
+    const memoryKeys = new Set(
+      [...globalMemories, ...sessionMemories].map((memory) =>
+        memory.content.trim().toLowerCase()
+      )
+    );
+    const memories = [];
+    for (const memory of maintenance.memories) {
+      const key = memory.content.trim().toLowerCase();
+      if (!key || memoryKeys.has(key)) continue;
+      memoryKeys.add(key);
+      memories.push(
+        await this.repository.insertMemory({
+          userId,
+          sessionId: memory.scope === "session" ? sessionId : null,
+          scope: memory.scope,
+          kind: memory.kind,
+          content: memory.content,
+          status: "suggested",
+          sourceMessageId: messageId,
+        })
+      );
+    }
+    const updatedSession = await this.repository.updateSummary({
+      sessionId,
+      userId,
+      summary: maintenance.summary,
+      title: resolveConversationAnalysisTitle({
+        session,
+        suggestedTitle: maintenance.title,
+        firstUserMessage:
+          firstUnmaintainedUserMessage?.content ?? parentMessage?.content ?? null,
+      }),
+      throughAt: message.createdAt,
+    });
+    if (!updatedSession) {
+      throw new DependencyError("conversation maintenance could not be saved");
+    }
+    return { session: updatedSession, memories };
+  }
+
+  async analyzeMessage(
+    sessionId: string,
+    messageId: string,
+    input: Partial<AnalyzeConversationMessageRequest>,
+    userId = DEFAULT_GRAMMAR_USER_ID
+  ): Promise<ConversationAnalysisResponse> {
+    assertUuid(sessionId, "sessionId");
+    assertUuid(messageId, "messageId");
+    if (!hasAiGatewayCredentials()) {
+      throw new ConfigurationError("AI Gateway credentials are not configured");
+    }
+    const clientAnalysisId = input.clientAnalysisId?.trim();
+    if (!clientAnalysisId || clientAnalysisId.length > 128) {
+      throw new ValidationError("clientAnalysisId is required");
+    }
+    const focus = normalizeAnalysisFocus(input.focus);
+    const instruction = input.instruction?.trim() ?? "";
+    if (instruction.length > 1_000) {
+      throw new ValidationError("分析意图不能超过 1000 个字符。");
+    }
+
+    const existingAnalysis = await this.repository.findAnalysisByClientId(
+      sessionId,
+      userId,
+      clientAnalysisId
+    );
+    let analysisRecord = null;
+    if (existingAnalysis) {
+      if (existingAnalysis.messageId !== messageId) {
+        throw new ValidationError("clientAnalysisId 已用于另一条回答。");
+      }
+      if (
+        existingAnalysis.focus !== focus ||
+        existingAnalysis.instruction !== instruction
+      ) {
+        throw new ValidationError("clientAnalysisId 的分析参数不一致。");
+      }
+      if (existingAnalysis.status === "completed") {
+        return {
+          analysis: existingAnalysis,
+          learningItems: await this.repository.listLearningItemsByAnalysis(
+            existingAnalysis.id,
+            userId
+          ),
+        };
+      }
+      analysisRecord = await this.repository.reclaimAnalysis({
+        sessionId,
+        messageId,
+        userId,
+        clientAnalysisId,
+      });
+      if (!analysisRecord) {
+        throw new ValidationError("这次分析正在进行，请稍后再试。");
+      }
+    }
+
+    const [session, message] = await Promise.all([
+      this.repository.findSession(sessionId, userId),
+      this.repository.findMessage(messageId, userId),
+    ]);
+    if (
+      !session ||
+      !message ||
+      message.sessionId !== sessionId ||
+      message.role !== "assistant" ||
+      message.status !== "completed"
+    ) {
+      throw new NotFoundError("未找到要分析的回答。");
+    }
+
+    analysisRecord ??= await this.repository.createAnalysis({
+      sessionId,
+      messageId,
+      userId,
+      clientAnalysisId,
+      focus,
+      instruction,
+      modelName: resolveAiTextModel("cheap"),
+    });
+    if (!analysisRecord) {
+      const concurrent = await this.repository.findAnalysisByClientId(
+        sessionId,
+        userId,
+        clientAnalysisId
+      );
+      if (concurrent?.status === "completed") {
+        return {
+          analysis: concurrent,
+          learningItems: await this.repository.listLearningItemsByAnalysis(
+            concurrent.id,
+            userId
+          ),
+        };
+      }
+      throw new ValidationError("这次分析正在进行，请稍后再试。");
     }
 
     try {
-      const parentMessage = existingMessage.parentMessageId
-        ? await this.repository.findMessage(existingMessage.parentMessageId, userId)
+      const parentMessage = message.parentMessageId
+        ? await this.repository.findMessage(message.parentMessageId, userId)
         : null;
       const turnMessages =
         parentMessage?.sessionId === sessionId && parentMessage.role === "user"
-          ? [parentMessage, existingMessage]
-          : [existingMessage];
+          ? [parentMessage, message]
+          : [message];
       const analysis = await this.aiClient.analyze({
         session,
         messages: turnMessages,
+        focus,
+        instruction,
       });
       if (!analysis) {
         throw new DependencyError("conversation analysis failed");
       }
 
-      await this.repository.clearAnalysisSuggestions(messageId, userId);
-      const [globalMemories, sessionMemories, existingLearningItems] =
-        await Promise.all([
-          this.repository.listMemories(userId, null),
-          this.repository.listMemories(userId, sessionId),
-          this.repository.listLearningItems(sessionId, userId),
-        ]);
-      const existingMemories = [...globalMemories, ...sessionMemories];
-      const memoryKeys = new Set(
-        existingMemories.map((memory) => memory.content.trim().toLowerCase())
+      const existingLearningItems = await this.repository.listLearningItems(
+        sessionId,
+        userId
+      );
+      const savedItems = existingLearningItems.filter(
+        (item) => item.status === "saved"
       );
       const learningItemKeys = new Set(
-        existingLearningItems.map((item) =>
+        savedItems.map((item) =>
           conversationLearningItemKey(item.kind, item.surfaceForm, item.meaningZh)
         )
       );
       const grammarPointIds = new Set(
-        existingLearningItems.flatMap((item) => {
+        savedItems.flatMap((item) => {
           if (item.kind !== "grammar") return [];
           if (item.grammarPointId) return [item.grammarPointId];
           return item.grammarCandidates.length === 1
@@ -801,33 +1011,17 @@ export class ConversationService {
             : [];
         })
       );
-      const memories = [];
-      for (const memory of analysis.memories) {
-        const key = memory.content.trim().toLowerCase();
-        if (!key || memoryKeys.has(key)) continue;
-        memoryKeys.add(key);
-        memories.push(
-          await this.repository.insertMemory({
-            userId,
-            sessionId: memory.scope === "session" ? sessionId : null,
-            scope: memory.scope,
-            kind: memory.kind,
-            content: memory.content,
-            status: "suggested",
-            sourceMessageId: messageId,
-          })
-        );
-      }
-
       const learningItems = [];
-      for (const item of analysis.learningItems) {
-        const learningItemKey = conversationLearningItemKey(
+      for (const item of analysis.learningItems.filter((candidate) =>
+        learningItemMatchesFocus(candidate.kind, focus)
+      )) {
+        const key = conversationLearningItemKey(
           item.kind,
           item.surfaceForm,
           item.meaningZh
         );
-        if (learningItemKeys.has(learningItemKey)) continue;
-        learningItemKeys.add(learningItemKey);
+        if (learningItemKeys.has(key)) continue;
+        learningItemKeys.add(key);
         let grammarCandidates: ConversationGrammarCandidate[] = [];
         if (item.kind === "grammar") {
           const search = await this.grammarLearningService.searchGrammarPoints({
@@ -849,21 +1043,17 @@ export class ConversationService {
             grammarCandidates.length === 1
               ? grammarCandidates[0].grammarPointId
               : null;
-          if (
-            resolvedGrammarPointId &&
-            grammarPointIds.has(resolvedGrammarPointId)
-          ) {
+          if (resolvedGrammarPointId && grammarPointIds.has(resolvedGrammarPointId)) {
             continue;
           }
-          if (resolvedGrammarPointId) {
-            grammarPointIds.add(resolvedGrammarPointId);
-          }
+          if (resolvedGrammarPointId) grammarPointIds.add(resolvedGrammarPointId);
         }
         learningItems.push(
           await this.repository.insertLearningItem({
             userId,
             sessionId,
             sourceMessageId: messageId,
+            analysisId: analysisRecord.id,
             kind: item.kind,
             surfaceForm: item.surfaceForm,
             reading: item.reading,
@@ -879,35 +1069,21 @@ export class ConversationService {
         );
       }
 
-      const [updatedSession, completedMessage] = await Promise.all([
-        this.repository.updateSummary({
-          sessionId,
-          userId,
-          summary: analysis.summary,
-          title: resolveConversationAnalysisTitle({
-            session,
-            suggestedTitle: analysis.title,
-            firstUserMessage: parentMessage?.content ?? null,
-          }),
-          throughAt: existingMessage.createdAt,
-        }),
-        this.repository.completeAnalysis(messageId, userId, analysis.details),
-      ]);
-      if (!updatedSession || !completedMessage) {
+      const completedAnalysis = await this.repository.completeAnalysisRecord(
+        analysisRecord.id,
+        userId,
+        analysis.overview
+      );
+      if (!completedAnalysis) {
         throw new DependencyError("conversation analysis could not be saved");
       }
-      return {
-        message: completedMessage,
-        session: updatedSession,
-        memories,
-        learningItems,
-      };
+      return { analysis: completedAnalysis, learningItems };
     } catch (error) {
-      await this.repository.failAnalysis(
-        messageId,
+      await this.repository.failAnalysisRecord(
+        analysisRecord.id,
         userId,
         "ANALYSIS_FAILED",
-        "学习项提取失败，请重试。"
+        "学习分析失败，请重试。"
       );
       throw error;
     }

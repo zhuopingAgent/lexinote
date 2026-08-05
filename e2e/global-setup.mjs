@@ -54,6 +54,7 @@ export default async function globalSetup() {
     const resetUserDataSql = `
       TRUNCATE TABLE
         conversation_learning_items,
+        conversation_analyses,
         conversation_memories,
         conversation_messages,
         conversation_preferences,

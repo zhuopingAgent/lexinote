@@ -25,6 +25,7 @@ const session: ConversationSession = {
   title: "新对话",
   mode: "zh_to_ja",
   summary: "用户正在准备预约改期。",
+  summaryThroughAt: null,
   titleIsManual: false,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -73,7 +74,7 @@ const completedAssistant = message({
   role: "assistant",
   content: "予約時間を変更していただけますか。",
   status: "completed",
-  analysisStatus: "pending",
+  analysisStatus: "not_requested",
 });
 
 const preferences = {
@@ -578,17 +579,29 @@ describe("ConversationService", () => {
     expect(repository.listMessages).not.toHaveBeenCalled();
   });
 
-  it("deduplicates memory suggestions and resolves grammar candidates during analysis", async () => {
-    const analyzedMessage = { ...completedAssistant, analysisStatus: "completed" as const };
-    const suggestedMemory = {
-      ...activeMemory("new-memory", "session", "这次对话对象是医院前台"),
-      status: "suggested" as const,
-      sourceMessageId: ASSISTANT_MESSAGE_ID,
+  it("creates an on-demand analysis and resolves grammar candidates", async () => {
+    const analysisRecord = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      sessionId: SESSION_ID,
+      messageId: ASSISTANT_MESSAGE_ID,
+      revision: 12,
+      status: "running" as const,
+      focus: "grammar" as const,
+      instruction: "只看请求语法",
+      overview: "",
+      isCurrent: false,
+      modelName: "openai/gpt-4.1-nano",
+      errorCode: null,
+      errorMessage: null,
+      createdAt: "2026-01-01T00:00:02.000Z",
+      updatedAt: "2026-01-01T00:00:02.000Z",
+      completedAt: null,
     };
     const learningItem = {
       id: "44444444-4444-4444-8444-444444444444",
       sessionId: SESSION_ID,
       sourceMessageId: ASSISTANT_MESSAGE_ID,
+      analysisId: analysisRecord.id,
       kind: "grammar" as const,
       surfaceForm: "〜ていただけますか",
       reading: null,
@@ -611,43 +624,23 @@ describe("ConversationService", () => {
           messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
         )
       ),
-      claimAnalysis: vi.fn().mockResolvedValue({
-        ...completedAssistant,
-        analysisStatus: "running",
-      }),
-      clearAnalysisSuggestions: vi.fn(),
-      listMemories: vi
-        .fn()
-        .mockResolvedValueOnce([
-          activeMemory("existing", "global", "偏好礼貌表达"),
-        ])
-        .mockResolvedValueOnce([]),
+      findAnalysisByClientId: vi.fn().mockResolvedValue(null),
+      createAnalysis: vi.fn().mockResolvedValue(analysisRecord),
       listLearningItems: vi.fn().mockResolvedValue([]),
-      insertMemory: vi.fn().mockResolvedValue(suggestedMemory),
       insertLearningItem: vi.fn().mockImplementation((input) =>
         Promise.resolve({ ...learningItem, grammarCandidates: input.grammarCandidates })
       ),
-      updateSummary: vi.fn().mockResolvedValue({
-        ...session,
-        title: "预约改期",
-        summary: "已给出礼貌的预约改期表达。",
+      completeAnalysisRecord: vi.fn().mockResolvedValue({
+        ...analysisRecord,
+        status: "completed",
+        overview: "这是礼貌请求表达。",
+        isCurrent: true,
       }),
-      completeAnalysis: vi.fn().mockResolvedValue(analyzedMessage),
-      failAnalysis: vi.fn(),
+      failAnalysisRecord: vi.fn(),
     };
     const aiClient = {
       analyze: vi.fn().mockResolvedValue({
-        title: "预约改期",
-        summary: "已给出礼貌的预约改期表达。",
-        details: {
-          literalTranslation: null,
-          nuanceNotes: ["礼貌"],
-          keyPoints: ["〜ていただけますか"],
-        },
-        memories: [
-          { scope: "global", kind: "preference", content: "偏好礼貌表达" },
-          { scope: "session", kind: "context", content: "这次对话对象是医院前台" },
-        ],
+        overview: "这是礼貌请求表达。",
         learningItems: [
           {
             kind: "grammar",
@@ -656,6 +649,14 @@ describe("ConversationService", () => {
             meaningZh: "可以请您……吗",
             explanationZh: "礼貌请求",
             sourceExcerpt: "変更していただけますか",
+          },
+          {
+            kind: "vocabulary",
+            surfaceForm: "変更する",
+            reading: "へんこうする",
+            meaningZh: "更改",
+            explanationZh: "常用动词",
+            sourceExcerpt: "変更して",
           },
         ],
       }),
@@ -689,21 +690,31 @@ describe("ConversationService", () => {
 
     const result = await service.analyzeMessage(
       SESSION_ID,
-      ASSISTANT_MESSAGE_ID
+      ASSISTANT_MESSAGE_ID,
+      {
+        clientAnalysisId: "analysis-client-1",
+        focus: "grammar",
+        instruction: "只看请求语法",
+      }
     );
 
-    expect(result.memories).toEqual([suggestedMemory]);
+    expect(result.analysis).toMatchObject({
+      status: "completed",
+      overview: "这是礼貌请求表达。",
+    });
     expect(aiClient.analyze).toHaveBeenCalledWith({
       session,
       messages: [userMessage, completedAssistant],
+      focus: "grammar",
+      instruction: "只看请求语法",
     });
-    expect(repository.insertMemory).toHaveBeenCalledTimes(1);
     expect(grammarLearningService.searchGrammarPoints).toHaveBeenCalledWith(
       expect.objectContaining({ query: "ていただけますか" })
     );
     expect(repository.insertLearningItem).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "suggested",
+        analysisId: analysisRecord.id,
         grammarCandidates: [
           expect.objectContaining({
             senseKey: "request_te_itadakemasu_ka",
@@ -711,15 +722,11 @@ describe("ConversationService", () => {
         ],
       })
     );
-    expect(repository.updateSummary).toHaveBeenCalledWith(
-      expect.objectContaining({
-        throughAt: completedAssistant.createdAt,
-      })
-    );
-    expect(repository.failAnalysis).not.toHaveBeenCalled();
+    expect(repository.insertLearningItem).toHaveBeenCalledTimes(1);
+    expect(repository.failAnalysisRecord).not.toHaveBeenCalled();
   });
 
-  it("deduplicates the same resolved grammar sense across turns", async () => {
+  it("allows a new analysis version to replace an undecided earlier candidate", async () => {
     const historicalAssistant = message({
       id: "77777777-7777-4777-8777-777777777777",
       role: "assistant",
@@ -732,6 +739,7 @@ describe("ConversationService", () => {
       id: "99999999-9999-4999-8999-999999999999",
       sessionId: SESSION_ID,
       sourceMessageId: historicalAssistant.id,
+      analysisId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01",
       kind: "grammar" as const,
       surfaceForm: "〜ていただけますか",
       reading: null,
@@ -755,9 +763,22 @@ describe("ConversationService", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
-    const analyzedMessage = {
-      ...completedAssistant,
-      analysisStatus: "completed" as const,
+    const analysisRecord = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02",
+      sessionId: SESSION_ID,
+      messageId: ASSISTANT_MESSAGE_ID,
+      revision: 13,
+      status: "running" as const,
+      focus: "all" as const,
+      instruction: "换个角度分析",
+      overview: "",
+      isCurrent: false,
+      modelName: "openai/gpt-4.1-nano",
+      errorCode: null,
+      errorMessage: null,
+      createdAt: "2026-01-01T00:00:02.000Z",
+      updatedAt: "2026-01-01T00:00:02.000Z",
+      completedAt: null,
     };
     const repository = {
       findSession: vi.fn().mockResolvedValue(session),
@@ -766,25 +787,23 @@ describe("ConversationService", () => {
           messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
         )
       ),
-      claimAnalysis: vi.fn().mockResolvedValue({
-        ...completedAssistant,
-        analysisStatus: "running",
-      }),
-      clearAnalysisSuggestions: vi.fn(),
-      listMemories: vi.fn().mockResolvedValue([]),
+      findAnalysisByClientId: vi.fn().mockResolvedValue(null),
+      createAnalysis: vi.fn().mockResolvedValue(analysisRecord),
       listLearningItems: vi.fn().mockResolvedValue([historicalItem]),
-      insertMemory: vi.fn(),
-      insertLearningItem: vi.fn(),
-      updateSummary: vi.fn().mockResolvedValue(session),
-      completeAnalysis: vi.fn().mockResolvedValue(analyzedMessage),
-      failAnalysis: vi.fn(),
+      insertLearningItem: vi.fn().mockImplementation((input) =>
+        Promise.resolve({ ...historicalItem, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", ...input })
+      ),
+      completeAnalysisRecord: vi.fn().mockResolvedValue({
+        ...analysisRecord,
+        status: "completed",
+        overview: "重新分析完成。",
+        isCurrent: true,
+      }),
+      failAnalysisRecord: vi.fn(),
     };
     const aiClient = {
       analyze: vi.fn().mockResolvedValue({
-        title: null,
-        summary: "继续练习预约表达。",
-        details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
-        memories: [],
+        overview: "重新分析完成。",
         learningItems: [
           {
             kind: "grammar",
@@ -819,24 +838,41 @@ describe("ConversationService", () => {
 
     const result = await service.analyzeMessage(
       SESSION_ID,
-      ASSISTANT_MESSAGE_ID
+      ASSISTANT_MESSAGE_ID,
+      {
+        clientAnalysisId: "analysis-client-2",
+        instruction: "换个角度分析",
+      }
     );
 
-    expect(result.learningItems).toEqual([]);
-    expect(repository.insertLearningItem).not.toHaveBeenCalled();
+    expect(result.learningItems).toHaveLength(1);
+    expect(repository.insertLearningItem).toHaveBeenCalledWith(
+      expect.objectContaining({ analysisId: analysisRecord.id })
+    );
     expect(grammarLearningService.searchGrammarPoints).toHaveBeenCalledTimes(1);
     expect(aiClient.analyze).toHaveBeenCalledWith({
       session,
       messages: [userMessage, completedAssistant],
+      focus: "all",
+      instruction: "换个角度分析",
     });
   });
 
-  it("uses the first user message when initial analysis repeats the draft title", async () => {
+  it("maintains title and summary while catching up missed recent turns", async () => {
     const initialSession = { ...session, summary: "" };
-    const analyzedMessage = {
-      ...completedAssistant,
-      analysisStatus: "completed" as const,
-    };
+    const missedUser = message({
+      id: "12121212-1212-4212-8212-121212121212",
+      role: "user",
+      content: "先确认一下时间。",
+      createdAt: "2026-01-01T00:00:00.200Z",
+    });
+    const missedAssistant = message({
+      id: "13131313-1313-4313-8313-131313131313",
+      role: "assistant",
+      content: "好的，请告诉我希望的时间。",
+      parentMessageId: missedUser.id,
+      createdAt: "2026-01-01T00:00:00.500Z",
+    });
     const repository = {
       findSession: vi.fn().mockResolvedValue(initialSession),
       findMessage: vi.fn().mockImplementation((messageId: string) =>
@@ -844,45 +880,52 @@ describe("ConversationService", () => {
           messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
         )
       ),
-      claimAnalysis: vi.fn().mockResolvedValue({
-        ...completedAssistant,
-        analysisStatus: "running",
-      }),
-      clearAnalysisSuggestions: vi.fn(),
+      listContextMessages: vi
+        .fn()
+        .mockResolvedValue([
+          missedUser,
+          missedAssistant,
+          userMessage,
+          completedAssistant,
+        ]),
       listMemories: vi.fn().mockResolvedValue([]),
-      listLearningItems: vi.fn().mockResolvedValue([]),
       insertMemory: vi.fn(),
-      insertLearningItem: vi.fn(),
       updateSummary: vi.fn().mockResolvedValue({
         ...initialSession,
         title: userMessage.content,
         summary: "已给出预约改期表达。",
       }),
-      completeAnalysis: vi.fn().mockResolvedValue(analyzedMessage),
-      failAnalysis: vi.fn(),
     };
     const aiClient = {
-      analyze: vi.fn().mockResolvedValue({
+      maintainSession: vi.fn().mockResolvedValue({
         title: "新对话",
         summary: "已给出预约改期表达。",
-        details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
         memories: [],
-        learningItems: [],
       }),
     };
     const service = makeService(repository, aiClient);
 
-    await service.analyzeMessage(SESSION_ID, ASSISTANT_MESSAGE_ID);
+    await service.maintainSession(SESSION_ID, ASSISTANT_MESSAGE_ID);
 
     expect(repository.updateSummary).toHaveBeenCalledWith(
-      expect.objectContaining({ title: userMessage.content })
+      expect.objectContaining({ title: missedUser.content })
     );
+    expect(aiClient.maintainSession).toHaveBeenCalledWith({
+      session: initialSession,
+      messages: [
+        missedUser,
+        missedAssistant,
+        userMessage,
+        completedAssistant,
+      ],
+    });
+    expect(repository.insertMemory).not.toHaveBeenCalled();
   });
 
-  it("replays completed analysis with both global and session suggestions", async () => {
-    const analyzedMessage = {
-      ...completedAssistant,
-      analysisStatus: "completed" as const,
+  it("replays completed maintenance with both global and session suggestions", async () => {
+    const maintainedSession = {
+      ...session,
+      summaryThroughAt: completedAssistant.createdAt,
     };
     const globalSuggestion = {
       ...activeMemory("global-suggestion", "global", "偏好商务表达"),
@@ -895,20 +938,19 @@ describe("ConversationService", () => {
       sourceMessageId: ASSISTANT_MESSAGE_ID,
     };
     const repository = {
-      findSession: vi.fn().mockResolvedValue(session),
-      findMessage: vi.fn().mockResolvedValue(analyzedMessage),
+      findSession: vi.fn().mockResolvedValue(maintainedSession),
+      findMessage: vi.fn().mockResolvedValue(completedAssistant),
       listMemories: vi.fn().mockImplementation(
         (_userId: string, sessionId: string | null) =>
           Promise.resolve(
             sessionId === null ? [globalSuggestion] : [sessionSuggestion]
           )
       ),
-      listLearningItems: vi.fn().mockResolvedValue([]),
-      claimAnalysis: vi.fn(),
     };
-    const service = makeService(repository, { analyze: vi.fn() });
+    const aiClient = { maintainSession: vi.fn() };
+    const service = makeService(repository, aiClient);
 
-    const result = await service.analyzeMessage(
+    const result = await service.maintainSession(
       SESSION_ID,
       ASSISTANT_MESSAGE_ID
     );
@@ -916,20 +958,111 @@ describe("ConversationService", () => {
     expect(result.memories).toEqual([globalSuggestion, sessionSuggestion]);
     expect(repository.listMemories).toHaveBeenCalledWith(USER_ID, null);
     expect(repository.listMemories).toHaveBeenCalledWith(USER_ID, SESSION_ID);
-    expect(repository.claimAnalysis).not.toHaveBeenCalled();
+    expect(aiClient.maintainSession).not.toHaveBeenCalled();
   });
 
-  it("marks a failed analysis so the same message can be claimed again", async () => {
+  it("reclaims a failed analysis with the same idempotency key", async () => {
+    const failedAnalysis = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa04",
+      sessionId: SESSION_ID,
+      messageId: ASSISTANT_MESSAGE_ID,
+      revision: 15,
+      status: "failed" as const,
+      focus: "grammar" as const,
+      instruction: "只看尝试表达",
+      overview: "",
+      isCurrent: false,
+      modelName: "openai/gpt-4.1-nano",
+      errorCode: "ANALYSIS_FAILED",
+      errorMessage: "学习分析失败，请重试。",
+      createdAt: "2026-01-01T00:00:02.000Z",
+      updatedAt: "2026-01-01T00:00:03.000Z",
+      completedAt: "2026-01-01T00:00:03.000Z",
+    };
+    const runningAnalysis = {
+      ...failedAnalysis,
+      status: "running" as const,
+      errorCode: null,
+      errorMessage: null,
+      completedAt: null,
+    };
+    const repository = {
+      findAnalysisByClientId: vi.fn().mockResolvedValue(failedAnalysis),
+      reclaimAnalysis: vi.fn().mockResolvedValue(runningAnalysis),
+      findSession: vi.fn().mockResolvedValue(session),
+      findMessage: vi.fn().mockImplementation((messageId: string) =>
+        Promise.resolve(
+          messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
+        )
+      ),
+      createAnalysis: vi.fn(),
+      listLearningItems: vi.fn().mockResolvedValue([]),
+      completeAnalysisRecord: vi.fn().mockResolvedValue({
+        ...runningAnalysis,
+        status: "completed",
+        overview: "重点是礼貌请求。",
+        isCurrent: true,
+      }),
+      failAnalysisRecord: vi.fn(),
+    };
+    const aiClient = {
+      analyze: vi.fn().mockResolvedValue({
+        overview: "重点是礼貌请求。",
+        learningItems: [],
+      }),
+    };
+    const service = makeService(repository, aiClient);
+
+    const result = await service.analyzeMessage(
+      SESSION_ID,
+      ASSISTANT_MESSAGE_ID,
+      {
+        clientAnalysisId: "analysis-client-retry",
+        focus: "grammar",
+        instruction: "只看尝试表达",
+      }
+    );
+
+    expect(result.analysis.status).toBe("completed");
+    expect(repository.reclaimAnalysis).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      messageId: ASSISTANT_MESSAGE_ID,
+      userId: USER_ID,
+      clientAnalysisId: "analysis-client-retry",
+    });
+    expect(repository.createAnalysis).not.toHaveBeenCalled();
+  });
+
+  it("marks a failed on-demand analysis and removes its partial candidates", async () => {
+    const analysisRecord = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa03",
+      sessionId: SESSION_ID,
+      messageId: ASSISTANT_MESSAGE_ID,
+      revision: 14,
+      status: "running" as const,
+      focus: "all" as const,
+      instruction: "",
+      overview: "",
+      isCurrent: false,
+      modelName: "openai/gpt-4.1-nano",
+      errorCode: null,
+      errorMessage: null,
+      createdAt: "2026-01-01T00:00:02.000Z",
+      updatedAt: "2026-01-01T00:00:02.000Z",
+      completedAt: null,
+    };
     const repository = {
       findSession: vi.fn().mockResolvedValue(session),
-      findMessage: vi.fn().mockResolvedValue(completedAssistant),
-      claimAnalysis: vi.fn().mockResolvedValue({
-        ...completedAssistant,
-        analysisStatus: "running",
-      }),
-      failAnalysis: vi.fn().mockResolvedValue({
-        ...completedAssistant,
-        analysisStatus: "failed",
+      findMessage: vi.fn().mockImplementation((messageId: string) =>
+        Promise.resolve(
+          messageId === USER_MESSAGE_ID ? userMessage : completedAssistant
+        )
+      ),
+      findAnalysisByClientId: vi.fn().mockResolvedValue(null),
+      createAnalysis: vi.fn().mockResolvedValue(analysisRecord),
+      failAnalysisRecord: vi.fn().mockResolvedValue({
+        ...analysisRecord,
+        status: "failed",
       }),
     };
     const service = makeService(repository, {
@@ -937,13 +1070,15 @@ describe("ConversationService", () => {
     });
 
     await expect(
-      service.analyzeMessage(SESSION_ID, ASSISTANT_MESSAGE_ID)
+      service.analyzeMessage(SESSION_ID, ASSISTANT_MESSAGE_ID, {
+        clientAnalysisId: "analysis-client-3",
+      })
     ).rejects.toBeInstanceOf(DependencyError);
-    expect(repository.failAnalysis).toHaveBeenCalledWith(
-      ASSISTANT_MESSAGE_ID,
+    expect(repository.failAnalysisRecord).toHaveBeenCalledWith(
+      analysisRecord.id,
       USER_ID,
       "ANALYSIS_FAILED",
-      "学习项提取失败，请重试。"
+      "学习分析失败，请重试。"
     );
   });
 });
