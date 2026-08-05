@@ -94,6 +94,7 @@ describe("conversation domain", () => {
     expect(prompt).toContain("禁止写成「花生アレルギー」");
     expect(prompt).toContain("准确判断请求中的动作主体");
     expect(prompt).toContain("只有询问自己或己方是否可以执行时");
+    expect(prompt).toContain("不能只陈述「わかりません」");
     expect(prompt).toContain("禁止直译成「状況を注意して見る」");
     expect(prompt).toContain("默认语体：business");
     expect(prompt).toContain("优先给自然商务表达");
@@ -662,7 +663,7 @@ describe("conversation domain", () => {
   it("normalizes, deduplicates, and caps structured learning output", () => {
     const learningItems = Array.from({ length: 8 }, (_, index) => ({
       kind: index === 0 ? "vocabulary" : "grammar",
-      surface_form: index === 1 ? "語彙0" : `語彙${index}`,
+      surface_form: index === 1 ? "〜ので0" : `〜ので${index}`,
       reading: null,
       meaning_zh: "含义",
       explanation_zh: "说明",
@@ -1078,6 +1079,43 @@ describe("conversation domain", () => {
 
     expect(parsed?.learningItems.map((item) => item.surfaceForm)).toEqual([
       "〜ていただけますか",
+    ]);
+  });
+
+  it("drops Chinese translated text misclassified as Japanese grammar", () => {
+    const parsed = parseConversationAnalysisOutput(
+      JSON.stringify({
+        title: null,
+        summary: "翻译了列车通知。",
+        details: {
+          literal_translation: null,
+          nuance_notes: [],
+          key_points: [],
+        },
+        memories: [],
+        learning_items: [
+          {
+            kind: "grammar",
+            surface_form: "可能因为延误情况而无法等待",
+            reading: null,
+            meaning_zh: "可能无法等待",
+            explanation_zh: "模型误把中文译文当成日语语法。",
+            source_excerpt: "可能因为延误情况而无法等待",
+          },
+          {
+            kind: "grammar",
+            surface_form: "〜ていただけない場合がある",
+            reading: null,
+            meaning_zh: "有时可能无法……",
+            explanation_zh: "表示某种情况可能发生。",
+            source_excerpt: "お待ちいただけない場合がございます",
+          },
+        ],
+      })
+    );
+
+    expect(parsed?.learningItems.map((item) => item.surfaceForm)).toEqual([
+      "〜ていただけない場合がある",
     ]);
   });
 
