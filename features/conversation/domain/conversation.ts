@@ -9,6 +9,7 @@ import type {
 } from "@/shared/types/conversation";
 
 export const CONVERSATION_MODES: ConversationMode[] = [
+  "chat",
   "auto",
   "zh_to_ja",
   "ja_to_zh",
@@ -43,6 +44,17 @@ export type ConversationAnalysisOutput = {
   details: ConversationMessageDetails;
   memories: ConversationAnalysisMemory[];
   learningItems: ConversationAnalysisLearningItem[];
+};
+
+export type ConversationLearningAnalysisOutput = {
+  overview: string;
+  learningItems: ConversationAnalysisLearningItem[];
+};
+
+export type ConversationMaintenanceOutput = {
+  title: string | null;
+  summary: string;
+  memories: ConversationAnalysisMemory[];
 };
 
 const CONVERSATION_META_MEMORY_PATTERNS = [
@@ -396,19 +408,125 @@ export function parseConversationAnalysisOutput(
   };
 }
 
-export function validateConversationAnalysisReferences(
-  analysis: ConversationAnalysisOutput,
-  messages: Array<{ content: string }>
-): ConversationAnalysisOutput {
-  const sourceTexts = messages.map((message) => message.content);
+export function parseConversationLearningAnalysisOutput(
+  raw: string
+): ConversationLearningAnalysisOutput | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.overview !== "string" ||
+    !Array.isArray(record.learning_items)
+  ) {
+    return null;
+  }
+  const compatibility = parseConversationAnalysisOutput(
+    JSON.stringify({
+      title: null,
+      summary: "",
+      details: {},
+      memories: [],
+      learning_items: record.learning_items,
+    })
+  );
+  if (!compatibility) {
+    return null;
+  }
   return {
-    ...analysis,
-    memories: analysis.memories.filter(
+    overview: readString(record.overview, 2_000),
+    learningItems: compatibility.learningItems,
+  };
+}
+
+export function parseConversationMaintenanceOutput(
+  raw: string
+): ConversationMaintenanceOutput | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    (record.title !== null && typeof record.title !== "string") ||
+    typeof record.summary !== "string" ||
+    !Array.isArray(record.memories)
+  ) {
+    return null;
+  }
+  const memories = Array.isArray(record.memories)
+    ? record.memories
+        .map((item): ConversationAnalysisMemory | null => {
+          if (!item || typeof item !== "object") return null;
+          const memory = item as Record<string, unknown>;
+          if (
+            (memory.scope !== "session" && memory.scope !== "global") ||
+            (memory.kind !== "preference" &&
+              memory.kind !== "context" &&
+              memory.kind !== "goal")
+          ) {
+            return null;
+          }
+          const content = readString(memory.content, 300);
+          return content
+            ? { scope: memory.scope, kind: memory.kind, content }
+            : null;
+        })
+        .filter((item): item is ConversationAnalysisMemory => item !== null)
+        .filter(
+          (memory, index, items) =>
+            items.findIndex(
+              (candidate) =>
+                candidate.content.trim().toLowerCase() ===
+                memory.content.trim().toLowerCase()
+            ) === index
+        )
+        .slice(0, 3)
+    : [];
+  return {
+    title: readString(record.title, 80) || null,
+    summary: sanitizeConversationSummary(record.summary),
+    memories: memories.filter(
       (memory) =>
         !CONVERSATION_META_MEMORY_PATTERNS.some((pattern) =>
           pattern.test(memory.content)
         )
     ),
+  };
+}
+
+export function validateConversationAnalysisReferences<
+  T extends {
+    learningItems: ConversationAnalysisLearningItem[];
+    memories?: ConversationAnalysisMemory[];
+  },
+>(
+  analysis: T,
+  messages: Array<{ content: string }>
+): Omit<T, "learningItems"> & {
+  learningItems: ConversationAnalysisLearningItem[];
+} {
+  const sourceTexts = messages.map((message) => message.content);
+  const memories = analysis.memories?.filter(
+    (memory) =>
+      !CONVERSATION_META_MEMORY_PATTERNS.some((pattern) =>
+        pattern.test(memory.content)
+      )
+  );
+  return {
+    ...analysis,
+    ...(memories ? { memories } : {}),
     learningItems: analysis.learningItems.filter(
       (item) =>
         Boolean(item.sourceExcerpt) &&
@@ -637,10 +755,14 @@ function findNaAdjectivePastCorrection(
   return null;
 }
 
-export function reconcileConversationGrammarLearningItems(
-  analysis: ConversationAnalysisOutput,
+export function reconcileConversationGrammarLearningItems<
+  T extends { learningItems: ConversationAnalysisLearningItem[] },
+>(
+  analysis: T,
   messages: ConversationMessage[]
-): ConversationAnalysisOutput {
+): Omit<T, "learningItems"> & {
+  learningItems: ConversationAnalysisLearningItem[];
+} {
   const userTexts = messages
     .filter((message) => message.role === "user")
     .map((message) => message.content);

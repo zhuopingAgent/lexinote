@@ -17,6 +17,7 @@ const REQUEST_TIMEOUT_MS = 90_000;
 const DEFAULT_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/responses";
 const RUN_METRICS = {
   answerRequests: 0,
+  maintenanceRequests: 0,
   analysisRequests: 0,
   judgeRequests: 0,
   httpAttempts: 0,
@@ -417,15 +418,29 @@ async function runSession({
         testCase,
         `${plan.id}-turn-${turnIndex + 1}`
       );
+      RUN_METRICS.maintenanceRequests += 1;
+      const maintenance = await requestJson(
+        baseUrl,
+        `/api/conversations/${result.sessionId}/messages/${sent.assistantMessage.id}/maintenance`,
+        { method: "POST", body: "{}" }
+      );
       RUN_METRICS.analysisRequests += 1;
       const analysis = await requestJson(
         baseUrl,
         `/api/conversations/${result.sessionId}/messages/${sent.assistantMessage.id}/analysis`,
-        { method: "POST", body: "{}" }
+        {
+          method: "POST",
+          body: JSON.stringify({
+            clientAnalysisId: `${plan.id}-analysis-${turnIndex + 1}`,
+            focus: "all",
+            instruction: "",
+          }),
+        }
       );
       const deterministic = evaluateConversationSoakResult(testCase, {
         assistantMessage: sent.assistantMessage,
         analysis,
+        maintenance,
       });
       const forbiddenLearning = (testCase.forbiddenLearningSurfaces ?? []).filter(
         (surface) =>
@@ -462,6 +477,7 @@ async function runSession({
         testCase,
         assistantMessage: sent.assistantMessage,
         analysis,
+        maintenance,
         deterministic,
         promotion,
       });
@@ -472,6 +488,13 @@ async function runSession({
               status, grammar_candidates, grammar_point_id::text
        FROM conversation_learning_items
        WHERE session_id = $1::uuid
+         AND (
+           analysis_id IS NULL
+           OR status = 'saved'
+           OR analysis_id IN (
+             SELECT id FROM conversation_analyses WHERE is_current
+           )
+         )
        ORDER BY created_at, id`,
       [result.sessionId]
     );

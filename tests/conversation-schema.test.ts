@@ -2,10 +2,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  CLAIM_CONVERSATION_ANALYSIS_SQL,
+  COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
   DELETE_CONVERSATION_SESSION_SQL,
+  INSERT_CONVERSATION_ANALYSIS_SQL,
+  LIST_CONVERSATION_ANALYSES_SQL,
   LIST_CONVERSATION_LEARNING_ITEMS_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
+  RECLAIM_CONVERSATION_ANALYSIS_SQL,
   RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   UPDATE_CONVERSATION_PREFERENCES_SQL,
   UPDATE_CONVERSATION_SUMMARY_SQL,
@@ -18,17 +22,21 @@ describe("conversation schema and persistence semantics", () => {
     "utf8"
   );
 
-  it("defines the five user-scoped conversation tables non-destructively", () => {
+  it("defines the six user-scoped conversation tables non-destructively", () => {
     for (const table of [
       "conversation_sessions",
       "conversation_messages",
       "conversation_preferences",
       "conversation_memories",
+      "conversation_analyses",
       "conversation_learning_items",
     ]) {
       expect(schema).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);
     }
     expect(schema).toContain("UNIQUE (session_id, client_message_id)");
+    expect(schema).toContain("UNIQUE (session_id, client_analysis_id)");
+    expect(schema).toContain("analysis_id UUID REFERENCES conversation_analyses(id)");
+    expect(schema).toContain("mode TEXT NOT NULL DEFAULT 'chat'");
     expect(schema).toMatch(
       /status IN \(\s*'suggested',\s*'active',\s*'dismissed'\s*\)/
     );
@@ -56,7 +64,7 @@ describe("conversation schema and persistence semantics", () => {
     expect(LIST_CONVERSATION_REVIEW_INBOX_SQL).not.toContain("'suggested'");
   });
 
-  it("returns only the first persisted copy of an analyzed learning candidate", () => {
+  it("returns the current analysis candidate while preserving saved items", () => {
     expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain("ROW_NUMBER() OVER");
     expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain(
       "REPLACE(REPLACE(BTRIM(surface_form), '～', '〜'), '~', '〜')"
@@ -66,6 +74,9 @@ describe("conversation schema and persistence semantics", () => {
     );
     expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain(
       "duplicate_rank = 1"
+    );
+    expect(LIST_CONVERSATION_LEARNING_ITEMS_SQL).toContain(
+      "SELECT id FROM conversation_analyses WHERE is_current"
     );
   });
 
@@ -96,11 +107,29 @@ describe("conversation schema and persistence semantics", () => {
     );
   });
 
-  it("leases failed or stale analysis and protects the first automatic title", () => {
-    expect(CLAIM_CONVERSATION_ANALYSIS_SQL).toContain("INTERVAL '5 minutes'");
-    expect(CLAIM_CONVERSATION_ANALYSIS_SQL).toContain(
-      "analysis_status IN ('pending', 'failed')"
+  it("creates versioned analysis records only on request and protects summaries", () => {
+    expect(COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL).toContain(
+      "analysis_status = 'not_requested'"
     );
+    expect(INSERT_CONVERSATION_ANALYSIS_SQL).toContain("client_analysis_id");
+    expect(INSERT_CONVERSATION_ANALYSIS_SQL).toContain(
+      "message.status = 'completed'"
+    );
+    expect(RECLAIM_CONVERSATION_ANALYSIS_SQL).toContain(
+      "INTERVAL '5 minutes'"
+    );
+    expect(RECLAIM_CONVERSATION_ANALYSIS_SQL).toContain("status = 'failed'");
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "analysis_id IS DISTINCT FROM $1::uuid"
+    );
+    expect(COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL).toContain(
+      "status IN ('suggested', 'needs_review')"
+    );
+    expect(LIST_CONVERSATION_ANALYSES_SQL).toContain("PARTITION BY message_id");
+    expect(LIST_CONVERSATION_ANALYSES_SQL).toContain(
+      "is_current OR latest_rank = 1"
+    );
+    expect(LIST_CONVERSATION_ANALYSES_SQL).not.toContain("LIMIT 200");
     expect(UPDATE_CONVERSATION_SUMMARY_SQL).toContain(
       "summary_updated_at IS NOT NULL"
     );

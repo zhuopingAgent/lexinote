@@ -11,11 +11,11 @@ import {
 } from "../scripts/conversation-soak-evaluator.mjs";
 
 describe("conversation production soak corpus", () => {
-  it("contains exactly 400 unique, deterministic, evenly distributed cases", () => {
-    expect(BASELINE_CONVERSATION_SOAK_CASES).toHaveLength(100);
+  it("contains 400 specialist cases plus general-chat coverage", () => {
+    expect(BASELINE_CONVERSATION_SOAK_CASES).toHaveLength(120);
     expect(ADDITIONAL_CONVERSATION_SOAK_CASES).toHaveLength(300);
-    expect(CONVERSATION_SOAK_CASES).toHaveLength(400);
-    expect(new Set(CONVERSATION_SOAK_CASES.map((testCase) => testCase.id)).size).toBe(400);
+    expect(CONVERSATION_SOAK_CASES).toHaveLength(420);
+    expect(new Set(CONVERSATION_SOAK_CASES.map((testCase) => testCase.id)).size).toBe(420);
     expect(buildConversationSoakCases()).toEqual(CONVERSATION_SOAK_CASES);
     expect(buildConversationSoakCases(7)).not.toEqual(CONVERSATION_SOAK_CASES);
 
@@ -28,6 +28,7 @@ describe("conversation production soak corpus", () => {
     );
     expect(modeCounts).toEqual({
       auto: 80,
+      chat: 20,
       explain_ja: 80,
       ja_to_zh: 80,
       polish_ja: 80,

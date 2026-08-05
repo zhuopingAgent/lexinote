@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   deleteSession: vi.fn(),
   streamMessage: vi.fn(),
   analyzeMessage: vi.fn(),
+  maintainSession: vi.fn(),
   updatePreferences: vi.fn(),
   createMemory: vi.fn(),
   updateMemory: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("@/app/api/services", () => ({
     deleteSession: mocks.deleteSession,
     streamMessage: mocks.streamMessage,
     analyzeMessage: mocks.analyzeMessage,
+    maintainSession: mocks.maintainSession,
     updatePreferences: mocks.updatePreferences,
     createMemory: mocks.createMemory,
     updateMemory: mocks.updateMemory,
@@ -160,11 +162,18 @@ describe("conversation API routes", () => {
     );
   });
 
-  it("keeps analysis as an independent idempotent endpoint", async () => {
+  it("keeps user-directed analysis as an independent idempotent endpoint", async () => {
+    const requestBody = {
+      clientAnalysisId: "analysis-client-1",
+      focus: "grammar",
+      instruction: "只看原句中的尝试表达",
+    };
     const result = {
-      message: { id: MESSAGE_ID, analysisStatus: "completed" },
-      session: { id: SESSION_ID, title: "预约改期" },
-      memories: [],
+      analysis: {
+        id: "44444444-4444-4444-8444-444444444444",
+        messageId: MESSAGE_ID,
+        status: "completed",
+      },
       learningItems: [],
     };
     mocks.analyzeMessage.mockResolvedValue(result);
@@ -173,13 +182,36 @@ describe("conversation API routes", () => {
     );
 
     const response = await POST(
-      new Request("http://localhost/analysis", { method: "POST" }),
+      jsonRequest("http://localhost/analysis", "POST", requestBody),
       { params: Promise.resolve({ sessionId: SESSION_ID, messageId: MESSAGE_ID }) }
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(result);
-    expect(mocks.analyzeMessage).toHaveBeenCalledWith(SESSION_ID, MESSAGE_ID);
+    expect(mocks.analyzeMessage).toHaveBeenCalledWith(
+      SESSION_ID,
+      MESSAGE_ID,
+      requestBody
+    );
+  });
+
+  it("routes automatic title and summary maintenance separately", async () => {
+    const result = {
+      session: { id: SESSION_ID, title: "预约改期" },
+      memories: [],
+    };
+    mocks.maintainSession.mockResolvedValue(result);
+    const { POST } = await import(
+      "@/app/api/conversations/[sessionId]/messages/[messageId]/maintenance/route"
+    );
+    const response = await POST(
+      new Request("http://localhost/maintenance", { method: "POST" }),
+      { params: Promise.resolve({ sessionId: SESSION_ID, messageId: MESSAGE_ID }) }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(result);
+    expect(mocks.maintainSession).toHaveBeenCalledWith(SESSION_ID, MESSAGE_ID);
   });
 
   it("routes learning promotion and exposes validation failures", async () => {

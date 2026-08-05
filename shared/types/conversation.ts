@@ -1,6 +1,7 @@
 import type { CollectionSummary } from "@/shared/types/collections";
 
 export type ConversationMode =
+  | "chat"
   | "auto"
   | "zh_to_ja"
   | "ja_to_zh"
@@ -20,11 +21,18 @@ export type ConversationAnalysisStatus =
   | "completed"
   | "failed";
 
+export type ConversationAnalysisFocus =
+  | "all"
+  | "grammar"
+  | "vocabulary"
+  | "expressions";
+
 export type ConversationSession = {
   id: string;
   title: string;
   mode: ConversationMode;
   summary: string;
+  summaryThroughAt: string | null;
   titleIsManual: boolean;
   createdAt: string;
   updatedAt: string;
@@ -100,6 +108,7 @@ export type ConversationLearningItem = {
   id: string;
   sessionId: string | null;
   sourceMessageId: string | null;
+  analysisId: string | null;
   kind: ConversationLearningItemKind;
   surfaceForm: string;
   reading: string | null;
@@ -116,6 +125,24 @@ export type ConversationLearningItem = {
   updatedAt: string;
 };
 
+export type ConversationAnalysis = {
+  id: string;
+  sessionId: string;
+  messageId: string;
+  revision: number;
+  status: ConversationAnalysisStatus;
+  focus: ConversationAnalysisFocus;
+  instruction: string;
+  overview: string;
+  isCurrent: boolean;
+  modelName: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
 export type ConversationBootstrapResponse = {
   aiAvailable: boolean;
   sessions: ConversationSession[];
@@ -129,6 +156,7 @@ export type ConversationSessionResponse = {
   session: ConversationSession;
   messages: ConversationMessage[];
   memories: ConversationMemory[];
+  analyses: ConversationAnalysis[];
   learningItems: ConversationLearningItem[];
   olderMessagesCursor: string | null;
 };
@@ -184,11 +212,20 @@ export type PromoteConversationLearningItemResponse = {
   }>;
 };
 
+export type AnalyzeConversationMessageRequest = {
+  clientAnalysisId: string;
+  focus?: ConversationAnalysisFocus;
+  instruction?: string;
+};
+
 export type ConversationAnalysisResponse = {
-  message: ConversationMessage;
+  analysis: ConversationAnalysis;
+  learningItems: ConversationLearningItem[];
+};
+
+export type ConversationMaintenanceResponse = {
   session: ConversationSession;
   memories: ConversationMemory[];
-  learningItems: ConversationLearningItem[];
 };
 
 export type ConversationStreamEvent =

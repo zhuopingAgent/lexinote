@@ -23,6 +23,7 @@ import {
   dismissConversationLearningItem,
   fetchConversationBootstrap,
   fetchConversationSession,
+  maintainConversationSession,
   promoteConversationLearningItem,
   streamConversationMessage,
   updateConversationMemory,
@@ -44,6 +45,9 @@ import {
 } from "@/app/lib/api-client";
 import type { CollectionSummary } from "@/shared/types/collections";
 import type {
+  AnalyzeConversationMessageRequest,
+  ConversationAnalysis,
+  ConversationAnalysisFocus,
   ConversationLearningItem,
   ConversationMemory,
   ConversationMemoryKind,
@@ -55,7 +59,8 @@ import type {
 } from "@/shared/types/conversation";
 
 const MODE_LABELS: Record<ConversationMode, string> = {
-  auto: "自动识别",
+  chat: "通用对话",
+  auto: "中日自动",
   zh_to_ja: "中译日",
   ja_to_zh: "日译中",
   polish_ja: "日语润色",
@@ -63,7 +68,7 @@ const MODE_LABELS: Record<ConversationMode, string> = {
 };
 
 const DEFAULT_PREFERENCES: ConversationPreferences = {
-  defaultMode: "auto",
+  defaultMode: "chat",
   translationStyle: "natural_first",
   defaultRegister: "auto",
   defaultCollectionId: null,
@@ -75,18 +80,41 @@ type ConversationClientProps = {
   initialSessionId?: string | null;
 };
 
+function parseAnalysisCommand(content: string): {
+  focus: ConversationAnalysisFocus;
+  instruction: string;
+} | null {
+  const match = content.match(/^\/analysis(?:\s+([\s\S]*))?$/i);
+  if (!match) return null;
+  let instruction = match[1]?.trim() ?? "";
+  let focus: ConversationAnalysisFocus = "all";
+  const aliases: Array<[RegExp, ConversationAnalysisFocus]> = [
+    [/^(?:grammar|语法)(?:\s+|$)/i, "grammar"],
+    [/^(?:vocabulary|词汇|单词)(?:\s+|$)/i, "vocabulary"],
+    [/^(?:expressions?|表达|固定表达)(?:\s+|$)/i, "expressions"],
+  ];
+  for (const [pattern, nextFocus] of aliases) {
+    if (!pattern.test(instruction)) continue;
+    focus = nextFocus;
+    instruction = instruction.replace(pattern, "").trim();
+    break;
+  }
+  return { focus, instruction };
+}
+
 export function ConversationClient({ initialSessionId = null }: ConversationClientProps) {
   const router = useRouter();
   const [activeSessionId, setActiveSessionId] = useState(initialSessionId);
   const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [analyses, setAnalyses] = useState<ConversationAnalysis[]>([]);
   const [learningItems, setLearningItems] = useState<ConversationLearningItem[]>([]);
   const [globalMemories, setGlobalMemories] = useState<ConversationMemory[]>([]);
   const [sessionMemories, setSessionMemories] = useState<ConversationMemory[]>([]);
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
-  const [mode, setMode] = useState<ConversationMode>("auto");
+  const [mode, setMode] = useState<ConversationMode>("chat");
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -106,9 +134,12 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
   const activeSessionIdRef = useRef(activeSessionId);
   const abortControllerRef = useRef<AbortController | null>(null);
   const analysisInFlightRef = useRef(new Set<string>());
-  const analyzeMessageRef = useRef<
-    (sessionId: string, messageId: string) => Promise<void>
-  >(async () => {});
+  const maintenanceInFlightRef = useRef(new Set<string>());
+  const maintenanceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [analysisInFlightMessageIds, setAnalysisInFlightMessageIds] = useState<
+    string[]
+  >([]);
+  const [analysisErrors, setAnalysisErrors] = useState<Record<string, string>>({});
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -183,6 +214,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     if (!activeSessionId) {
       setCurrentSession(null);
       setMessages([]);
+      setAnalyses([]);
       setLearningItems([]);
       setSessionMemories([]);
       setOlderMessagesCursor(null);
@@ -198,6 +230,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     setError(null);
     setCurrentSession(null);
     setMessages([]);
+    setAnalyses([]);
     setLearningItems([]);
     setSessionMemories([]);
     setOlderMessagesCursor(null);
@@ -206,21 +239,10 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         setCurrentSession(result.session);
         setMode(result.session.mode);
         setMessages(result.messages);
+        setAnalyses(result.analyses ?? []);
         setLearningItems(result.learningItems);
         setSessionMemories(result.memories);
         setOlderMessagesCursor(result.olderMessagesCursor);
-        const pendingAnalyses = result.messages.filter(
-          (message) =>
-            message.role === "assistant" &&
-            message.status === "completed" &&
-            message.analysisStatus === "pending"
-        );
-        void (async () => {
-          for (const message of pendingAnalyses) {
-            if (activeSessionIdRef.current !== activeSessionId) return;
-            await analyzeMessageRef.current(activeSessionId, message.id);
-          }
-        })();
       })
       .catch((loadError) => {
         if (!controller.signal.aborted) {
@@ -262,10 +284,13 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     setActiveSessionId(null);
     setCurrentSession(null);
     setMessages([]);
+    setAnalyses([]);
     setLearningItems([]);
     setSessionMemories([]);
     setOlderMessagesCursor(null);
     setInput("");
+    setAnalysisErrors({});
+    setAnalysisInFlightMessageIds([]);
     setQuery("");
     setMode(preferences.defaultMode);
     setError(null);
@@ -318,6 +343,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         };
       }
       setMessages((current) => mergeById(result.messages, current));
+      setAnalyses((current) => mergeById(current, result.analyses ?? []));
       setOlderMessagesCursor(result.olderMessagesCursor);
     } catch (loadError) {
       setError(getErrorMessage(loadError, "更早消息加载失败，请重试。"));
@@ -337,59 +363,100 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     return session.id;
   }
 
-  async function analyzeMessage(sessionId: string, messageId: string) {
+  async function analyzeMessage(
+    sessionId: string,
+    messageId: string,
+    input: Pick<AnalyzeConversationMessageRequest, "focus" | "instruction"> = {}
+  ) {
     if (analysisInFlightRef.current.has(messageId)) return;
     analysisInFlightRef.current.add(messageId);
-    setMessages((current) =>
-      current.map((message) =>
-        message.id === messageId
-          ? { ...message, analysisStatus: "running" }
-          : message
-      )
-    );
+    setAnalysisInFlightMessageIds((current) => [...current, messageId]);
+    setAnalysisErrors((current) => {
+      const next = { ...current };
+      delete next[messageId];
+      return next;
+    });
     try {
-      const result = await analyzeConversationMessage(sessionId, messageId);
+      const result = await analyzeConversationMessage(sessionId, messageId, {
+        clientAnalysisId: crypto.randomUUID(),
+        focus: input.focus ?? "all",
+        instruction: input.instruction ?? "",
+      });
       if (activeSessionIdRef.current !== sessionId) return;
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === result.message.id ? result.message : message
-        )
-      );
-      setLearningItems((current) => mergeById(current, result.learningItems));
-      setGlobalMemories((current) =>
+      setAnalyses((current) =>
         mergeById(
-          current,
-          result.memories.filter((memory) => memory.scope === "global")
+          current.map((analysis) =>
+            analysis.messageId === messageId
+              ? { ...analysis, isCurrent: false }
+              : analysis
+          ),
+          [result.analysis]
         )
       );
-      setSessionMemories((current) =>
+      setLearningItems((current) =>
         mergeById(
-          current,
-          result.memories.filter((memory) => memory.scope === "session")
+          current.filter(
+            (item) => item.sourceMessageId !== messageId || item.status === "saved"
+          ),
+          result.learningItems
         )
       );
-      setCurrentSession(result.session);
-      setSessions((current) => upsertSessionByActivity(current, result.session));
     } catch (analysisError) {
       if (activeSessionIdRef.current !== sessionId) return;
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === messageId
-            ? { ...message, analysisStatus: "failed" }
-            : message
-        )
-      );
+      const message = getErrorMessage(analysisError, "学习分析失败，请重试。");
+      setAnalysisErrors((current) => ({ ...current, [messageId]: message }));
       if (isAiGatewayBudgetExceededError(analysisError)) {
-        setAiGatewayBudgetErrorMessage(
-          getErrorMessage(analysisError, "Vercel AI Gateway 分析额度不足。")
-        );
+        setAiGatewayBudgetErrorMessage(message);
       }
     } finally {
       analysisInFlightRef.current.delete(messageId);
+      setAnalysisInFlightMessageIds((current) =>
+        current.filter((id) => id !== messageId)
+      );
     }
   }
 
-  analyzeMessageRef.current = analyzeMessage;
+  async function maintainSession(sessionId: string, messageId: string) {
+    if (maintenanceInFlightRef.current.has(messageId)) return;
+    maintenanceInFlightRef.current.add(messageId);
+    const request = maintenanceQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const result = await maintainConversationSession(sessionId, messageId);
+          if (activeSessionIdRef.current !== sessionId) return;
+          setCurrentSession(result.session);
+          setSessions((current) =>
+            upsertSessionByActivity(current, result.session)
+          );
+          setGlobalMemories((current) =>
+            mergeById(
+              current,
+              result.memories.filter((memory) => memory.scope === "global")
+            )
+          );
+          setSessionMemories((current) =>
+            mergeById(
+              current,
+              result.memories.filter((memory) => memory.scope === "session")
+            )
+          );
+        } catch (maintenanceError) {
+          if (isAiGatewayBudgetExceededError(maintenanceError)) {
+            setAiGatewayBudgetErrorMessage(
+              getErrorMessage(maintenanceError, "Vercel AI Gateway 额度不足。")
+            );
+          }
+        } finally {
+          maintenanceInFlightRef.current.delete(messageId);
+        }
+      });
+    maintenanceQueueRef.current = request.then(
+      () => undefined,
+      () => undefined
+    );
+    await request;
+  }
 
   async function sendMessage(
     overrideContent?: string,
@@ -400,6 +467,21 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
     const content = (overrideContent ?? input).trim();
     if (!content || isGenerating || !aiAvailable) return;
     setError(null);
+    const analysisCommand = !overrideContent ? parseAnalysisCommand(content) : null;
+    if (analysisCommand) {
+      const target = [...messages]
+        .reverse()
+        .find(
+          (message) => message.role === "assistant" && message.status === "completed"
+        );
+      if (!activeSessionId || !target) {
+        setError("当前没有可以分析的回答。");
+        return;
+      }
+      setInput("");
+      await analyzeMessage(activeSessionId, target.id, analysisCommand);
+      return;
+    }
     setCanStopGeneration(false);
     setIsGenerating(true);
     if (!overrideContent) setInput("");
@@ -471,7 +553,7 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
         }
       });
       if (completedMessage) {
-        void analyzeMessage(sessionId, (completedMessage as ConversationMessage).id);
+        void maintainSession(sessionId, (completedMessage as ConversationMessage).id);
       }
     } catch (sendError) {
       if (!isAbortError(sendError)) {
@@ -664,12 +746,15 @@ export function ConversationClient({ initialSessionId = null }: ConversationClie
               messages.map((message) => (
                 <ConversationMessageView
                   key={message.id}
+                  analyses={analyses}
+                  analysisError={analysisErrors[message.id] ?? null}
                   message={message}
                   collections={collections}
                   defaultCollectionId={preferences.defaultCollectionId}
                   learningItems={learningItems}
                   memories={allMemories}
-                  onAnalyze={(messageId) => activeSessionId ? analyzeMessage(activeSessionId, messageId) : Promise.resolve()}
+                  isAnalyzing={analysisInFlightMessageIds.includes(message.id)}
+                  onAnalyze={(messageId, options) => activeSessionId ? analyzeMessage(activeSessionId, messageId, options) : Promise.resolve()}
                   onCreateCollection={createCollection}
                   onDismissLearningItem={dismissLearningItem}
                   onPromoteLearningItem={promoteLearningItem}

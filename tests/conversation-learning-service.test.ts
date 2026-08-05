@@ -25,6 +25,7 @@ function learningItem(
     id: ITEM_ID,
     sessionId: SESSION_ID,
     sourceMessageId: "44444444-4444-4444-8444-444444444444",
+    analysisId: null,
     kind: "vocabulary",
     surfaceForm: "抱く",
     reading: null,

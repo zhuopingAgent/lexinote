@@ -12,6 +12,8 @@ const USER_MESSAGE = "44444444-4444-4444-8444-444444444444";
 const ASSISTANT_MESSAGE = "55555555-5555-4555-8555-555555555555";
 const LEARNING_ITEM = "66666666-6666-4666-8666-666666666666";
 const GRAMMAR_POINT = "77777777-7777-4777-8777-777777777777";
+const ANALYSIS_ID = "99999999-9999-4999-8999-999999999999";
+const REVISED_ANALYSIS_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NOW = "2026-08-02T10:00:00.000Z";
 
 function session(id: string, title: string) {
@@ -20,6 +22,7 @@ function session(id: string, title: string) {
     title,
     mode: "zh_to_ja",
     summary: "",
+    summaryThroughAt: null,
     titleIsManual: false,
     createdAt: NOW,
     updatedAt: NOW,
@@ -44,7 +47,7 @@ function message(
     errorCode: null,
     errorMessage: null,
     details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
-    analysisStatus: role === "assistant" && status === "completed" ? "pending" : "not_requested",
+    analysisStatus: "not_requested",
     createdAt: NOW,
     updatedAt: NOW,
     completedAt: status === "completed" ? NOW : null,
@@ -77,6 +80,7 @@ const vocabularyItem = {
   id: LEARNING_ITEM,
   sessionId: NEW_SESSION,
   sourceMessageId: ASSISTANT_MESSAGE,
+  analysisId: ANALYSIS_ID,
   kind: "vocabulary",
   surfaceForm: "変更する",
   reading: "へんこうする",
@@ -107,6 +111,20 @@ async function mockBootstrap(page: Page) {
       }),
     });
   });
+  await page.route(
+    "**/api/conversations/*/messages/*/maintenance",
+    async (route) => {
+      const parts = new URL(route.request().url()).pathname.split("/");
+      const sessionId = parts[3] ?? NEW_SESSION;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          session: session(sessionId, "已更新对话"),
+          memories: [],
+        }),
+      });
+    }
+  );
 }
 
 test("conversation session CRUD preserves confirmed global memory", async ({
@@ -192,6 +210,8 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
   const browserErrors = createBrowserErrorCollector(page);
   await mockBootstrap(page);
   let messageWasSent = false;
+  let analysisRequests = 0;
+  let revisedAnalysisPayload: Record<string, unknown> | null = null;
 
   await page.route("**/api/conversations", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
@@ -224,26 +244,33 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
     });
   });
   await page.route("**/api/conversations/*/messages/*/analysis", async (route) => {
-    const completed = {
-      ...message(
-        ASSISTANT_MESSAGE,
-        "assistant",
-        "予約時間を変更していただけますか。"
-      ),
-      details: {
-        literalTranslation: "可以请您更改预约时间吗？",
-        nuanceNotes: ["礼貌且自然"],
-        keyPoints: ["変更する表示更改"],
-      },
-      analysisStatus: "completed",
-    };
+    analysisRequests += 1;
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    if (analysisRequests > 1) revisedAnalysisPayload = payload;
+    const revised = analysisRequests > 1;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        message: completed,
-        session: { ...session(NEW_SESSION, "预约改期"), summary: "预约改期表达" },
-        memories: [],
-        learningItems: [vocabularyItem],
+        analysis: {
+          id: revised ? REVISED_ANALYSIS_ID : ANALYSIS_ID,
+          sessionId: NEW_SESSION,
+          messageId: ASSISTANT_MESSAGE,
+          revision: revised ? 2 : 1,
+          status: "completed",
+          focus: revised ? "grammar" : "all",
+          instruction: revised ? "只看请求语法，不要词汇" : "",
+          overview: revised
+            ? "修订后只保留语法视角。"
+            : "这句包含礼貌请求时常用的表达。",
+          isCurrent: true,
+          modelName: "openai/gpt-4.1-nano",
+          errorCode: null,
+          errorMessage: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+          completedAt: NOW,
+        },
+        learningItems: revised ? [] : [vocabularyItem],
       }),
     });
   });
@@ -284,6 +311,7 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
             ]
           : [],
         memories: [],
+        analyses: [],
         learningItems: [],
         olderMessagesCursor: null,
       }),
@@ -301,6 +329,9 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
   await page.getByLabel("对话消息").press("Enter");
   await expect(page.getByText("予約時間を変更していただけますか。")).toBeVisible();
   await expect(page.getByText("翻译与表达说明")).toHaveCount(0);
+  await expect(page.getByText("変更する", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "学习分析" }).click();
+  await page.getByRole("button", { name: "开始分析" }).click();
   await expect(page.getByText("変更する", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("article").getByText("默认单词本", { exact: true })
@@ -309,7 +340,16 @@ test("conversation switches sessions and completes a mocked learning flow", asyn
   await page.getByRole("button", { name: "加入单词本" }).click();
   await expect(page.getByText("変更する 已保存")).toBeVisible();
 
-  await page.getByRole("button", { name: "新对话" }).click();
+  await page.getByLabel("对话消息").fill("/analysis grammar 只看请求语法，不要词汇");
+  await page.getByLabel("对话消息").press("Enter");
+  await expect(page.getByText("修订后只保留语法视角。")).toBeVisible();
+  expect(revisedAnalysisPayload).toMatchObject({
+    focus: "grammar",
+    instruction: "只看请求语法，不要词汇",
+  });
+  await expect(page.getByText("変更する 已保存")).toBeVisible();
+
+  await page.getByRole("button", { name: "新对话", exact: true }).click();
   await expect(page).toHaveURL(/\/conversation$/);
   await expect(page.getByText("予約時間を変更していただけますか。")).toBeHidden();
   await expect(page.getByLabel("对话消息")).toHaveValue("");
@@ -470,6 +510,7 @@ test("cancelled conversation answer can be regenerated in place", async ({
           },
         ],
         memories: [],
+        analyses: [],
         learningItems: [],
         olderMessagesCursor: null,
       }),
@@ -503,6 +544,7 @@ test("conversation deletion uses an accessible in-app confirmation", async ({
         session: session(SESSION_A, "医院预约"),
         messages: [],
         memories: [],
+        analyses: [],
         learningItems: [],
         olderMessagesCursor: null,
       }),

@@ -7,6 +7,8 @@ import {
   buildConversationGrammarSearchQuery,
   conversationLearningItemKey,
   parseConversationAnalysisOutput,
+  parseConversationLearningAnalysisOutput,
+  parseConversationMaintenanceOutput,
   selectConversationGrammarCandidates,
   reconcileConversationGrammarLearningItems,
   trimConversationContextMessages,
@@ -60,6 +62,27 @@ function memory(
 }
 
 describe("conversation domain", () => {
+  it("keeps general chat in the user's language without forcing translation", () => {
+    const prompt = buildConversationSystemPrompt({
+      mode: "chat",
+      preferences: {
+        defaultMode: "chat",
+        translationStyle: "natural_first",
+        defaultRegister: "auto",
+        defaultCollectionId: null,
+      },
+      globalMemories: [],
+      sessionMemories: [],
+      summary: "",
+      currentUserContent: "帮我梳理一个旅行计划",
+    });
+
+    expect(prompt).toContain("LexiNote 的通用对话助手");
+    expect(prompt).toContain("使用用户当前使用的语言回答");
+    expect(prompt).toContain("不要把没有明确翻译意图的中文或日语自动改写");
+    expect(prompt).not.toContain("核心结果必须是日语翻译");
+  });
+
   it("builds mode-specific prompts from confirmed structured context", () => {
     const prompt = buildConversationSystemPrompt({
       mode: "zh_to_ja",
@@ -230,25 +253,40 @@ describe("conversation domain", () => {
 
   it("limits structured learning extraction to the current turn", () => {
     const prompt = buildConversationAnalysisPrompt({
-      sessionTitle: "预约表达",
-      titleIsManual: false,
-      previousSummary: "此前学习过変更する。",
       messages: [message(0, "这次请翻译辛苦了"), message(1, "お疲れさまでした。")],
+      focus: "grammar",
+      instruction: "排除普通寒暄，只看可复习语法",
     });
 
     expect(prompt).toContain("当前一轮：");
     expect(prompt).toContain("学习项只从“当前一轮”提取");
-    expect(prompt).toContain("不要从此前摘要重新提取");
+    expect(prompt).toContain("只提取语法候选");
+    expect(prompt).toContain("排除普通寒暄");
     expect(prompt).not.toContain("試してみます");
     expect(prompt).toContain("补助动词和复合语法结构");
     expect(prompt).toContain("实际文字中得到直接支持");
     expect(prompt).toContain("同一个语言现象只选一个 kind");
     expect(prompt).toContain("不要收集助手给出的普通改写");
-    expect(prompt).toContain("memories 不是对话摘要");
     expect(prompt).toContain("通常只选 1–3 个");
     expect(prompt).toContain("不能输出「〜かもしれませんので」");
     expect(prompt).toContain("特殊敬语动词属于 vocabulary");
     expect(prompt).toContain("不要把「楽しいです/楽しかったです」");
+  });
+
+  it("rejects incomplete on-demand analysis and maintenance payloads", () => {
+    expect(parseConversationLearningAnalysisOutput("{}")).toBeNull();
+    expect(
+      parseConversationLearningAnalysisOutput(
+        JSON.stringify({ overview: "没有候选", learning_items: [] })
+      )
+    ).toEqual({ overview: "没有候选", learningItems: [] });
+
+    expect(parseConversationMaintenanceOutput("{}")).toBeNull();
+    expect(
+      parseConversationMaintenanceOutput(
+        JSON.stringify({ title: null, summary: "已讨论计划。", memories: [] })
+      )
+    ).toEqual({ title: null, summary: "已讨论计划。", memories: [] });
   });
 
   it("canonicalizes te-miru and removes ordinary expressions covered by it", () => {

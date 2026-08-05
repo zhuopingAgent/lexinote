@@ -3,9 +3,28 @@ const SESSION_COLUMNS = `
   title,
   mode,
   summary,
+  summary_through_at,
   title_is_manual,
   created_at,
   updated_at
+`;
+
+const ANALYSIS_COLUMNS = `
+  id::text,
+  session_id::text,
+  message_id::text,
+  revision,
+  status,
+  focus,
+  instruction,
+  overview,
+  is_current,
+  model_name,
+  error_code,
+  error_message,
+  created_at,
+  updated_at,
+  completed_at
 `;
 
 const MESSAGE_COLUMNS = `
@@ -42,6 +61,7 @@ const LEARNING_ITEM_COLUMNS = `
   id::text,
   session_id::text,
   source_message_id::text,
+  analysis_id::text,
   kind,
   surface_form,
   reading,
@@ -306,7 +326,7 @@ export const COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
   SET
     content = $3::text,
     status = 'completed',
-    analysis_status = 'pending',
+    analysis_status = 'not_requested',
     error_code = NULL,
     error_message = NULL,
     completed_at = NOW(),
@@ -314,6 +334,214 @@ export const COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
   WHERE id = $1::uuid
     AND user_id = $2::uuid
   RETURNING ${MESSAGE_COLUMNS};
+`;
+
+export const INSERT_CONVERSATION_ANALYSIS_SQL = `
+  WITH target_message AS (
+    SELECT message.id, message.session_id
+    FROM conversation_messages message
+    JOIN conversation_sessions session ON session.id = message.session_id
+    WHERE message.id = $2::uuid
+      AND message.session_id = $1::uuid
+      AND message.user_id = $3::uuid
+      AND session.user_id = $3::uuid
+      AND message.role = 'assistant'
+      AND message.status = 'completed'
+  ),
+  created_analysis AS (
+    INSERT INTO conversation_analyses (
+      user_id,
+      session_id,
+      message_id,
+      client_analysis_id,
+      focus,
+      instruction,
+      model_name
+    )
+    SELECT $3::uuid, session_id, id, $4::text, $5::text, $6::text, $7::text
+    FROM target_message
+    ON CONFLICT (session_id, client_analysis_id) DO NOTHING
+    RETURNING ${ANALYSIS_COLUMNS}
+  ),
+  marked_message AS (
+    UPDATE conversation_messages
+    SET analysis_status = 'running',
+        analysis_locked_at = NOW(),
+        updated_at = NOW()
+    WHERE id IN (SELECT message_id::uuid FROM created_analysis)
+    RETURNING id
+  )
+  SELECT ${ANALYSIS_COLUMNS}
+  FROM created_analysis
+  WHERE EXISTS (SELECT 1 FROM marked_message);
+`;
+
+export const SELECT_CONVERSATION_ANALYSIS_BY_CLIENT_ID_SQL = `
+  SELECT ${ANALYSIS_COLUMNS}
+  FROM conversation_analyses
+  WHERE session_id = $1::uuid
+    AND user_id = $2::uuid
+    AND client_analysis_id = $3::text
+  LIMIT 1;
+`;
+
+export const RECLAIM_CONVERSATION_ANALYSIS_SQL = `
+  WITH removed_items AS (
+    DELETE FROM conversation_learning_items
+    WHERE analysis_id IN (
+      SELECT id
+      FROM conversation_analyses
+      WHERE session_id = $1::uuid
+        AND message_id = $2::uuid
+        AND user_id = $3::uuid
+        AND client_analysis_id = $4::text
+        AND (
+          status = 'failed'
+          OR (
+            status = 'running'
+            AND locked_at < NOW() - INTERVAL '5 minutes'
+          )
+        )
+    )
+      AND user_id = $3::uuid
+      AND status IN ('suggested', 'needs_review', 'failed')
+    RETURNING id
+  ),
+  reclaimed_analysis AS (
+    UPDATE conversation_analyses
+    SET status = 'running',
+        is_current = FALSE,
+        error_code = NULL,
+        error_message = NULL,
+        locked_at = NOW(),
+        completed_at = NULL,
+        updated_at = NOW()
+    WHERE session_id = $1::uuid
+      AND message_id = $2::uuid
+      AND user_id = $3::uuid
+      AND client_analysis_id = $4::text
+      AND (SELECT COUNT(*) FROM removed_items) >= 0
+      AND (
+        status = 'failed'
+        OR (
+          status = 'running'
+          AND locked_at < NOW() - INTERVAL '5 minutes'
+        )
+      )
+    RETURNING ${ANALYSIS_COLUMNS}
+  ),
+  marked_message AS (
+    UPDATE conversation_messages
+    SET analysis_status = 'running',
+        analysis_locked_at = NOW(),
+        updated_at = NOW()
+    WHERE id IN (SELECT message_id::uuid FROM reclaimed_analysis)
+    RETURNING id
+  )
+  SELECT ${ANALYSIS_COLUMNS}
+  FROM reclaimed_analysis
+  WHERE EXISTS (SELECT 1 FROM marked_message);
+`;
+
+export const LIST_CONVERSATION_ANALYSES_SQL = `
+  WITH ranked_analyses AS (
+    SELECT
+      ${ANALYSIS_COLUMNS},
+      ROW_NUMBER() OVER (
+        PARTITION BY message_id
+        ORDER BY revision DESC
+      ) AS latest_rank
+    FROM conversation_analyses
+    WHERE session_id = $1::uuid
+      AND user_id = $2::uuid
+  )
+  SELECT ${ANALYSIS_COLUMNS}
+  FROM ranked_analyses
+  WHERE is_current OR latest_rank = 1
+  ORDER BY revision ASC;
+`;
+
+export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
+  WITH target_analysis AS (
+    SELECT id, message_id
+    FROM conversation_analyses
+    WHERE id = $1::uuid
+      AND user_id = $2::uuid
+      AND status = 'running'
+  ),
+  dismissed_items AS (
+    UPDATE conversation_learning_items
+    SET status = 'dismissed', updated_at = NOW()
+    WHERE user_id = $2::uuid
+      AND source_message_id IN (SELECT message_id FROM target_analysis)
+      AND analysis_id IS DISTINCT FROM $1::uuid
+      AND status IN ('suggested', 'needs_review')
+    RETURNING id
+  ),
+  superseded_analyses AS (
+    UPDATE conversation_analyses
+    SET is_current = FALSE, updated_at = NOW()
+    WHERE user_id = $2::uuid
+      AND message_id IN (SELECT message_id FROM target_analysis)
+      AND id <> $1::uuid
+      AND is_current
+    RETURNING id
+  ),
+  marked_message AS (
+    UPDATE conversation_messages
+    SET analysis_status = 'completed',
+        analysis_locked_at = NULL,
+        updated_at = NOW()
+    WHERE id IN (SELECT message_id FROM target_analysis)
+      AND (SELECT COUNT(*) FROM dismissed_items) >= 0
+      AND (SELECT COUNT(*) FROM superseded_analyses) >= 0
+    RETURNING id
+  )
+  UPDATE conversation_analyses
+  SET status = 'completed',
+      overview = $3::text,
+      is_current = TRUE,
+      error_code = NULL,
+      error_message = NULL,
+      completed_at = NOW(),
+      updated_at = NOW()
+  WHERE id IN (SELECT id FROM target_analysis)
+    AND EXISTS (SELECT 1 FROM marked_message)
+  RETURNING ${ANALYSIS_COLUMNS};
+`;
+
+export const FAIL_CONVERSATION_ANALYSIS_RECORD_SQL = `
+  WITH removed_items AS (
+    DELETE FROM conversation_learning_items
+    WHERE analysis_id = $1::uuid
+      AND user_id = $2::uuid
+      AND status IN ('suggested', 'needs_review', 'failed')
+    RETURNING id
+  ),
+  failed_analysis AS (
+    UPDATE conversation_analyses
+    SET status = 'failed',
+        is_current = FALSE,
+        error_code = $3::text,
+        error_message = $4::text,
+        completed_at = NOW(),
+        updated_at = NOW()
+    WHERE id = $1::uuid
+      AND user_id = $2::uuid
+      AND (SELECT COUNT(*) FROM removed_items) >= 0
+    RETURNING ${ANALYSIS_COLUMNS}
+  ),
+  marked_message AS (
+    UPDATE conversation_messages
+    SET analysis_status = 'failed',
+        analysis_locked_at = NULL,
+        updated_at = NOW()
+    WHERE id IN (SELECT message_id::uuid FROM failed_analysis)
+    RETURNING id
+  )
+  SELECT ${ANALYSIS_COLUMNS}
+  FROM failed_analysis
+  WHERE EXISTS (SELECT 1 FROM marked_message);
 `;
 
 export const FAIL_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
@@ -496,6 +724,7 @@ export const INSERT_CONVERSATION_LEARNING_ITEM_SQL = `
     user_id,
     session_id,
     source_message_id,
+    analysis_id,
     kind,
     surface_form,
     reading,
@@ -509,14 +738,15 @@ export const INSERT_CONVERSATION_LEARNING_ITEM_SQL = `
     $1::uuid,
     $2::uuid,
     $3::uuid,
-    $4::text,
+    $4::uuid,
     $5::text,
     $6::text,
     $7::text,
     $8::text,
     $9::text,
     $10::text,
-    $11::jsonb
+    $11::text,
+    $12::jsonb
   )
   RETURNING ${LEARNING_ITEM_COLUMNS};
 `;
@@ -530,15 +760,33 @@ export const LIST_CONVERSATION_LEARNING_ITEMS_SQL = `
           kind,
           ${LEARNING_ITEM_SURFACE_KEY},
           ${LEARNING_ITEM_MEANING_KEY}
-        ORDER BY created_at ASC, id ASC
+        ORDER BY
+          CASE status WHEN 'saved' THEN 0 ELSE 1 END,
+          created_at DESC,
+          id DESC
       ) AS duplicate_rank
     FROM conversation_learning_items
     WHERE session_id = $1::uuid
       AND user_id = $2::uuid
+      AND (
+        analysis_id IS NULL
+        OR status = 'saved'
+        OR analysis_id IN (
+          SELECT id FROM conversation_analyses WHERE is_current
+        )
+      )
   )
   SELECT ${LEARNING_ITEM_COLUMNS}
   FROM ranked_learning_items
   WHERE duplicate_rank = 1
+  ORDER BY created_at ASC, id ASC;
+`;
+
+export const LIST_CONVERSATION_LEARNING_ITEMS_BY_ANALYSIS_SQL = `
+  SELECT ${LEARNING_ITEM_COLUMNS}
+  FROM conversation_learning_items
+  WHERE analysis_id = $1::uuid
+    AND user_id = $2::uuid
   ORDER BY created_at ASC, id ASC;
 `;
 
@@ -552,11 +800,17 @@ export const LIST_CONVERSATION_REVIEW_INBOX_SQL = `
           kind,
           ${LEARNING_ITEM_SURFACE_KEY},
           ${LEARNING_ITEM_MEANING_KEY}
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at DESC, id DESC
       ) AS duplicate_rank
     FROM conversation_learning_items
     WHERE user_id = $1::uuid
       AND kind = 'grammar'
+      AND (
+        analysis_id IS NULL
+        OR analysis_id IN (
+          SELECT id FROM conversation_analyses WHERE is_current
+        )
+      )
   )
   SELECT ${LEARNING_ITEM_COLUMNS}
   FROM ranked_learning_items

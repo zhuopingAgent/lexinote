@@ -13,6 +13,8 @@ import {
 import { getErrorMessage } from "@/app/lib/api-client";
 import type { CollectionSummary } from "@/shared/types/collections";
 import type {
+  ConversationAnalysis,
+  ConversationAnalysisFocus,
   ConversationLearningItem,
   ConversationMemory,
   ConversationMessage,
@@ -21,12 +23,18 @@ import type {
 } from "@/shared/types/conversation";
 
 type ConversationMessageViewProps = {
+  analyses: ConversationAnalysis[];
+  analysisError: string | null;
   collections: CollectionSummary[];
   defaultCollectionId: number | null;
   learningItems: ConversationLearningItem[];
   memories: ConversationMemory[];
   message: ConversationMessage;
-  onAnalyze: (messageId: string) => Promise<void>;
+  isAnalyzing: boolean;
+  onAnalyze: (
+    messageId: string,
+    input: { focus: ConversationAnalysisFocus; instruction: string }
+  ) => Promise<void>;
   onDismissLearningItem: (itemId: string) => Promise<void>;
   onPromoteLearningItem: (
     itemId: string,
@@ -40,6 +48,16 @@ type ConversationMessageViewProps = {
     status: "active" | "dismissed"
   ) => Promise<void>;
 };
+
+const ANALYSIS_FOCUS_OPTIONS: Array<{
+  value: ConversationAnalysisFocus;
+  label: string;
+}> = [
+  { value: "all", label: "综合" },
+  { value: "grammar", label: "语法" },
+  { value: "vocabulary", label: "词汇" },
+  { value: "expressions", label: "表达" },
+];
 
 function LearningItemCard({
   collections,
@@ -249,11 +267,14 @@ function LearningItemCard({
 }
 
 export function ConversationMessageView({
+  analyses,
+  analysisError,
   collections,
   defaultCollectionId,
   learningItems,
   memories,
   message,
+  isAnalyzing,
   onAnalyze,
   onCreateCollection,
   onDismissLearningItem,
@@ -263,11 +284,39 @@ export function ConversationMessageView({
   onUpdateMemory,
 }: ConversationMessageViewProps) {
   const [copied, setCopied] = useState(false);
+  const [isAnalysisFormOpen, setIsAnalysisFormOpen] = useState(false);
+  const [analysisFocus, setAnalysisFocus] =
+    useState<ConversationAnalysisFocus>("all");
+  const [analysisInstruction, setAnalysisInstruction] = useState("");
   const [busyMemoryId, setBusyMemoryId] = useState<string | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
+  const messageAnalyses = useMemo(
+    () =>
+      analyses
+        .filter((analysis) => analysis.messageId === message.id)
+        .sort((left, right) => left.revision - right.revision),
+    [analyses, message.id]
+  );
+  const currentAnalysis =
+    messageAnalyses.findLast((analysis) => analysis.isCurrent) ?? null;
+  const latestAnalysis = messageAnalyses.at(-1) ?? null;
+  const displayedAnalysisError = isAnalyzing
+    ? null
+    : analysisError ??
+      (latestAnalysis?.status === "failed"
+        ? latestAnalysis.errorMessage || "上次学习分析失败，请重试。"
+        : null);
   const messageLearningItems = useMemo(
-    () => learningItems.filter((item) => item.sourceMessageId === message.id && item.status !== "dismissed"),
-    [learningItems, message.id]
+    () =>
+      learningItems.filter(
+        (item) =>
+          item.sourceMessageId === message.id &&
+          item.status !== "dismissed" &&
+          (item.status === "saved" ||
+            item.analysisId === currentAnalysis?.id ||
+            (item.analysisId === null && currentAnalysis === null))
+      ),
+    [currentAnalysis, learningItems, message.id]
   );
   const messageMemories = useMemo(
     () => memories.filter((memory) => memory.sourceMessageId === message.id && memory.status === "suggested"),
@@ -286,6 +335,22 @@ export function ConversationMessageView({
     } finally {
       setBusyMemoryId(null);
     }
+  }
+
+  async function submitAnalysis() {
+    await onAnalyze(message.id, {
+      focus: analysisFocus,
+      instruction: analysisInstruction.trim(),
+    });
+    setIsAnalysisFormOpen(false);
+  }
+
+  function openAnalysisForm(analysis?: ConversationAnalysis | null) {
+    if (analysis) {
+      setAnalysisFocus(analysis.focus);
+      setAnalysisInstruction(analysis.instruction);
+    }
+    setIsAnalysisFormOpen(true);
   }
 
   if (message.role === "user") {
@@ -322,12 +387,76 @@ export function ConversationMessageView({
             </div>
           ) : null}
 
-          {message.analysisStatus === "failed" ? (
-            <button type="button" onClick={() => void onAnalyze(message.id)} className="mt-3 rounded-md border border-border px-3 py-1.5 text-xs text-muted transition hover:text-foreground">重新提取学习项</button>
+          {isAnalysisFormOpen ? (
+            <div className="mt-4 border-y border-border py-4">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="学习分析范围">
+                {ANALYSIS_FOCUS_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={isAnalyzing}
+                    aria-pressed={analysisFocus === option.value}
+                    onClick={() => setAnalysisFocus(option.value)}
+                    className={`h-8 rounded-md border px-3 text-xs transition ${analysisFocus === option.value ? "border-accent bg-accent-soft text-accent-strong" : "border-border text-muted hover:text-foreground"}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                aria-label="分析意图"
+                value={analysisInstruction}
+                disabled={isAnalyzing}
+                maxLength={1000}
+                rows={2}
+                onChange={(event) => setAnalysisInstruction(event.target.value)}
+                placeholder="补充希望关注或排除的内容"
+                className="mt-3 min-h-20 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm leading-6 outline-none focus:border-foreground/30 disabled:opacity-55"
+              />
+              <div className="mt-3 flex items-center gap-2">
+                <button type="button" disabled={isAnalyzing} onClick={() => void submitAnalysis()} className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-wait disabled:opacity-50">
+                  <LightbulbIcon className="size-4" />
+                  {isAnalyzing ? "分析中..." : currentAnalysis ? "重新分析" : "开始分析"}
+                </button>
+                <button type="button" disabled={isAnalyzing} onClick={() => setIsAnalysisFormOpen(false)} className="h-9 rounded-md px-3 text-sm text-muted transition hover:bg-surface-strong hover:text-foreground disabled:opacity-50">
+                  取消
+                </button>
+              </div>
+            </div>
           ) : null}
-          {message.analysisStatus === "running" || message.analysisStatus === "pending" ? <p className="mt-3 text-xs text-muted">正在整理学习项...</p> : null}
 
-          {messageLearningItems.length > 0 ? (
+          {isAnalyzing && !isAnalysisFormOpen ? (
+            <p className="mt-3 text-xs text-muted">正在按你的要求分析...</p>
+          ) : null}
+          {displayedAnalysisError ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-danger">
+              <span>{displayedAnalysisError}</span>
+              <button type="button" onClick={() => openAnalysisForm(latestAnalysis)} className="rounded-md border border-danger/30 px-2 py-1 transition hover:bg-danger-soft">调整后重试</button>
+            </div>
+          ) : null}
+
+          {currentAnalysis ? (
+            <section className="mt-4 border-y border-border py-4" aria-label="学习分析">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground/80">学习分析</h3>
+                <button type="button" disabled={isAnalyzing} onClick={() => openAnalysisForm(currentAnalysis)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition hover:bg-surface-strong hover:text-foreground disabled:opacity-45">
+                  <LightbulbIcon className="size-3.5" />
+                  调整分析
+                </button>
+              </div>
+              {currentAnalysis.instruction ? <p className="mt-2 text-xs text-muted">分析意图：{currentAnalysis.instruction}</p> : null}
+              {currentAnalysis.overview ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/72">{currentAnalysis.overview}</p> : null}
+              {messageLearningItems.length > 0 ? (
+                <div className="mt-3 px-1">
+                  {messageLearningItems.map((item) => (
+                    <LearningItemCard key={item.id} item={item} collections={collections} defaultCollectionId={defaultCollectionId} onDismiss={onDismissLearningItem} onPromote={onPromoteLearningItem} onCreateCollection={onCreateCollection} onSetDefaultCollection={onSetDefaultCollection} />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-muted">这次分析没有发现值得保存的学习项。</p>
+              )}
+            </section>
+          ) : messageLearningItems.length > 0 ? (
             <div className="mt-4 border-y border-border px-1">
               {messageLearningItems.map((item) => (
                 <LearningItemCard key={item.id} item={item} collections={collections} defaultCollectionId={defaultCollectionId} onDismiss={onDismissLearningItem} onPromote={onPromoteLearningItem} onCreateCollection={onCreateCollection} onSetDefaultCollection={onSetDefaultCollection} />
@@ -349,19 +478,27 @@ export function ConversationMessageView({
           ) : null}
 
           {message.content ? (
-            <button
-              type="button"
-              aria-label="复制回答"
-              onClick={async () => {
-                await navigator.clipboard.writeText(message.content);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1200);
-              }}
-              className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition hover:bg-surface-strong hover:text-foreground"
-            >
-              <CopyIcon className="size-3.5" />
-              {copied ? "已复制" : "复制"}
-            </button>
+            <div className="mt-3 flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                aria-label="复制回答"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(message.content);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1200);
+                }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition hover:bg-surface-strong hover:text-foreground"
+              >
+                <CopyIcon className="size-3.5" />
+                {copied ? "已复制" : "复制"}
+              </button>
+              {message.status === "completed" && !currentAnalysis ? (
+                <button type="button" disabled={isAnalyzing} onClick={() => openAnalysisForm(latestAnalysis)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition hover:bg-surface-strong hover:text-foreground disabled:opacity-45">
+                  <LightbulbIcon className="size-3.5" />
+                  学习分析
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>

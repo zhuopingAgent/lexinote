@@ -7,10 +7,12 @@ import {
 import { createCollection } from "@/app/lib/collection-api";
 import type { CollectionSummary } from "@/shared/types/collections";
 import type {
+  AnalyzeConversationMessageRequest,
   ConversationAnalysisResponse,
   ConversationBootstrapResponse,
   ConversationLearningItem,
   ConversationMemory,
+  ConversationMaintenanceResponse,
   ConversationMode,
   ConversationPreferences,
   ConversationReviewInboxResponse,
@@ -64,9 +66,23 @@ export async function createConversationSession(mode: ConversationMode) {
   return result.session;
 }
 
-export function analyzeConversationMessage(sessionId: string, messageId: string) {
+export function analyzeConversationMessage(
+  sessionId: string,
+  messageId: string,
+  input: AnalyzeConversationMessageRequest
+) {
   return requestJson<ConversationAnalysisResponse>(
     `/api/conversations/${sessionId}/messages/${messageId}/analysis`,
+    jsonRequest("POST", input)
+  );
+}
+
+export function maintainConversationSession(
+  sessionId: string,
+  messageId: string
+) {
+  return requestJson<ConversationMaintenanceResponse>(
+    `/api/conversations/${sessionId}/messages/${messageId}/maintenance`,
     { method: "POST" }
   );
 }

@@ -1030,7 +1030,8 @@ CREATE TABLE IF NOT EXISTS conversation_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL DEFAULT '新对话',
-  mode TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN (
+  mode TEXT NOT NULL DEFAULT 'chat' CHECK (mode IN (
+    'chat',
     'auto',
     'zh_to_ja',
     'ja_to_zh',
@@ -1055,6 +1056,7 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL DEFAULT '',
   mode TEXT CHECK (mode IN (
+    'chat',
     'auto',
     'zh_to_ja',
     'ja_to_zh',
@@ -1089,7 +1091,8 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 
 CREATE TABLE IF NOT EXISTS conversation_preferences (
   user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  default_mode TEXT NOT NULL DEFAULT 'auto' CHECK (default_mode IN (
+  default_mode TEXT NOT NULL DEFAULT 'chat' CHECK (default_mode IN (
+    'chat',
     'auto',
     'zh_to_ja',
     'ja_to_zh',
@@ -1106,8 +1109,46 @@ CREATE TABLE IF NOT EXISTS conversation_preferences (
     'business'
   )),
   default_collection_id BIGINT REFERENCES collections(collection_id) ON DELETE SET NULL,
+  general_chat_migrated BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE conversation_preferences
+  ADD COLUMN IF NOT EXISTS general_chat_migrated BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE conversation_sessions
+  DROP CONSTRAINT IF EXISTS conversation_sessions_mode_check;
+ALTER TABLE conversation_sessions
+  ADD CONSTRAINT conversation_sessions_mode_check CHECK (mode IN (
+    'chat', 'auto', 'zh_to_ja', 'ja_to_zh', 'polish_ja', 'explain_ja'
+  ));
+ALTER TABLE conversation_sessions
+  ALTER COLUMN mode SET DEFAULT 'chat';
+
+ALTER TABLE conversation_messages
+  DROP CONSTRAINT IF EXISTS conversation_messages_mode_check;
+ALTER TABLE conversation_messages
+  ADD CONSTRAINT conversation_messages_mode_check CHECK (mode IN (
+    'chat', 'auto', 'zh_to_ja', 'ja_to_zh', 'polish_ja', 'explain_ja'
+  ));
+
+ALTER TABLE conversation_preferences
+  DROP CONSTRAINT IF EXISTS conversation_preferences_default_mode_check;
+ALTER TABLE conversation_preferences
+  ADD CONSTRAINT conversation_preferences_default_mode_check CHECK (default_mode IN (
+    'chat', 'auto', 'zh_to_ja', 'ja_to_zh', 'polish_ja', 'explain_ja'
+  ));
+
+UPDATE conversation_preferences
+SET default_mode = 'chat',
+    general_chat_migrated = TRUE,
+    updated_at = NOW()
+WHERE general_chat_migrated = FALSE;
+
+ALTER TABLE conversation_preferences
+  ALTER COLUMN default_mode SET DEFAULT 'chat';
+ALTER TABLE conversation_preferences
+  ALTER COLUMN general_chat_migrated SET DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS conversation_memories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1130,11 +1171,43 @@ CREATE TABLE IF NOT EXISTS conversation_memories (
   )
 );
 
+CREATE TABLE IF NOT EXISTS conversation_analyses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  revision BIGINT GENERATED ALWAYS AS IDENTITY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id UUID NOT NULL REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+  message_id UUID NOT NULL REFERENCES conversation_messages(id) ON DELETE CASCADE,
+  client_analysis_id TEXT NOT NULL,
+  focus TEXT NOT NULL DEFAULT 'all' CHECK (focus IN (
+    'all',
+    'grammar',
+    'vocabulary',
+    'expressions'
+  )),
+  instruction TEXT NOT NULL DEFAULT '',
+  overview TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN (
+    'running',
+    'completed',
+    'failed'
+  )),
+  is_current BOOLEAN NOT NULL DEFAULT FALSE,
+  model_name TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  locked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (session_id, client_analysis_id)
+);
+
 CREATE TABLE IF NOT EXISTS conversation_learning_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   session_id UUID REFERENCES conversation_sessions(id) ON DELETE SET NULL,
   source_message_id UUID REFERENCES conversation_messages(id) ON DELETE SET NULL,
+  analysis_id UUID REFERENCES conversation_analyses(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK (kind IN ('vocabulary', 'expression', 'grammar')),
   surface_form TEXT NOT NULL,
   reading TEXT,
@@ -1157,6 +1230,9 @@ CREATE TABLE IF NOT EXISTS conversation_learning_items (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE conversation_learning_items
+  ADD COLUMN IF NOT EXISTS analysis_id UUID REFERENCES conversation_analyses(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_learner_objective_states_due
   ON learner_objective_states (user_id, next_review_at, estimate);
 
@@ -1169,6 +1245,13 @@ CREATE INDEX IF NOT EXISTS idx_conversation_messages_session_created
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_analysis
   ON conversation_messages (analysis_status, analysis_locked_at)
   WHERE role = 'assistant';
+
+CREATE INDEX IF NOT EXISTS idx_conversation_analyses_message_revision
+  ON conversation_analyses (message_id, revision DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_analyses_current
+  ON conversation_analyses (message_id)
+  WHERE is_current;
 
 CREATE INDEX IF NOT EXISTS idx_conversation_memories_context
   ON conversation_memories (user_id, scope, session_id, status, updated_at DESC);

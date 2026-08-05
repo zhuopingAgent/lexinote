@@ -27,6 +27,7 @@ function session(testCase: SoakCase, index: number) {
     title: "新对话",
     mode: testCase.mode,
     summary: "",
+    summaryThroughAt: null,
     titleIsManual: false,
     createdAt: NOW,
     updatedAt: NOW,
@@ -53,12 +54,7 @@ function message(input: {
     errorCode: null,
     errorMessage: null,
     details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
-    analysisStatus:
-      input.role === "assistant" && input.status !== "streaming"
-        ? "completed"
-        : input.role === "assistant"
-          ? "pending"
-          : "not_requested",
+    analysisStatus: "not_requested",
     createdAt: NOW,
     updatedAt: NOW,
     completedAt: input.status === "streaming" ? null : NOW,
@@ -85,6 +81,7 @@ function learningItems(testCase: SoakCase, index: number) {
       id: uuidFor(index, 4),
       sessionId: uuidFor(index, 1),
       sourceMessageId: uuidFor(index, 3),
+      analysisId: uuidFor(index, 6),
       kind: expected.kind,
       surfaceForm: expected.surfaceForm,
       reading: isGrammar ? null : "じゅうみんひょう",
@@ -111,6 +108,26 @@ function learningItems(testCase: SoakCase, index: number) {
       updatedAt: NOW,
     },
   ];
+}
+
+function analysis(testCase: SoakCase, index: number) {
+  return {
+    id: uuidFor(index, 6),
+    sessionId: uuidFor(index, 1),
+    messageId: uuidFor(index, 3),
+    revision: index + 1,
+    status: "completed",
+    focus: "all",
+    instruction: "",
+    overview: "已按当前一轮整理日语学习重点。",
+    isCurrent: true,
+    modelName: "soak/mock-analysis-model",
+    errorCode: null,
+    errorMessage: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    completedAt: NOW,
+  };
 }
 
 async function fulfillJson(route: Route, body: unknown, status = 200) {
@@ -208,25 +225,24 @@ async function installSoakRoutes(
     });
   });
 
+  await page.route(
+    "**/api/conversations/*/messages/*/maintenance",
+    async (route) => {
+      await fulfillJson(route, {
+        session: {
+          ...session(current.testCase, current.index),
+          title: `Soak ${current.index + 1}`,
+          summary: "已维护当前复杂场景。",
+        },
+        memories: [],
+      });
+    }
+  );
+
   await page.route("**/api/conversations/*/messages/*/analysis", async (route) => {
     current.analyzed = true;
-    const content = assistantContent(current.testCase);
     await fulfillJson(route, {
-      message: {
-        ...message({
-          testCase: current.testCase,
-          index: current.index,
-          role: "assistant",
-          content,
-        }),
-        analysisStatus: "completed",
-      },
-      session: {
-        ...session(current.testCase, current.index),
-        title: `Soak ${current.index + 1}`,
-        summary: "已完成当前复杂场景。",
-      },
-      memories: [],
+      analysis: analysis(current.testCase, current.index),
       learningItems: learningItems(current.testCase, current.index),
     });
   });
@@ -283,6 +299,9 @@ async function installSoakRoutes(
           ]
         : [],
       memories: [],
+      analyses: current.analyzed
+        ? [analysis(current.testCase, current.index)]
+        : [],
       learningItems: current.analyzed
         ? learningItems(current.testCase, current.index)
         : [],
@@ -329,7 +348,7 @@ test("every promotable soak grammar resolves to exactly one active sense", async
   }
 });
 
-test("400 complex conversation cases exercise every mode and learning handoff", async ({
+test("420 complex conversation cases exercise every mode and learning handoff", async ({
   page,
 }) => {
   test.setTimeout(420_000);
@@ -363,6 +382,9 @@ test("400 complex conversation cases exercise every mode and learning handoff", 
     await expect(page.getByRole("article")).toContainText(
       testCase.expect.responseAny[0] ?? "自然表达"
     );
+    await page.getByRole("button", { name: "学习分析" }).click();
+    await page.getByRole("button", { name: "开始分析" }).click();
+    await expect(page.getByRole("heading", { name: "学习分析" })).toBeVisible();
     if (testCase.expect.learning?.kind === "grammar") {
       await page.getByRole("button", { name: "加入复习" }).click();
       await expect(
