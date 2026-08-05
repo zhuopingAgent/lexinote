@@ -65,6 +65,7 @@ const CONVERSATION_META_SUMMARY_PATTERNS = [
 ] as const;
 
 const HANGUL_PATTERN = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u;
+const JAPANESE_KANA_PATTERN = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const LEXICAL_HONORIFIC_FORMS = new Set([
   "おっしゃる",
   "いらっしゃる",
@@ -338,7 +339,8 @@ export function parseConversationAnalysisOutput(
             HANGUL_PATTERN.test(explanationZh) ||
             /[。！？?!]/u.test(surfaceForm) ||
             (kind === "grammar" &&
-              (isLowValueStandaloneGrammar(surfaceForm) ||
+              (!JAPANESE_KANA_PATTERN.test(surfaceForm) ||
+                isLowValueStandaloneGrammar(surfaceForm) ||
                 /[、，,\/／→⇒]/u.test(surfaceForm) ||
                 /^(?:接续|接続)[：:]/u.test(meaningZh) ||
                 /用于构成.*接续/u.test(explanationZh)))
