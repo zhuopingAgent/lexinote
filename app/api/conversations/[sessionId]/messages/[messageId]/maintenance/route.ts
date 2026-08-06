@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getConversationService } from "@/app/api/services";
+import { getConversationMaintenanceService } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
 
 export const runtime = "nodejs";
 
-const conversationService = getConversationService();
+const conversationService = getConversationMaintenanceService();
 
 export async function POST(
   _request: Request,

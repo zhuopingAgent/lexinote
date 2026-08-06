@@ -19,6 +19,7 @@ const ANALYSIS_COLUMNS = `
   instruction,
   overview,
   is_current,
+  lease_token::text,
   model_name,
   error_code,
   error_message,
@@ -38,8 +39,6 @@ const MESSAGE_COLUMNS = `
   model_name,
   error_code,
   error_message,
-  details,
-  analysis_status,
   created_at,
   updated_at,
   completed_at
@@ -101,13 +100,29 @@ const LEARNING_ITEM_MEANING_KEY = `
 `;
 
 export const LIST_CONVERSATION_SESSIONS_SQL = `
+  WITH cursor_session AS (
+    SELECT updated_at, id
+    FROM conversation_sessions
+    WHERE id = $4::uuid
+      AND user_id = $1::uuid
+  )
   SELECT ${SESSION_COLUMNS}
   FROM conversation_sessions
   WHERE user_id = $1::uuid
     AND ($2::text = '' OR title ILIKE $2::text)
     AND (
-      $3::timestamptz IS NULL
-      OR (updated_at, id) < ($3::timestamptz, $4::uuid)
+      $4::uuid IS NULL
+      OR (
+        EXISTS (SELECT 1 FROM cursor_session)
+        AND (updated_at, id) < (
+          SELECT updated_at, id
+          FROM cursor_session
+        )
+      )
+      OR (
+        NOT EXISTS (SELECT 1 FROM cursor_session)
+        AND (updated_at, id) < ($3::timestamptz, $4::uuid)
+      )
     )
   ORDER BY updated_at DESC, id DESC
   LIMIT $5;
@@ -171,13 +186,6 @@ export const DELETE_CONVERSATION_SESSION_SQL = `
   FROM deleted_session;
 `;
 
-export const TOUCH_CONVERSATION_SESSION_SQL = `
-  UPDATE conversation_sessions
-  SET updated_at = NOW()
-  WHERE id = $1::uuid
-    AND user_id = $2::uuid;
-`;
-
 export const UPSERT_DEFAULT_CONVERSATION_PREFERENCES_SQL = `
   INSERT INTO conversation_preferences (user_id)
   VALUES ($1::uuid)
@@ -220,6 +228,13 @@ export const UPDATE_CONVERSATION_PREFERENCES_SQL = `
 `;
 
 export const LIST_CONVERSATION_MESSAGES_SQL = `
+  WITH cursor_message AS (
+    SELECT created_at, id
+    FROM conversation_messages
+    WHERE id = $4::uuid
+      AND session_id = $1::uuid
+      AND user_id = $2::uuid
+  )
   SELECT *
   FROM (
     SELECT ${MESSAGE_COLUMNS}
@@ -227,8 +242,18 @@ export const LIST_CONVERSATION_MESSAGES_SQL = `
     WHERE session_id = $1::uuid
       AND user_id = $2::uuid
       AND (
-        $3::timestamptz IS NULL
-        OR (created_at, id) < ($3::timestamptz, $4::uuid)
+        $4::uuid IS NULL
+        OR (
+          EXISTS (SELECT 1 FROM cursor_message)
+          AND (created_at, id) < (
+            SELECT created_at, id
+            FROM cursor_message
+          )
+        )
+        OR (
+          NOT EXISTS (SELECT 1 FROM cursor_message)
+          AND (created_at, id) < ($3::timestamptz, $4::uuid)
+        )
       )
     ORDER BY created_at DESC, id DESC
     LIMIT $5
@@ -237,13 +262,27 @@ export const LIST_CONVERSATION_MESSAGES_SQL = `
 `;
 
 export const LIST_CONVERSATION_CONTEXT_MESSAGES_SQL = `
+  WITH boundary_message AS (
+    SELECT created_at, id
+    FROM conversation_messages
+    WHERE id = $4::uuid
+      AND session_id = $1::uuid
+      AND user_id = $2::uuid
+  )
   SELECT *
   FROM (
     SELECT ${MESSAGE_COLUMNS}
     FROM conversation_messages
     WHERE session_id = $1::uuid
       AND user_id = $2::uuid
-      AND status IN ('completed', 'cancelled')
+      AND status = 'completed'
+      AND (
+        $4::uuid IS NULL
+        OR (created_at, id) <= (
+          SELECT created_at, id
+          FROM boundary_message
+        )
+      )
     ORDER BY created_at DESC, id DESC
     LIMIT $3
   ) context_messages
@@ -292,10 +331,9 @@ export const INSERT_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
     status,
     parent_message_id,
     model_name,
-    analysis_status,
     client_message_id
   )
-  VALUES ($1::uuid, $2::uuid, 'assistant', $3::text, 'streaming', $4::uuid, $5::text, 'not_requested', $6::text)
+  VALUES ($1::uuid, $2::uuid, 'assistant', $3::text, 'streaming', $4::uuid, $5::text, $6::text)
   ON CONFLICT (session_id, client_message_id) DO NOTHING
   RETURNING ${MESSAGE_COLUMNS};
 `;
@@ -309,9 +347,6 @@ export const RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
     model_name = $4::text,
     error_code = NULL,
     error_message = NULL,
-    details = '{}'::jsonb,
-    analysis_status = 'not_requested',
-    analysis_locked_at = NULL,
     completed_at = NULL,
     updated_at = NOW()
   WHERE id = $1::uuid
@@ -322,18 +357,30 @@ export const RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
 `;
 
 export const COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
-  UPDATE conversation_messages
-  SET
-    content = $3::text,
-    status = 'completed',
-    analysis_status = 'not_requested',
-    error_code = NULL,
-    error_message = NULL,
-    completed_at = NOW(),
-    updated_at = NOW()
-  WHERE id = $1::uuid
-    AND user_id = $2::uuid
-  RETURNING ${MESSAGE_COLUMNS};
+  WITH completed_message AS (
+    UPDATE conversation_messages
+    SET
+      content = $3::text,
+      status = 'completed',
+      error_code = NULL,
+      error_message = NULL,
+      completed_at = NOW(),
+      updated_at = NOW()
+    WHERE id = $1::uuid
+      AND user_id = $2::uuid
+      AND status = 'streaming'
+    RETURNING *
+  ),
+  touched_session AS (
+    UPDATE conversation_sessions
+    SET updated_at = NOW()
+    WHERE id IN (SELECT session_id FROM completed_message)
+      AND user_id = $2::uuid
+    RETURNING id
+  )
+  SELECT ${MESSAGE_COLUMNS}
+  FROM completed_message
+  WHERE (SELECT COUNT(*) FROM touched_session) >= 0;
 `;
 
 export const INSERT_CONVERSATION_ANALYSIS_SQL = `
@@ -356,24 +403,24 @@ export const INSERT_CONVERSATION_ANALYSIS_SQL = `
       client_analysis_id,
       focus,
       instruction,
-      model_name
+      model_name,
+      lease_token
     )
-    SELECT $3::uuid, session_id, id, $4::text, $5::text, $6::text, $7::text
+    SELECT
+      $3::uuid,
+      session_id,
+      id,
+      $4::text,
+      $5::text,
+      $6::text,
+      $7::text,
+      $8::uuid
     FROM target_message
     ON CONFLICT (session_id, client_analysis_id) DO NOTHING
     RETURNING ${ANALYSIS_COLUMNS}
-  ),
-  marked_message AS (
-    UPDATE conversation_messages
-    SET analysis_status = 'running',
-        analysis_locked_at = NOW(),
-        updated_at = NOW()
-    WHERE id IN (SELECT message_id::uuid FROM created_analysis)
-    RETURNING id
   )
   SELECT ${ANALYSIS_COLUMNS}
-  FROM created_analysis
-  WHERE EXISTS (SELECT 1 FROM marked_message);
+  FROM created_analysis;
 `;
 
 export const SELECT_CONVERSATION_ANALYSIS_BY_CLIENT_ID_SQL = `
@@ -385,32 +432,40 @@ export const SELECT_CONVERSATION_ANALYSIS_BY_CLIENT_ID_SQL = `
   LIMIT 1;
 `;
 
+export const LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL = `
+  SELECT message.id::text
+  FROM conversation_messages message
+  JOIN conversation_analyses analysis ON analysis.message_id = message.id
+  WHERE analysis.id = $1::uuid
+    AND analysis.user_id = $2::uuid
+    AND analysis.status = 'running'
+    AND analysis.lease_token = $3::uuid
+  FOR UPDATE OF message;
+`;
+
 export const RECLAIM_CONVERSATION_ANALYSIS_SQL = `
-  WITH removed_items AS (
-    DELETE FROM conversation_learning_items
-    WHERE analysis_id IN (
-      SELECT id
-      FROM conversation_analyses
-      WHERE session_id = $1::uuid
-        AND message_id = $2::uuid
-        AND user_id = $3::uuid
-        AND client_analysis_id = $4::text
-        AND (
-          status = 'failed'
-          OR (
-            status = 'running'
-            AND locked_at < NOW() - INTERVAL '5 minutes'
-          )
+  WITH locked_message AS (
+    SELECT message.id
+    FROM conversation_messages message
+    JOIN conversation_analyses analysis ON analysis.message_id = message.id
+    WHERE analysis.session_id = $1::uuid
+      AND analysis.message_id = $2::uuid
+      AND analysis.user_id = $3::uuid
+      AND analysis.client_analysis_id = $4::text
+      AND (
+        analysis.status = 'failed'
+        OR (
+          analysis.status = 'running'
+          AND analysis.locked_at < NOW() - INTERVAL '5 minutes'
         )
-    )
-      AND user_id = $3::uuid
-      AND status IN ('suggested', 'needs_review', 'failed')
-    RETURNING id
+      )
+    FOR UPDATE OF message
   ),
   reclaimed_analysis AS (
     UPDATE conversation_analyses
     SET status = 'running',
         is_current = FALSE,
+        lease_token = $5::uuid,
         error_code = NULL,
         error_message = NULL,
         locked_at = NOW(),
@@ -420,7 +475,7 @@ export const RECLAIM_CONVERSATION_ANALYSIS_SQL = `
       AND message_id = $2::uuid
       AND user_id = $3::uuid
       AND client_analysis_id = $4::text
-      AND (SELECT COUNT(*) FROM removed_items) >= 0
+      AND message_id IN (SELECT id FROM locked_message)
       AND (
         status = 'failed'
         OR (
@@ -430,17 +485,16 @@ export const RECLAIM_CONVERSATION_ANALYSIS_SQL = `
       )
     RETURNING ${ANALYSIS_COLUMNS}
   ),
-  marked_message AS (
-    UPDATE conversation_messages
-    SET analysis_status = 'running',
-        analysis_locked_at = NOW(),
-        updated_at = NOW()
-    WHERE id IN (SELECT message_id::uuid FROM reclaimed_analysis)
+  removed_items AS (
+    DELETE FROM conversation_learning_items
+    WHERE analysis_id IN (SELECT id::uuid FROM reclaimed_analysis)
+      AND user_id = $3::uuid
+      AND status IN ('suggested', 'needs_review', 'failed')
     RETURNING id
   )
   SELECT ${ANALYSIS_COLUMNS}
   FROM reclaimed_analysis
-  WHERE EXISTS (SELECT 1 FROM marked_message);
+  WHERE (SELECT COUNT(*) FROM removed_items) >= 0;
 `;
 
 export const LIST_CONVERSATION_ANALYSES_SQL = `
@@ -462,19 +516,63 @@ export const LIST_CONVERSATION_ANALYSES_SQL = `
 `;
 
 export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
-  WITH target_analysis AS (
-    SELECT id, message_id
+  WITH locked_message AS (
+    SELECT message.id
+    FROM conversation_messages message
+    JOIN conversation_analyses analysis ON analysis.message_id = message.id
+    WHERE analysis.id = $1::uuid
+      AND analysis.user_id = $2::uuid
+      AND analysis.status = 'running'
+      AND analysis.lease_token = $3::uuid
+    FOR UPDATE OF message
+  ),
+  target_analysis AS (
+    SELECT id, message_id, revision
     FROM conversation_analyses
     WHERE id = $1::uuid
       AND user_id = $2::uuid
       AND status = 'running'
+      AND lease_token = $3::uuid
+      AND message_id IN (SELECT id FROM locked_message)
+    FOR UPDATE
   ),
-  dismissed_items AS (
+  winning_target AS (
+    SELECT target.id, target.message_id, target.revision
+    FROM target_analysis target
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM conversation_analyses current_analysis
+      WHERE current_analysis.user_id = $2::uuid
+        AND current_analysis.message_id = target.message_id
+        AND current_analysis.status = 'completed'
+        AND current_analysis.is_current
+        AND current_analysis.revision > target.revision
+    )
+  ),
+  dismissed_superseded_items AS (
     UPDATE conversation_learning_items
     SET status = 'dismissed', updated_at = NOW()
     WHERE user_id = $2::uuid
-      AND source_message_id IN (SELECT message_id FROM target_analysis)
+      AND source_message_id IN (SELECT message_id FROM winning_target)
       AND analysis_id IS DISTINCT FROM $1::uuid
+      AND status IN ('suggested', 'needs_review')
+      AND (
+        analysis_id IS NULL
+        OR analysis_id IN (
+          SELECT previous.id
+          FROM conversation_analyses previous
+          WHERE previous.message_id IN (SELECT message_id FROM target_analysis)
+            AND previous.status IN ('completed', 'failed')
+        )
+      )
+    RETURNING id
+  ),
+  dismissed_stale_target_items AS (
+    UPDATE conversation_learning_items
+    SET status = 'dismissed', updated_at = NOW()
+    WHERE user_id = $2::uuid
+      AND analysis_id IN (SELECT id FROM target_analysis)
+      AND NOT EXISTS (SELECT 1 FROM winning_target)
       AND status IN ('suggested', 'needs_review')
     RETURNING id
   ),
@@ -482,38 +580,58 @@ export const COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL = `
     UPDATE conversation_analyses
     SET is_current = FALSE, updated_at = NOW()
     WHERE user_id = $2::uuid
-      AND message_id IN (SELECT message_id FROM target_analysis)
+      AND message_id IN (SELECT message_id FROM winning_target)
       AND id <> $1::uuid
       AND is_current
+      AND revision < (SELECT revision FROM winning_target)
     RETURNING id
   ),
-  marked_message AS (
-    UPDATE conversation_messages
-    SET analysis_status = 'completed',
-        analysis_locked_at = NULL,
-        updated_at = NOW()
-    WHERE id IN (SELECT message_id FROM target_analysis)
-      AND (SELECT COUNT(*) FROM dismissed_items) >= 0
-      AND (SELECT COUNT(*) FROM superseded_analyses) >= 0
-    RETURNING id
-  )
+  completed_analysis AS (
   UPDATE conversation_analyses
   SET status = 'completed',
-      overview = $3::text,
-      is_current = TRUE,
+      overview = $4::text,
+      is_current = EXISTS (SELECT 1 FROM winning_target),
       error_code = NULL,
       error_message = NULL,
       completed_at = NOW(),
       updated_at = NOW()
   WHERE id IN (SELECT id FROM target_analysis)
-    AND EXISTS (SELECT 1 FROM marked_message)
-  RETURNING ${ANALYSIS_COLUMNS};
+    AND user_id = $2::uuid
+    AND status = 'running'
+    AND lease_token = $3::uuid
+    AND (SELECT COUNT(*) FROM dismissed_superseded_items) >= 0
+    AND (SELECT COUNT(*) FROM dismissed_stale_target_items) >= 0
+    AND (SELECT COUNT(*) FROM superseded_analyses) >= 0
+  RETURNING ${ANALYSIS_COLUMNS}
+  )
+  SELECT ${ANALYSIS_COLUMNS}
+  FROM completed_analysis;
 `;
 
 export const FAIL_CONVERSATION_ANALYSIS_RECORD_SQL = `
-  WITH removed_items AS (
+  WITH locked_message AS (
+    SELECT message.id
+    FROM conversation_messages message
+    JOIN conversation_analyses analysis ON analysis.message_id = message.id
+    WHERE analysis.id = $1::uuid
+      AND analysis.user_id = $2::uuid
+      AND analysis.status = 'running'
+      AND analysis.lease_token = $3::uuid
+    FOR UPDATE OF message
+  ),
+  target_analysis AS (
+    SELECT id, message_id
+    FROM conversation_analyses
+    WHERE id = $1::uuid
+      AND user_id = $2::uuid
+      AND status = 'running'
+      AND lease_token = $3::uuid
+      AND message_id IN (SELECT id FROM locked_message)
+    FOR UPDATE
+  ),
+  removed_items AS (
     DELETE FROM conversation_learning_items
-    WHERE analysis_id = $1::uuid
+    WHERE analysis_id IN (SELECT id FROM target_analysis)
       AND user_id = $2::uuid
       AND status IN ('suggested', 'needs_review', 'failed')
     RETURNING id
@@ -522,26 +640,19 @@ export const FAIL_CONVERSATION_ANALYSIS_RECORD_SQL = `
     UPDATE conversation_analyses
     SET status = 'failed',
         is_current = FALSE,
-        error_code = $3::text,
-        error_message = $4::text,
+        error_code = $4::text,
+        error_message = $5::text,
         completed_at = NOW(),
         updated_at = NOW()
-    WHERE id = $1::uuid
+    WHERE id IN (SELECT id FROM target_analysis)
       AND user_id = $2::uuid
+      AND status = 'running'
+      AND lease_token = $3::uuid
       AND (SELECT COUNT(*) FROM removed_items) >= 0
     RETURNING ${ANALYSIS_COLUMNS}
-  ),
-  marked_message AS (
-    UPDATE conversation_messages
-    SET analysis_status = 'failed',
-        analysis_locked_at = NULL,
-        updated_at = NOW()
-    WHERE id IN (SELECT message_id::uuid FROM failed_analysis)
-    RETURNING id
   )
   SELECT ${ANALYSIS_COLUMNS}
-  FROM failed_analysis
-  WHERE EXISTS (SELECT 1 FROM marked_message);
+  FROM failed_analysis;
 `;
 
 export const FAIL_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
@@ -549,96 +660,91 @@ export const FAIL_ASSISTANT_CONVERSATION_MESSAGE_SQL = `
   SET
     content = $3::text,
     status = $4::text,
-    analysis_status = 'not_requested',
     error_code = $5::text,
     error_message = $6::text,
     completed_at = NOW(),
     updated_at = NOW()
   WHERE id = $1::uuid
     AND user_id = $2::uuid
+    AND status = 'streaming'
   RETURNING ${MESSAGE_COLUMNS};
 `;
 
-export const CLAIM_CONVERSATION_ANALYSIS_SQL = `
-  UPDATE conversation_messages
-  SET
-    analysis_status = 'running',
-    analysis_locked_at = NOW(),
-    updated_at = NOW()
-  WHERE id = $1::uuid
-    AND user_id = $2::uuid
-    AND role = 'assistant'
-    AND status = 'completed'
-    AND (
-      analysis_status IN ('pending', 'failed')
-      OR (
-        analysis_status = 'running'
-        AND analysis_locked_at < NOW() - INTERVAL '5 minutes'
-      )
-    )
-  RETURNING ${MESSAGE_COLUMNS};
-`;
-
-export const COMPLETE_CONVERSATION_ANALYSIS_SQL = `
-  UPDATE conversation_messages
-  SET
-    details = $3::jsonb,
-    analysis_status = 'completed',
-    analysis_locked_at = NULL,
-    error_code = NULL,
-    error_message = NULL,
-    updated_at = NOW()
-  WHERE id = $1::uuid
-    AND user_id = $2::uuid
-  RETURNING ${MESSAGE_COLUMNS};
-`;
-
-export const FAIL_CONVERSATION_ANALYSIS_SQL = `
-  UPDATE conversation_messages
-  SET
-    analysis_status = 'failed',
-    analysis_locked_at = NULL,
-    error_code = $3::text,
-    error_message = $4::text,
-    updated_at = NOW()
-  WHERE id = $1::uuid
-    AND user_id = $2::uuid
-  RETURNING ${MESSAGE_COLUMNS};
-`;
-
-export const UPDATE_CONVERSATION_SUMMARY_SQL = `
-  UPDATE conversation_sessions
-  SET
-    summary = CASE
-      WHEN summary_through_at IS NULL OR summary_through_at <= $5::timestamptz
-        THEN $3::text
-      ELSE summary
-    END,
+export const SAVE_CONVERSATION_MAINTENANCE_SQL = `
+  WITH advanced_session AS (
+    UPDATE conversation_sessions
+    SET
+    summary = $3::text,
     title = CASE
-      WHEN summary_through_at IS NOT NULL AND summary_through_at > $5::timestamptz
-        THEN title
       WHEN title_is_manual OR summary_updated_at IS NOT NULL OR $4::text = ''
         THEN title
       ELSE $4::text
     END,
-    summary_updated_at = CASE
-      WHEN summary_through_at IS NULL OR summary_through_at <= $5::timestamptz
-        THEN NOW()
-      ELSE summary_updated_at
-    END,
-    summary_through_at = CASE
-      WHEN summary_through_at IS NULL OR summary_through_at <= $5::timestamptz
-        THEN $5::timestamptz
-      ELSE summary_through_at
-    END,
-    updated_at = CASE
-      WHEN summary_through_at IS NULL OR summary_through_at <= $5::timestamptz
-        THEN NOW()
-      ELSE updated_at
-    END
-  WHERE id = $1::uuid
-    AND user_id = $2::uuid
-  RETURNING ${SESSION_COLUMNS};
+    summary_updated_at = NOW(),
+    summary_through_at = $5::timestamptz,
+    updated_at = NOW()
+    WHERE id = $1::uuid
+      AND user_id = $2::uuid
+      AND (summary_through_at IS NULL OR summary_through_at < $5::timestamptz)
+    RETURNING ${SESSION_COLUMNS}
+  ),
+  memory_input AS (
+    SELECT
+      candidate.scope,
+      candidate.kind,
+      BTRIM(candidate.content) AS content
+    FROM JSONB_TO_RECORDSET($7::jsonb) AS candidate(
+      scope TEXT,
+      kind TEXT,
+      content TEXT
+    )
+    WHERE candidate.scope IN ('global', 'session')
+      AND candidate.kind IN ('preference', 'context', 'goal')
+      AND BTRIM(candidate.content) <> ''
+  ),
+  inserted_memories AS (
+    INSERT INTO conversation_memories (
+      user_id,
+      session_id,
+      scope,
+      kind,
+      content,
+      status,
+      source_message_id
+    )
+    SELECT
+      $2::uuid,
+      CASE WHEN memory_input.scope = 'session' THEN $1::uuid ELSE NULL END,
+      memory_input.scope,
+      memory_input.kind,
+      memory_input.content,
+      'suggested',
+      $6::uuid
+    FROM memory_input
+    WHERE EXISTS (SELECT 1 FROM advanced_session)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM conversation_memories existing
+        WHERE existing.user_id = $2::uuid
+          AND LOWER(BTRIM(existing.content)) = LOWER(memory_input.content)
+          AND (
+            (memory_input.scope = 'global' AND existing.scope = 'global')
+            OR (
+              memory_input.scope = 'session'
+              AND existing.scope = 'session'
+              AND existing.session_id = $1::uuid
+            )
+          )
+      )
+    RETURNING ${MEMORY_COLUMNS}
+  )
+  SELECT
+    advanced_session.*,
+    COALESCE(
+      (SELECT JSONB_AGG(TO_JSONB(inserted_memories)) FROM inserted_memories),
+      '[]'::jsonb
+    ) AS memories
+  FROM advanced_session;
 `;
 
 export const LIST_CONVERSATION_MEMORIES_SQL = `
@@ -706,20 +812,18 @@ export const DELETE_CONVERSATION_MEMORY_SQL = `
   RETURNING id::text;
 `;
 
-export const DELETE_ANALYSIS_SUGGESTIONS_SQL = `
-  WITH removed_memories AS (
-    DELETE FROM conversation_memories
-    WHERE source_message_id = $1::uuid
-      AND user_id = $2::uuid
-      AND status = 'suggested'
-  )
-  DELETE FROM conversation_learning_items
-  WHERE source_message_id = $1::uuid
-    AND user_id = $2::uuid
-    AND status IN ('suggested', 'needs_review');
-`;
-
 export const INSERT_CONVERSATION_LEARNING_ITEM_SQL = `
+  WITH target_analysis AS (
+    SELECT id, session_id, message_id
+    FROM conversation_analyses
+    WHERE id = $4::uuid
+      AND user_id = $1::uuid
+      AND session_id = $2::uuid
+      AND message_id = $3::uuid
+      AND status = 'running'
+      AND lease_token = $13::uuid
+    FOR SHARE
+  )
   INSERT INTO conversation_learning_items (
     user_id,
     session_id,
@@ -734,7 +838,7 @@ export const INSERT_CONVERSATION_LEARNING_ITEM_SQL = `
     status,
     grammar_candidates
   )
-  VALUES (
+  SELECT
     $1::uuid,
     $2::uuid,
     $3::uuid,
@@ -747,7 +851,7 @@ export const INSERT_CONVERSATION_LEARNING_ITEM_SQL = `
     $10::text,
     $11::text,
     $12::jsonb
-  )
+  FROM target_analysis
   RETURNING ${LEARNING_ITEM_COLUMNS};
 `;
 

@@ -40,7 +40,7 @@
   - `features/japanese-dictionary/`: Japanese-specific dictionary lookup and pure reading conversion helpers
   - `features/ai-lookup/`: AI prompt and entry completion for fallback fields and example sentences
   - `features/collections/`: collection CRUD, collection-word workflows, shared auto-filter rule matching, and job processing
-  - `features/conversation/`: conversation services, shared identifier validation, AI client, prompts, output validation, and repository access
+  - `features/conversation/`: workflow-specific conversation services and ports, domain normalization/validation, AI client, prompts, and PostgreSQL repository access
 - `shared/`: cross-cutting code
   - `shared/ai/`: AI Gateway model roles, request construction, budget handling,
     and response text extraction shared by feature clients
@@ -179,13 +179,23 @@
 
 1. `/conversation` starts as an unpersisted draft. The first send creates a session and replaces the browser URL with `/conversation/[sessionId]`; the left sidebar loads, searches, renames, deletes, and paginates sessions.
 2. A send request persists the completed user message and a streaming assistant placeholder under a client idempotency key. The route emits `assistant_created`, zero or more `text_delta` events, then `completed` or `error`.
-3. `ConversationService` builds context from deterministic preferences, active global memory, active current-session memory, the session summary, and the newest bounded message window. Session summaries never enter another session.
+3. `ConversationMessageService` builds context from deterministic preferences, active global memory, active current-session memory, the session summary, and a bounded window of completed messages ending at the target user message. PostgreSQL resolves that boundary from the message ID so JavaScript timestamp precision cannot omit the triggering turn. Retries never see later turns, and cancelled partial answers never enter model context. The streamed answer is capped at 8,000 characters before persistence.
 4. `ConversationAiClient` streams the main `defaultTeacher` answer. The default `chat` mode is a general-purpose text chatbot; the existing bilingual translation, polishing, and explanation modes remain explicit quick modes.
 5. After a completed answer, the client independently calls the `cheap` maintenance endpoint for only the first automatic title, bounded session summary, and memory suggestions. Maintenance never creates vocabulary, expression, or grammar candidates, and failure never invalidates the answer.
-6. Learning analysis runs only after a per-message action or a composer `/analysis` command. The request carries a focus plus optional free-form instruction, receives only the target answer and its parent user message, and stores a versioned `conversation_analyses` record. Completed requests replay by client idempotency key; failed or five-minute-stale running records can be reclaimed. A successful revision becomes the one current analysis and dismisses only superseded, unconfirmed candidates; saved learning records survive.
+6. Learning analysis runs only after a per-message action or a composer `/analysis` command. `ConversationAnalysisService` receives only the target answer and its parent user message and stores a versioned `conversation_analyses` record. Completed requests replay by client idempotency key; failed or five-minute-stale running records can be reclaimed with a fresh lease token. Every candidate/failure/completion write is lease-fenced. Completion acquires the common message lock in a transaction so concurrent revisions cannot violate the one-current-analysis invariant; once a newer revision is current, an older worker finishing later remains non-current and cannot dismiss the newer candidates.
 7. Structured learning output is length/type/reference validated and capped at five candidates. High-confidence short-input grammar patterns can supplement and canonicalize a missed model candidate before server-side grammar resolution. Suggested learning items remain inert until explicit confirmation.
 8. Vocabulary and fixed-expression promotion resolves local dictionary candidates through `VocabularyCoreService`, falls back through `WordLookupService`, requires a reading choice when ambiguous, and then uses `CollectionWordService` for duplicate-safe membership.
 9. Grammar promotion searches only the existing active grammar library, binds a concrete sense, and creates an immediately due review record without mistake or mastery evidence. Ambiguous/unmatched candidates remain in the `/review` conversation inbox.
+
+### Application Boundaries
+
+- `ConversationSessionService`: bootstrap, session CRUD, preferences, and memory management.
+- `ConversationMessageService`: idempotent message creation/retry, bounded context assembly, and SSE generation.
+- `ConversationMaintenanceService`: monotonic title/summary progress and suggested memories.
+- `ConversationAnalysisService`: explicit, versioned, lease-fenced learning analysis and grammar matching.
+- `ConversationLearningService`: user-confirmed promotion into dictionary, collections, and grammar review.
+- `application/ports.ts`: capability-oriented persistence, AI, collection, and grammar contracts. Application services must not depend on `ConversationRepository` directly.
+- `domain/model.ts`, `domain/structured-output.ts`, `domain/grammar-reconciliation.ts`, and `domain/analysis-request.ts`: deterministic rules with no database or route dependencies.
 
 ### Important Rules
 
@@ -194,9 +204,12 @@
 - Keep main generation, session maintenance, and user-triggered learning analysis independent. Preserve a completed answer if either secondary call fails, and do not analyze cancelled or failed output.
 - Re-resolve collection, dictionary reading, and grammar sense on the server during promotion. Model output is only a candidate.
 - Associate every new candidate with its analysis version. Show only current-version candidates plus saved records; a new successful revision dismisses superseded undecided candidates so history cannot reappear as duplicate work.
+- Keep summary advancement and memory suggestion insertion atomic and monotonic. Keep analysis lease checks on every write, and preserve message-before-analysis lock ordering.
+- Complete the assistant message and update session activity in one database statement; a secondary bookkeeping failure must never turn an already persisted answer into a failed SSE result.
 - Keep output plain text and structured UI fields; do not render model HTML or Markdown as HTML.
 - Without Gateway credentials, keep read/manage flows available and disable sending. Conversation must not fabricate a local translation fallback.
 - Session deletion removes unconfirmed output and session memory but preserves promoted learning records and active global memories.
+- Follow [Conversation Testing](CONVERSATION_TESTING.md) when changing any conversation workflow or persistence invariant.
 
 ## Grammar Learning
 

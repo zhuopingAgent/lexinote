@@ -1,16 +1,16 @@
-import { query } from "@/shared/db/query";
+import { query, withTransaction } from "@/shared/db/query";
 import { toIsoString, toNullableIsoString } from "@/shared/db/values";
+import type {
+  ConversationAnalysisLease,
+  ConversationStore,
+} from "@/features/conversation/application/ports";
 import {
-  CLAIM_CONVERSATION_ANALYSIS_SQL,
   COMPLETE_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
-  COMPLETE_CONVERSATION_ANALYSIS_SQL,
-  DELETE_ANALYSIS_SUGGESTIONS_SQL,
   DELETE_CONVERSATION_MEMORY_SQL,
   DELETE_CONVERSATION_SESSION_SQL,
   FAIL_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   FAIL_CONVERSATION_ANALYSIS_RECORD_SQL,
-  FAIL_CONVERSATION_ANALYSIS_SQL,
   INSERT_ASSISTANT_CONVERSATION_MESSAGE_SQL,
   INSERT_CONVERSATION_ANALYSIS_SQL,
   INSERT_CONVERSATION_LEARNING_ITEM_SQL,
@@ -26,8 +26,10 @@ import {
   LIST_CONVERSATION_MESSAGES_SQL,
   LIST_CONVERSATION_REVIEW_INBOX_SQL,
   LIST_CONVERSATION_SESSIONS_SQL,
+  LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL,
   RECLAIM_CONVERSATION_ANALYSIS_SQL,
   RESTART_ASSISTANT_CONVERSATION_MESSAGE_SQL,
+  SAVE_CONVERSATION_MAINTENANCE_SQL,
   SELECT_CONVERSATION_LEARNING_ITEM_SQL,
   SELECT_CONVERSATION_ANALYSIS_BY_CLIENT_ID_SQL,
   SELECT_CONVERSATION_MEMORY_SQL,
@@ -35,12 +37,10 @@ import {
   SELECT_CONVERSATION_MESSAGE_SQL,
   SELECT_CONVERSATION_PREFERENCES_SQL,
   SELECT_CONVERSATION_SESSION_SQL,
-  TOUCH_CONVERSATION_SESSION_SQL,
   UPDATE_CONVERSATION_LEARNING_ITEM_SQL,
   UPDATE_CONVERSATION_MEMORY_SQL,
   UPDATE_CONVERSATION_PREFERENCES_SQL,
   UPDATE_CONVERSATION_SESSION_SQL,
-  UPDATE_CONVERSATION_SUMMARY_SQL,
   UPSERT_DEFAULT_CONVERSATION_PREFERENCES_SQL,
 } from "@/shared/db/sql/conversation.sql";
 import type {
@@ -56,7 +56,6 @@ import type {
   ConversationMemoryScope,
   ConversationMemoryStatus,
   ConversationMessage,
-  ConversationMessageDetails,
   ConversationMessageStatus,
   ConversationMode,
   ConversationPreferences,
@@ -86,6 +85,7 @@ type AnalysisRow = {
   instruction: string;
   overview: string;
   is_current: boolean;
+  lease_token: string;
   model_name: string | null;
   error_code: string | null;
   error_message: string | null;
@@ -105,8 +105,6 @@ type MessageRow = {
   model_name: string | null;
   error_code: string | null;
   error_message: string | null;
-  details: unknown;
-  analysis_status: ConversationAnalysisStatus;
   created_at: string | Date;
   updated_at: string | Date;
   completed_at: string | Date | null;
@@ -160,25 +158,6 @@ function toNullableInteger(value: number | string | null) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
-function parseDetails(value: unknown): ConversationMessageDetails {
-  if (!value || typeof value !== "object") {
-    return { literalTranslation: null, nuanceNotes: [], keyPoints: [] };
-  }
-  const record = value as Record<string, unknown>;
-  return {
-    literalTranslation:
-      typeof record.literalTranslation === "string"
-        ? record.literalTranslation
-        : null,
-    nuanceNotes: Array.isArray(record.nuanceNotes)
-      ? record.nuanceNotes.filter((item): item is string => typeof item === "string")
-      : [],
-    keyPoints: Array.isArray(record.keyPoints)
-      ? record.keyPoints.filter((item): item is string => typeof item === "string")
-      : [],
-  };
-}
-
 function parseGrammarCandidates(value: unknown): ConversationGrammarCandidate[] {
   if (typeof value === "string") {
     try {
@@ -205,7 +184,7 @@ function parseGrammarCandidates(value: unknown): ConversationGrammarCandidate[] 
   });
 }
 
-export class ConversationRepository {
+export class ConversationRepository implements ConversationStore {
   mapSession(row: SessionRow): ConversationSession {
     return {
       id: row.id,
@@ -239,6 +218,13 @@ export class ConversationRepository {
     };
   }
 
+  mapAnalysisLease(row: AnalysisRow): ConversationAnalysisLease {
+    return {
+      analysis: this.mapAnalysis(row),
+      leaseToken: row.lease_token,
+    };
+  }
+
   mapMessage(row: MessageRow): ConversationMessage {
     return {
       id: row.id,
@@ -251,8 +237,6 @@ export class ConversationRepository {
       modelName: row.model_name,
       errorCode: row.error_code,
       errorMessage: row.error_message,
-      details: parseDetails(row.details),
-      analysisStatus: row.analysis_status,
       createdAt: toIsoString(row.created_at),
       updatedAt: toIsoString(row.updated_at),
       completedAt: toNullableIsoString(row.completed_at),
@@ -353,10 +337,6 @@ export class ConversationRepository {
     return Boolean(rows[0]);
   }
 
-  async touchSession(sessionId: string, userId: string) {
-    await query(TOUCH_CONVERSATION_SESSION_SQL, [sessionId, userId]);
-  }
-
   async getPreferences(userId: string): Promise<ConversationPreferences> {
     await query(UPSERT_DEFAULT_CONVERSATION_PREFERENCES_SQL, [userId]);
     const rows = await query<PreferenceRow>(SELECT_CONVERSATION_PREFERENCES_SQL, [
@@ -416,11 +396,17 @@ export class ConversationRepository {
     return rows.map((row) => this.mapMessage(row));
   }
 
-  async listContextMessages(sessionId: string, userId: string, limit: number) {
+  async listContextMessages(
+    sessionId: string,
+    userId: string,
+    limit: number,
+    throughMessageId?: string
+  ) {
     const rows = await query<MessageRow>(LIST_CONVERSATION_CONTEXT_MESSAGES_SQL, [
       sessionId,
       userId,
       limit,
+      throughMessageId ?? null,
     ]);
     return rows.map((row) => this.mapMessage(row));
   }
@@ -522,7 +508,7 @@ export class ConversationRepository {
     return rows[0] ? this.mapMessage(rows[0]) : null;
   }
 
-  async createAnalysis(input: {
+  async createAnalysisLease(input: {
     sessionId: string;
     messageId: string;
     userId: string;
@@ -530,6 +516,7 @@ export class ConversationRepository {
     focus: ConversationAnalysisFocus;
     instruction: string;
     modelName: string;
+    leaseToken: string;
   }) {
     const rows = await query<AnalysisRow>(INSERT_CONVERSATION_ANALYSIS_SQL, [
       input.sessionId,
@@ -539,8 +526,9 @@ export class ConversationRepository {
       input.focus,
       input.instruction,
       input.modelName,
+      input.leaseToken,
     ]);
-    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+    return rows[0] ? this.mapAnalysisLease(rows[0]) : null;
   }
 
   async findAnalysisByClientId(
@@ -555,19 +543,21 @@ export class ConversationRepository {
     return rows[0] ? this.mapAnalysis(rows[0]) : null;
   }
 
-  async reclaimAnalysis(input: {
+  async reclaimAnalysisLease(input: {
     sessionId: string;
     messageId: string;
     userId: string;
     clientAnalysisId: string;
+    leaseToken: string;
   }) {
     const rows = await query<AnalysisRow>(RECLAIM_CONVERSATION_ANALYSIS_SQL, [
       input.sessionId,
       input.messageId,
       input.userId,
       input.clientAnalysisId,
+      input.leaseToken,
     ]);
-    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+    return rows[0] ? this.mapAnalysisLease(rows[0]) : null;
   }
 
   async listAnalyses(sessionId: string, userId: string) {
@@ -578,84 +568,78 @@ export class ConversationRepository {
     return rows.map((row) => this.mapAnalysis(row));
   }
 
-  async completeAnalysisRecord(
-    analysisId: string,
-    userId: string,
-    overview: string
-  ) {
-    const rows = await query<AnalysisRow>(
-      COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
-      [analysisId, userId, overview]
-    );
-    return rows[0] ? this.mapAnalysis(rows[0]) : null;
+  async completeAnalysisRecord(input: {
+    analysisId: string;
+    userId: string;
+    leaseToken: string;
+    overview: string;
+  }) {
+    return withTransaction(async (client) => {
+      const lockedMessages = await client.query<{ id: string }>(
+        LOCK_CONVERSATION_ANALYSIS_MESSAGE_SQL,
+        [input.analysisId, input.userId, input.leaseToken]
+      );
+      if (!lockedMessages.rows[0]) return null;
+
+      const completed = await client.query<AnalysisRow>(
+        COMPLETE_CONVERSATION_ANALYSIS_RECORD_SQL,
+        [input.analysisId, input.userId, input.leaseToken, input.overview]
+      );
+      return completed.rows[0] ? this.mapAnalysis(completed.rows[0]) : null;
+    });
   }
 
-  async failAnalysisRecord(
-    analysisId: string,
-    userId: string,
-    errorCode: string,
-    errorMessage: string
-  ) {
+  async failAnalysisRecord(input: {
+    analysisId: string;
+    userId: string;
+    leaseToken: string;
+    errorCode: string;
+    errorMessage: string;
+  }) {
     const rows = await query<AnalysisRow>(FAIL_CONVERSATION_ANALYSIS_RECORD_SQL, [
-      analysisId,
-      userId,
-      errorCode,
-      errorMessage,
+      input.analysisId,
+      input.userId,
+      input.leaseToken,
+      input.errorCode,
+      input.errorMessage,
     ]);
     return rows[0] ? this.mapAnalysis(rows[0]) : null;
   }
 
-  async claimAnalysis(messageId: string, userId: string) {
-    const rows = await query<MessageRow>(CLAIM_CONVERSATION_ANALYSIS_SQL, [
-      messageId,
-      userId,
-    ]);
-    return rows[0] ? this.mapMessage(rows[0]) : null;
-  }
-
-  async completeAnalysis(
-    messageId: string,
-    userId: string,
-    details: ConversationMessageDetails
-  ) {
-    const rows = await query<MessageRow>(COMPLETE_CONVERSATION_ANALYSIS_SQL, [
-      messageId,
-      userId,
-      JSON.stringify(details),
-    ]);
-    return rows[0] ? this.mapMessage(rows[0]) : null;
-  }
-
-  async failAnalysis(
-    messageId: string,
-    userId: string,
-    errorCode: string,
-    errorMessage: string
-  ) {
-    const rows = await query<MessageRow>(FAIL_CONVERSATION_ANALYSIS_SQL, [
-      messageId,
-      userId,
-      errorCode,
-      errorMessage,
-    ]);
-    return rows[0] ? this.mapMessage(rows[0]) : null;
-  }
-
-  async updateSummary(input: {
+  async saveMaintenance(input: {
     sessionId: string;
     userId: string;
     summary: string;
     title?: string | null;
     throughAt: string;
+    sourceMessageId: string;
+    memories: Array<{
+      scope: ConversationMemoryScope;
+      kind: ConversationMemoryKind;
+      content: string;
+    }>;
   }) {
-    const rows = await query<SessionRow>(UPDATE_CONVERSATION_SUMMARY_SQL, [
-      input.sessionId,
-      input.userId,
-      input.summary,
-      input.title ?? "",
-      input.throughAt,
-    ]);
-    return rows[0] ? this.mapSession(rows[0]) : null;
+    const rows = await query<SessionRow & { memories: unknown }>(
+      SAVE_CONVERSATION_MAINTENANCE_SQL,
+      [
+        input.sessionId,
+        input.userId,
+        input.summary,
+        input.title ?? "",
+        input.throughAt,
+        input.sourceMessageId,
+        JSON.stringify(input.memories),
+      ]
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const memoryRows = Array.isArray(row.memories)
+      ? (row.memories as MemoryRow[])
+      : [];
+    return {
+      session: this.mapSession(row),
+      memories: memoryRows.map((memory) => this.mapMemory(memory)),
+    };
   }
 
   async listMemories(userId: string, sessionId?: string | null) {
@@ -726,15 +710,12 @@ export class ConversationRepository {
     return Boolean(rows[0]);
   }
 
-  async clearAnalysisSuggestions(messageId: string, userId: string) {
-    await query(DELETE_ANALYSIS_SUGGESTIONS_SQL, [messageId, userId]);
-  }
-
   async insertLearningItem(input: {
     userId: string;
     sessionId: string;
     sourceMessageId: string;
-    analysisId?: string | null;
+    analysisId: string;
+    leaseToken: string;
     kind: ConversationLearningItemKind;
     surfaceForm: string;
     reading: string | null;
@@ -748,7 +729,7 @@ export class ConversationRepository {
       input.userId,
       input.sessionId,
       input.sourceMessageId,
-      input.analysisId ?? null,
+      input.analysisId,
       input.kind,
       input.surfaceForm,
       input.reading,
@@ -757,8 +738,9 @@ export class ConversationRepository {
       input.sourceExcerpt,
       input.status,
       JSON.stringify(input.grammarCandidates),
+      input.leaseToken,
     ]);
-    return this.mapLearningItem(rows[0]);
+    return rows[0] ? this.mapLearningItem(rows[0]) : null;
   }
 
   async listLearningItems(sessionId: string, userId: string) {

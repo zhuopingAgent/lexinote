@@ -20,19 +20,25 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/api/services", () => ({
-  getConversationService: () => ({
+  getConversationSessionService: () => ({
     bootstrap: mocks.bootstrap,
     createSession: mocks.createSession,
     getSession: mocks.getSession,
     updateSession: mocks.updateSession,
     deleteSession: mocks.deleteSession,
-    streamMessage: mocks.streamMessage,
-    analyzeMessage: mocks.analyzeMessage,
-    maintainSession: mocks.maintainSession,
     updatePreferences: mocks.updatePreferences,
     createMemory: mocks.createMemory,
     updateMemory: mocks.updateMemory,
     deleteMemory: mocks.deleteMemory,
+  }),
+  getConversationMessageService: () => ({
+    streamMessage: mocks.streamMessage,
+  }),
+  getConversationAnalysisService: () => ({
+    analyzeMessage: mocks.analyzeMessage,
+  }),
+  getConversationMaintenanceService: () => ({
+    maintainSession: mocks.maintainSession,
   }),
   getConversationLearningService: () => ({
     promote: mocks.promote,

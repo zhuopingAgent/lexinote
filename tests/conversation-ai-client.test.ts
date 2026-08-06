@@ -30,8 +30,6 @@ const message: ConversationMessage = {
   modelName: null,
   errorCode: null,
   errorMessage: null,
-  details: { nuanceNotes: [], keyPoints: [] },
-  analysisStatus: "not_requested",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
   completedAt: "2026-01-01T00:00:00.000Z",
@@ -81,7 +79,6 @@ describe("conversation AI model fallbacks", () => {
     );
 
     await client.analyze({
-      session,
       messages: [message],
       focus: "grammar",
       instruction: "只看尝试表达",

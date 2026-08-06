@@ -22,6 +22,7 @@
 - Keep Japanese-specific logic in `features/japanese-dictionary/` and Japanese prompt files.
 - Keep grammar-learning logic in `features/grammar-learning/`; keep grammar prompts in `features/grammar-learning/prompts/`.
 - Keep conversation orchestration, output validation, persistence, and prompts in `features/conversation/`. Conversation routes must not call AI or mutate learning destinations directly.
+- Split conversation application logic by workflow: session/read management, message generation, maintenance, explicit analysis, and learning promotion. Services depend on narrow interfaces from `features/conversation/application/ports.ts`; do not reintroduce a catch-all service or concrete repository dependency.
 - Treat model-produced conversation learning items and memories as suggestions. Re-resolve all dictionary, collection, and grammar targets on the server before promotion.
 - Keep AI generation logic separate from dictionary lookup logic.
 - Keep SQL centralized under `shared/db/sql/`.
@@ -62,6 +63,7 @@
 - Run `npm run check` before commit.
 - Run `npm run check:ci` when changing dependencies or CI configuration.
 - Run `npm run test:e2e` when changing core user flows such as lookup, overview, history, collections, conversation, review inbox, or collection auto-filtering.
+- For conversation changes, preserve still-valid behavioral contracts when deleting obsolete tests and use `docs/ai/CONVERSATION_TESTING.md` to choose the correct layer. Repetition of one mocked UI path is not an Agent soak test.
 - Keep commits focused and descriptive.
 - Update `docs/ai/*` when architecture or workflow changes.
 - Keep `e2e/fixtures.sql` and Playwright expectations aligned with any intentional product-copy or workflow changes.

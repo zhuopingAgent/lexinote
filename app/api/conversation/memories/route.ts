@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
-import { getConversationService } from "@/app/api/services";
+import { getConversationSessionService } from "@/app/api/services";
 import { toErrorResponse } from "@/app/api/http-error";
 import { readJsonBody } from "@/app/api/request";
 import type { CreateConversationMemoryRequest } from "@/shared/types/conversation";
 
 export const runtime = "nodejs";
 
-const conversationService = getConversationService();
+const conversationService = getConversationSessionService();
 
 export async function POST(request: Request) {
   try {
     const body = await readJsonBody<CreateConversationMemoryRequest>(request);
     return NextResponse.json(
-      { memory: await conversationService.createMemory(body as CreateConversationMemoryRequest) },
+      { memory: await conversationService.createMemory(body) },
       { status: 201 }
     );
   } catch (error) {

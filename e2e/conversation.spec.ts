@@ -46,8 +46,6 @@ function message(
     modelName: role === "assistant" ? "openai/gpt-4.1-mini" : null,
     errorCode: null,
     errorMessage: null,
-    details: { literalTranslation: null, nuanceNotes: [], keyPoints: [] },
-    analysisStatus: "not_requested",
     createdAt: NOW,
     updatedAt: NOW,
     completedAt: status === "completed" ? NOW : null,
@@ -398,16 +396,11 @@ test("a rapid second click on the send position does not cancel generation", asy
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        message: {
-          ...message(
-            ASSISTANT_MESSAGE,
-            "assistant",
-            "予約時間を変更していただけますか。"
-          ),
-          analysisStatus: "completed",
+        analysis: {
+          id: ANALYSIS_ID,
+          messageId: ASSISTANT_MESSAGE,
+          status: "completed",
         },
-        session: session(NEW_SESSION, "双击发送测试"),
-        memories: [],
         learningItems: [],
       }),
     });
@@ -481,17 +474,11 @@ test("cancelled conversation answer can be regenerated in place", async ({
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        message: {
-          ...message(
-            ASSISTANT_MESSAGE,
-            "assistant",
-            "予約時間を変更していただけますか。"
-          ),
-          sessionId: SESSION_A,
-          analysisStatus: "completed",
+        analysis: {
+          id: ANALYSIS_ID,
+          messageId: ASSISTANT_MESSAGE,
+          status: "completed",
         },
-        session: session(SESSION_A, "医院预约"),
-        memories: [],
         learningItems: [],
       }),
     });

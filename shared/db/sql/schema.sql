@@ -1192,6 +1192,7 @@ CREATE TABLE IF NOT EXISTS conversation_analyses (
     'failed'
   )),
   is_current BOOLEAN NOT NULL DEFAULT FALSE,
+  lease_token UUID NOT NULL DEFAULT gen_random_uuid(),
   model_name TEXT,
   error_code TEXT,
   error_message TEXT,
@@ -1201,6 +1202,9 @@ CREATE TABLE IF NOT EXISTS conversation_analyses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (session_id, client_analysis_id)
 );
+
+ALTER TABLE conversation_analyses
+  ADD COLUMN IF NOT EXISTS lease_token UUID NOT NULL DEFAULT gen_random_uuid();
 
 CREATE TABLE IF NOT EXISTS conversation_learning_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1248,6 +1252,10 @@ CREATE INDEX IF NOT EXISTS idx_conversation_messages_analysis
 
 CREATE INDEX IF NOT EXISTS idx_conversation_analyses_message_revision
   ON conversation_analyses (message_id, revision DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_analyses_recovery
+  ON conversation_analyses (locked_at)
+  WHERE status = 'running';
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_analyses_current
   ON conversation_analyses (message_id)
